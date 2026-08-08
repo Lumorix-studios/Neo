@@ -1,41 +1,32 @@
-/* Editor font stack */
-:root {
-  --font-editor: "JetBrains Mono", "Cascadia Code", "Fira Code", "SF Mono", ui-monospace, monospace;
+/* Custom scrollbar styling */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
 }
 
-/* Selection */
-::selection {
-  background: rgba(6, 182, 212, 0.25);
-  color: inherit;
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
+.scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;
+  border-radius: 4px;
 }
-::-webkit-scrollbar-thumb {
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
   background: #3f3f46;
-  border-radius: 99px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: #52525b;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-/* Textarea caret */
-textarea {
-  caret-color: #06b6d4;
-}
-
-/* Smooth tab transitions */
-.tab-active-indicator {
-  transition: left 0.15s ease, width 0.15s ease;
-}
-
-/* fieldSizing for chat textarea */
-textarea[style*="fieldSizing"] {
-  field-sizing: content;
+.scrollbar-thin::-webkit-scrollbar-corner {
+  background: transparent;
 }

@@ -1,5 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-
+import PixelTransition from './PixelTransition';
 interface InfoPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -183,7 +183,37 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                   accent="cyan"
                 />
               </div>
+             
             </Section>
+            <PixelTransition
+             
+              firstContent={
+                <img
+                  src="../../src/assets/images/morph.jpg"
+                  alt="default pixel transition content, a cat!"
+                  style={{ width: "100%", height: "100%", objectFit: "cover",   }}
+                />
+              }
+              secondContent={
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "grid",
+                    placeItems: "center",
+                    backgroundColor: "#111",
+                    
+                  }}
+                >
+                  <p style={{ fontWeight: 900, fontSize: "1rem", color: "#ffffff" }}>Thanks for using the App!</p>
+                </div>
+              }
+              gridSize={8}
+              pixelColor="#ffffff"
+              once={false}
+              animationStepDuration={0.4}
+              className="custom-pixel-card"
+                          />
           </div>
         </div>
 

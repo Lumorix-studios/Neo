@@ -1,26 +1,99 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 use tauri::Manager;
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OpenTerminalRequest {
+    pub cwd: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OpenTerminalResponse {
+    pub success: bool,
+    pub message: String,
+}
 
 // ── File tree types ──────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FileEntry {
-    name: String,
-    path: String,
-    is_dir: bool,
-    children: Vec<FileEntry>,
-    extension: String,
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub children: Vec<FileEntry>,
+    pub extension: String,
 }
 
-// ── Shell execution ──────────────────────────────────────────────────────────
+// ── PowerShell execution ────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PowerShellRequest {
+    pub script: String,
+    pub cwd: Option<String>,
+    pub timeout_seconds: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PowerShellResponse {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+    pub success: bool,
+}
+
+#[tauri::command]
+fn execute_powershell(req: PowerShellRequest) -> PowerShellResponse {
+    let script = req.script;
+    let cwd = req.cwd.unwrap_or_else(|| ".".to_string());
+    let timeout = req.timeout_seconds.unwrap_or(30);
+
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &format!("& {{ {} }}", script)])
+        .current_dir(cwd);
+
+    // Set timeout using thread
+    let output = match run_with_timeout(cmd, Duration::from_secs(timeout)) {
+        Ok(Some(output)) => output,
+        Ok(None) => {
+            return PowerShellResponse {
+                stdout: String::new(),
+                stderr: format!("Command timed out after {} seconds", timeout),
+                exit_code: -1,
+                success: false,
+            };
+        }
+        Err(e) => {
+            return PowerShellResponse {
+                stdout: String::new(),
+                stderr: format!("Failed to execute PowerShell: {}", e),
+                exit_code: -1,
+                success: false,
+            };
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    PowerShellResponse {
+        stdout,
+        stderr,
+        exit_code: output.status.code().unwrap_or(-1),
+        success: output.status.success(),
+    }
+}
+
+// ── Enhanced shell execution ────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ShellRequest {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: Option<String>,
+    pub shell: Option<String>, // "powershell", "cmd", "bash", etc.
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -33,15 +106,52 @@ pub struct ShellResponse {
 
 #[tauri::command]
 fn execute_shell(req: ShellRequest) -> ShellResponse {
-    let mut cmd = Command::new(&req.command);
-    cmd.args(&req.args);
-    
+    let shell = req.shell.unwrap_or_else(|| {
+        if cfg!(target_os = "windows") {
+            "powershell".to_string()
+        } else {
+            "sh".to_string()
+        }
+    });
+
+    let mut cmd = match shell.as_str() {
+        "powershell" => {
+            let mut c = Command::new("powershell.exe");
+            c.args(["-NoProfile", "-NonInteractive", "-Command", &req.command])
+                .args(&req.args);
+            c
+        }
+        "cmd" => {
+            let mut c = Command::new("cmd.exe");
+            c.args(["/C", &req.command]).args(&req.args);
+            c
+        }
+        "bash" => {
+            let mut c = Command::new("bash");
+            c.args(["-c", &req.command]).args(&req.args);
+            c
+        }
+        _ => {
+            let mut c = Command::new(&shell);
+            c.args(&req.args);
+            c
+        }
+    };
+
     if let Some(cwd) = req.cwd {
-        cmd.current_dir(&cwd);
+        cmd.current_dir(cwd);
     }
 
-    let output = match cmd.output() {
-        Ok(output) => output,
+    let output = match run_with_timeout(cmd, Duration::from_secs(30)) {
+        Ok(Some(output)) => output,
+        Ok(None) => {
+            return ShellResponse {
+                stdout: String::new(),
+                stderr: "Command timed out after 30 seconds".to_string(),
+                exit_code: -1,
+                success: false,
+            };
+        }
         Err(e) => {
             return ShellResponse {
                 stdout: String::new(),
@@ -196,6 +306,22 @@ fn delete_path(path: String) -> Result<(), String> {
     }
 }
 
+// Helper function to run a command with a timeout
+fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Result<Option<std::process::Output>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    
+    thread::spawn(move || {
+        let result = cmd.output();
+        let _ = tx.send(result);
+    });
+    
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(output)) => Ok(Some(output)),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Ok(None), // Timeout
+    }
+}
+
 // ── AI config storage (per-app-instance JSON file) ────────────────────────────
 //
 // The config is stored in the OS-specific per-app config directory
@@ -237,6 +363,51 @@ fn ai_config_path(app: tauri::AppHandle) -> Result<String, String> {
     config_path(&app).map(|p| p.to_string_lossy().to_string())
 }
 
+/// Open an external PowerShell terminal window
+#[tauri::command]
+fn open_external_terminal(req: OpenTerminalRequest) -> OpenTerminalResponse {
+    let cwd = req.cwd.unwrap_or_else(|| ".".to_string());
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Open PowerShell in a new window with dark theme
+        let ps_command = format!(
+            "Set-Location '{}'; \
+            $Host.UI.RawUI.BackgroundColor = 'Black'; \
+            $Host.UI.RawUI.ForegroundColor = 'White'; \
+            Clear-Host; \
+            Write-Host 'PowerShell Terminal' -ForegroundColor Cyan; \
+            Write-Host 'Working directory: {}' -ForegroundColor Yellow; \
+            Write-Host ''",
+            cwd, cwd
+        );
+        
+        let result = Command::new("powershell.exe")
+            .args(["-NoExit", "-NoProfile", "-Command", &ps_command])
+            .current_dir(&cwd)
+            .spawn();
+        
+        match result {
+            Ok(_) => OpenTerminalResponse {
+                success: true,
+                message: format!("Opened PowerShell terminal at {}", cwd),
+            },
+            Err(e) => OpenTerminalResponse {
+                success: false,
+                message: format!("Failed to open terminal: {}", e),
+            },
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        OpenTerminalResponse {
+            success: false,
+            message: "External terminal is only supported on Windows".to_string(),
+        }
+    }
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -258,6 +429,8 @@ pub fn run() {
             write_ai_config,
             ai_config_path,
             execute_shell,
+            execute_powershell,
+            open_external_terminal,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
