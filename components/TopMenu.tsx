@@ -1,8 +1,10 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState, useEffect, useRef } from "react";
 
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
   onOpenPrivacyPolicy: () => void;
+  onclickDoc: () => void;
 }
 
 interface MenuDef {
@@ -13,21 +15,35 @@ interface MenuDef {
 export default function TopMenu({
   onOpenInfoPanel,
   onOpenPrivacyPolicy,
+  
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-
+  const onclickDoc =
+    async () => {
+      try {
+        await openUrl("https://github.com/Lumorix-studios/ProjectNeo");
+      } catch (error) {
+        console.error("Failed to open URL : ", error);
+      }
+    }
   const menus: MenuDef[] = [
-  {},
     {
-      label: "Settings",
+      label: "ProjectNeo",
+      items:[
+        {
+          label: "Documentation", action: onclickDoc
+        },
+    ],
+  },
+    {label: "Settings",
       items: [
         { label: "Information", action: onOpenInfoPanel },
         { label: "Privacy policies", action: onOpenPrivacyPolicy },
       ],
     },
   ];
-
+  
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {

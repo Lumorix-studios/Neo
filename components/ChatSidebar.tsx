@@ -35,11 +35,11 @@ export default function ChatSidebar({ onClose }: Props) {
             </div>
 
             <h1 className="max-w-[300px] text-[26px] font-semibold leading-8 tracking-[-0.04em] text-[#f1f1eb]">
-              Your sidebar
+              
             </h1>
 
             <p className="mt-3 max-w-[310px] text-[12px] leading-5 text-[#777873]">
-              This is a blank sidebar frame. Build whatever you want here.
+              
             </p>
           </div>
         </div>

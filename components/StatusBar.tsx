@@ -9,7 +9,7 @@ export default function StatusBar({ sidebarOpen, onToggleSidebar }: Props) {
 
       {/* Left */}
       <div className="flex items-center gap-3 flex-1 overflow-hidden text-zinc-500">
-        <span className="text-zinc-600 truncate">Ready</span>
+        <span className="text-zinc-600 truncate">v.1.0.0</span>
       </div>
 
       {/* Right */}
@@ -25,7 +25,7 @@ export default function StatusBar({ sidebarOpen, onToggleSidebar }: Props) {
             }
           `}
         >
-          ◈ SIDEBAR
+        Sidebar
         </button>
       </div>
     </div>
