@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
   onOpenPrivacyPolicy: () => void;
+  onOpenTab2: () => void;
 }
 
 interface MenuDef {
@@ -14,6 +15,7 @@ interface MenuDef {
 export default function TopMenu({
   onOpenInfoPanel,
   onOpenPrivacyPolicy,
+  onOpenTab2
   
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -21,7 +23,7 @@ export default function TopMenu({
   const onclickDoc =
     async () => {
       try {
-        await openUrl("https://github.com/Lumorix-studios/ProjectNeo");
+        await openUrl("https://github.com/Lumorix-studios/Neo");
       } catch (error) {
         console.error("Failed to open URL : ", error);
       }
@@ -34,13 +36,20 @@ export default function TopMenu({
           label: "Documentation", action: onclickDoc
         },
     ],
-  },
+    },
+   
     {label: "Settings",
       items: [
         { label: "Information", action: onOpenInfoPanel },
         { label: "Privacy policies", action: onOpenPrivacyPolicy },
       ],
     },
+    {
+      label: "feedback",
+      items: [
+        { label : "Rate us", action: onOpenTab2 }
+      ],
+  },
   ];
   
   useEffect(() => {

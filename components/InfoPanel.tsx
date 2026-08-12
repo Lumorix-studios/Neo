@@ -1,5 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import PixelTransition from './PixelTransition';
+
 interface InfoPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -10,96 +11,35 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
 
   return (
     <div
-      className="absolute inset-0 z-40 flex items-center justify-center p-6"
-      style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(8px)" }}
+      className="fixed inset-0 z-40 flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div
-        className="w-full max-w-lg flex flex-col overflow-hidden"
-        style={{
-          background: "linear-gradient(160deg, #18181b 0%, #111113 100%)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: "16px",
-          boxShadow:
-            "0 32px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset",
-          maxHeight: "82vh",
-        }}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-6 py-5"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-        >
+      <div className="w-full max-w-lg flex flex-col overflow-hidden bg-[#10110f] border border-white/[0.08] rounded-2xl shadow-2xl max-h-[82vh]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.08]">
           <div className="flex items-center gap-3">
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                background: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#c9f2d6] text-[#152219]">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="1.8" />
-                <path
-                  d="M12 8v1M12 11v5"
-                  stroke="white"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M12 8v1M12 11v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
               </svg>
             </div>
             <div>
-              <h2 style={{ color: "#f4f4f5", fontWeight: 600, fontSize: 15, margin: 0 }}>
-                About &amp; Contact
-              </h2>
-              <p style={{ color: "#71717a", fontSize: 12, margin: 0 }}>Lumorix Studios</p>
+              <h2 className="text-[15px] font-semibold text-[#f1f1eb] m-0">About & Contact</h2>
+              <p className="text-[12px] text-[#777873] m-0">Lumorix Studios</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "transparent",
-              color: "#71717a",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                "rgba(255,255,255,0.06)";
-              (e.currentTarget as HTMLButtonElement).style.color = "#f4f4f5";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-              (e.currentTarget as HTMLButtonElement).style.color = "#71717a";
-            }}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] text-[#777873] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M18 6L6 18M6 6l12 12"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: "20px 24px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* About section */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="flex flex-col gap-3">
             <Section>
               <SectionLabel icon={
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -109,11 +49,9 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                 About
               </SectionLabel>
 
-              <p style={{ color: "#a1a1aa", fontSize: 13, lineHeight: 1.65, margin: "0 0 14px" }}>
+              <p className="text-[13px] text-[#a1a1aa] leading-relaxed m-0 mb-3.5">
                 Made by{" "}
-                <span style={{ color: "#e4e4e7", fontWeight: 500 }}>
-                  Lumorix Studios
-                </span>
+                <span className="text-[#f1f1eb] font-medium">Lumorix Studios</span>
                 . A GitHub organization for our projects, not a registered company.
               </p>
 
@@ -132,11 +70,10 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                 }}
                 label="View on GitHub"
                 sublabel="Lumorix-studios/AgenticCoder"
-                accent="blue"
+                accent="green"
               />
             </Section>
 
-            {/* Contact section */}
             <Section>
               <SectionLabel icon={
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -146,7 +83,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                 Contact
               </SectionLabel>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2">
                 <ActionButton
                   icon={
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -162,7 +99,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                   }}
                   label="Email"
                   sublabel="madhusudhant207@gmail.com"
-                  accent="cyan"
+                  accent="cream"
                 />
 
                 <ActionButton
@@ -180,18 +117,17 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                   }}
                   label="Phone"
                   sublabel="+1 (772) 259-0947"
-                  accent="cyan"
+                  accent="cream"
                 />
               </div>
-             
             </Section>
+            (App uses components from reactbits.dev check them out lol)
             <PixelTransition
-             
               firstContent={
                 <img
                   src="../../src/assets/images/morph.jpg"
                   alt="default pixel transition content, a cat!"
-                  style={{ width: "100%", height: "100%", objectFit: "cover",   }}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               }
               secondContent={
@@ -202,7 +138,6 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                     display: "grid",
                     placeItems: "center",
                     backgroundColor: "#111",
-                    
                   }}
                 >
                   <p style={{ fontWeight: 900, fontSize: "1rem", color: "#ffffff" }}>Thanks for using the App!</p>
@@ -213,42 +148,15 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
               once={false}
               animationStepDuration={0.4}
               className="custom-pixel-card"
-                          />
+            />
           </div>
         </div>
 
-        {/* Footer */}
-        <div
-          style={{
-            padding: "14px 24px",
-            borderTop: "1px solid rgba(255,255,255,0.06)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <span style={{ color: "#52525b", fontSize: 11 }}>
-            © 2025 Lumorix Studios
-          </span>
+        <div className="flex items-center justify-between px-6 py-3.5 border-t border-white/[0.08]">
+          <span className="text-[11px] text-[#777873]">© 2026 Lumorix Studios</span>
           <button
             onClick={onClose}
-            style={{
-              padding: "7px 18px",
-              background: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)",
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: "pointer",
-              transition: "opacity 0.15s",
-            }}
-            onMouseEnter={(e) =>
-              ((e.currentTarget as HTMLButtonElement).style.opacity = "0.85")
-            }
-            onMouseLeave={(e) =>
-              ((e.currentTarget as HTMLButtonElement).style.opacity = "1")
-            }
+            className="px-4 py-1.5 rounded-lg bg-[#c9f2d6] text-[#152219] text-[13px] font-semibold transition hover:opacity-85"
           >
             Close
           </button>
@@ -258,44 +166,17 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
   );
 }
 
-/* ── helpers ───────────────────────────────────────────────── */
-
 function Section({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.025)",
-        border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: 12,
-        padding: "16px",
-      }}
-    >
+    <div className="bg-white/[0.025] border border-white/[0.06] rounded-xl p-4">
       {children}
     </div>
   );
 }
 
-function SectionLabel({
-  icon,
-  children,
-}: {
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
+function SectionLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        marginBottom: 12,
-        color: "#71717a",
-        fontSize: 11,
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-      }}
-    >
+    <div className="flex items-center gap-1.5 mb-3 text-[#777873] text-[11px] font-semibold uppercase tracking-wider">
       {icon}
       {children}
     </div>
@@ -313,65 +194,28 @@ function ActionButton({
   onClick: () => void;
   label: string;
   sublabel: string;
-  accent: "cyan" | "blue";
+  accent: "green" | "cream";
 }) {
-  const accentColor = accent === "cyan" ? "#22d3ee" : "#60a5fa";
+  const accentColor = accent === "green" ? "#c9f2d6" : "#f1f1eb";
 
   return (
     <button
       onClick={onClick}
-      style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "11px 14px",
-        background: "transparent",
-        border: "1px solid rgba(255,255,255,0.07)",
-        borderRadius: 10,
-        cursor: "pointer",
-        transition: "all 0.15s",
-        textAlign: "left",
-      }}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget as HTMLButtonElement;
-        el.style.background = "rgba(255,255,255,0.04)";
-        el.style.borderColor = "rgba(255,255,255,0.12)";
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget as HTMLButtonElement;
-        el.style.background = "transparent";
-        el.style.borderColor = "rgba(255,255,255,0.07)";
-      }}
+      className="w-full flex items-center gap-3 px-3.5 py-2.5 bg-transparent border border-white/[0.07] rounded-lg cursor-pointer transition-all text-left hover:bg-white/[0.04] hover:border-white/[0.12]"
     >
       <div
+        className="flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0"
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
           background: `${accentColor}18`,
           border: `1px solid ${accentColor}30`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
           color: accentColor,
-          flexShrink: 0,
         }}
       >
         {icon}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: "#d4d4d8", fontSize: 13, fontWeight: 500 }}>{label}</div>
-        <div
-          style={{
-            color: accentColor,
-            fontSize: 12,
-            marginTop: 1,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-medium text-[#d4d4d8]">{label}</div>
+        <div className="text-[12px] mt-0.5 truncate" style={{ color: accentColor }}>
           {sublabel}
         </div>
       </div>
@@ -380,7 +224,7 @@ function ActionButton({
         height="14"
         viewBox="0 0 24 24"
         fill="none"
-        style={{ color: "#52525b", flexShrink: 0 }}
+        className="text-[#777873] flex-shrink-0"
       >
         <path
           d="M7 17L17 7M17 7H7M17 7v10"

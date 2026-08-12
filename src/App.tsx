@@ -6,6 +6,7 @@ import PrivacyPolicy from "../components/PrivacyPolicy.tsx";
 import CommandPalette from "../components/CommandPalette";
 import ClickSpark from '../components/ClickSpark';
 import StatusBar from "../components/StatusBar.tsx";
+import Tab2 from "../components/Tab2.tsx";
 import "./editor.css";
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [Tab2Open, setTab2Open] = useState(false);
 
   // ── Keyboard shortcuts 
   useEffect(() => {
@@ -43,12 +45,14 @@ export default function App() {
       {/* ── Top menu bar ───── */}
       <TopMenu
         onOpenInfoPanel={() => setInfoPanelOpen(true)}
-        onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
+          onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
+          onOpenTab2={()=>setTab2Open(true)}
       />
       
-      {/* ── Info Panel Overlay ───── */}
+      {/* ── Info Panel Overlay */}
       <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
-      <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
+        <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
+        <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
 
       {/* ── Main area ──────── */}
       <div className="flex flex-1 overflow-hidden">
@@ -62,8 +66,11 @@ export default function App() {
               <line x1="16" y1="17" x2="8" y2="17"/>
               <polyline points="10 9 9 9 8 9"/>
             </svg>
-            <div className="text-center">
-             
+              <div className="text-center">
+                <button onClick={() => setInfoPanelOpen(true)} className="bg-lime-50 rounded-2xl text-1xl p-1">
+                  <p className="text-amber-900 font-bold">Get started</p>
+                </button>
+
             </div>
           </div>
         </div>
@@ -117,6 +124,8 @@ export default function App() {
             icon: "🔒",
             action: () => setPrivacyPolicyOpen(true),
           },
+          
+          
         ]}
       />
       </div>
