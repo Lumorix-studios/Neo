@@ -1,6 +1,6 @@
 # AgenticCoder
 
-A lightweight, desktop-first AI coding assistant built with **React**, **TypeScript**, and **Tauri**.
+A lightweight, desktop-first application built with **React**, **TypeScript**, and **Tauri**.
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge\&logo=typescript\&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge\&logo=react\&logoColor=61DAFB)
@@ -12,31 +12,27 @@ A lightweight, desktop-first AI coding assistant built with **React**, **TypeScr
 
 ## About
 
-AgenticCoder is an AI-powered desktop coding environment focused on providing a fast, native experience. It aims to combine project navigation, code editing, and AI assistance into a single lightweight application.
+AgenticCoder is a desktop application focused on providing a fast, native experience with a modern UI and smooth animations.
 
 ## Current Features
 
 * Modern desktop UI built with React + Tauri
-* Native folder selection
-* Native file selection
-* File explorer
-* Editor view
 * Responsive layout
 * Cross-platform architecture
+* Animated UI components (ClickSpark, PixelTransition)
+* Command palette
+* Info panel
+* Privacy policies panel
 
 ## Planned Features
 
-* AI chat assistant
-* Agentic coding workflow
 * Syntax highlighting
 * Multi-tab editor
 * File creation, deletion, and renaming
 * Save & Save As
 * Project-wide search
-
 * Themes
 * Settings
-
 
 ## Tech Stack
 

@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
   onOpenPrivacyPolicy: () => void;
-  onclickDoc: () => void;
 }
 
 interface MenuDef {

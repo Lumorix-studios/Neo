@@ -12,33 +12,7 @@ AgenticCoder is an **early-stage development project**. Features, functionality,
 
 AgenticCoder **does not collect, transmit, sell, or store your personal data** on any servers operated by us.
 
-All application data, including settings, configuration, and locally stored conversations (where applicable), is saved **only on your device**. We do not have access to this information.
-
-## API Keys
-
-AgenticCoder **does not provide any API keys or AI services**.
-
-Users are solely responsible for obtaining, managing, and securing their own API keys from supported AI providers. You should never share your API keys with anyone.
-
-## How AgenticCoder Works
-
-AgenticCoder functions solely as a bridge between you and the AI provider you choose.
-
-The application forwards your requests directly to the AI provider using the API credentials you supply. We do not operate or control the AI models, their infrastructure, or their responses.
-
-## Third-Party AI Providers
-
-When you use an AI model through AgenticCoder, your requests are processed according to the privacy policy, terms of service, and data handling practices of the respective AI provider.
-
-You are responsible for reviewing and complying with those policies before using their services.
-
-AgenticCoder and its developers are **not responsible or liable** for:
-
-* AI-generated responses or content
-* Data handling performed by third-party AI providers
-* AI model availability, reliability, or accuracy
-* Changes made by AI providers to their services or policies
-* Any consequences resulting from your use of third-party AI services
+All application data, including settings and configuration, is saved **only on your device**. We do not have access to this information.
 
 ## Local Storage
 
@@ -71,7 +45,6 @@ To the maximum extent permitted by applicable law, the developers and contributo
 * Hardware or software damage
 * Security incidents
 * Service interruptions
-* AI-generated errors or inaccuracies
 * Any other damages arising from the use or inability to use the application
 
 You assume full responsibility for any actions taken using the software and any consequences resulting from those actions.

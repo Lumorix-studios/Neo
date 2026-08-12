@@ -8,16 +8,6 @@
   "permissions": [
     "core:default",
     "dialog:default",
-    "opener:default",
-    {
-      "identifier": "http:default",
-      "allow": [
-        { "url": "https://*" },
-        { "url": "http://*" },
-        { "url": "https://*:*" },
-        { "url": "http://*:*" },
-        { "url": "http://localhost:*" }
-      ]
-    }
+    "opener:default"
   ]
 }
