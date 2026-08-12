@@ -1,5 +1,5 @@
-# AgenticCoder
 
+<<<<<<< HEAD
 A lightweight, desktop-first application built with **React**, **TypeScript**, and **Tauri**.
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge\&logo=typescript\&logoColor=white)
@@ -69,3 +69,5 @@ This project was started in **June 2026** and is under active development. Featu
 Please check out the Privacy policies before utilizing the application <a href = "https://github.com/Lumorix-studios/AgenticCoder/blob/main/PRIVACYPOLICY.MD">Privacy policy</a>
 
 Feedback, bug reports, and suggestions are welcome.
+=======
+>>>>>>> eae9cc0b2e3029dea420f519efb617bc3b1c133a
