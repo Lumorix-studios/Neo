@@ -1,4 +1,4 @@
-import { IoClose } from "react-icons/io5";
+import { IoClose, IoSettingsSharp } from "react-icons/io5";
 
 interface Props {
   onClose: () => void;
@@ -8,11 +8,11 @@ export default function ChatSidebar({ onClose }: Props) {
   return (
     <div className="flex h-full w-full flex-col bg-[#10110f] text-[#f1f1eb]">
       <header className="flex h-12 items-center gap-2 border-b border-white/[0.08] px-3">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#c9f2d6] text-[#152219]">
-          <span className="text-[13px] font-bold">◈</span>
+        <div className="flex h-6 w-6 items-center justify-center rounded-md  text-amber-50">
+          <span className="text-[13px] font-bold"><IoSettingsSharp size={18} /></span>
         </div>
 
-        <span className="text-[12px] font-semibold tracking-tight">Sidebar</span>
+        <span className="text-[12px] font-semibold tracking-tight">SETTINGS</span>
 
         <div className="flex-1" />
 
