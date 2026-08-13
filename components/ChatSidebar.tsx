@@ -1,21 +1,42 @@
-import { IoClose, IoSettingsSharp } from "react-icons/io5";
+import { useState } from "react";
+import { IoClose, IoSettingsSharp, IoServer, IoCube, IoText } from "react-icons/io5";
+import type { AISettings } from "../src/types";
 
 interface Props {
   onClose: () => void;
+  settings: AISettings;
+  onSave: (settings: AISettings) => void;
 }
 
-export default function ChatSidebar({ onClose }: Props) {
+export default function ChatSidebar({ onClose, settings, onSave }: Props) {
+  const [draft, setDraft] = useState<AISettings>(settings);
+  const [showKey, setShowKey] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const update = <K extends keyof AISettings>(key: K, value: AISettings[K]) => {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  };
+
+  const handleSave = () => {
+    onSave(draft);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleReset = () => {
+    setDraft(settings);
+    setSaved(false);
+  };
+
   return (
     <div className="flex h-full w-full flex-col bg-[#10110f] text-[#f1f1eb]">
       <header className="flex h-12 items-center gap-2 border-b border-white/[0.08] px-3">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md  text-amber-50">
+        <div className="flex h-6 w-6 items-center justify-center rounded-md text-amber-50">
           <span className="text-[13px] font-bold"><IoSettingsSharp size={18} /></span>
         </div>
-
-        <span className="text-[12px] font-semibold tracking-tight">SETTINGS</span>
-
+        <span className="text-[12px] font-semibold tracking-tight">AI SETTINGS</span>
         <div className="flex-1" />
-
         <button
           type="button"
           aria-label="Close"
@@ -28,22 +49,124 @@ export default function ChatSidebar({ onClose }: Props) {
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex h-full flex-col justify-center px-5 py-8">
-          <div className="mb-8">
-            <div className="mb-4 text-[11px] uppercase tracking-[0.18em] text-[#777873]">
-              Sidebar
-            </div>
+        <div className="flex flex-col gap-4 px-4 py-4">
+          {/* Connection */}
+          <Section icon={<IoServer size={14} />} title="Connection">
+            <Field label="API Endpoint (Base URL)">
+              <input
+                type="text"
+                value={draft.baseUrl}
+                onChange={(e) => update("baseUrl", e.target.value)}
+                placeholder="https://api.openai.com/v1"
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
+              />
+            </Field>
+            <Field label="API Key">
+              <div className="relative">
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={draft.apiKey}
+                  onChange={(e) => update("apiKey", e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 pr-16 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[11px] text-[#777873] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
+                >
+                  {showKey ? "Hide" : "Show"}
+                </button>
+              </div>
+            </Field>
+          </Section>
 
-            <h1 className="max-w-[300px] text-[26px] font-semibold leading-8 tracking-[-0.04em] text-[#f1f1eb]">
-              
-            </h1>
+          {/* Model */}
+          <Section icon={<IoCube size={14} />} title="Model">
+            <Field label="Model">
+              <input
+                type="text"
+                value={draft.model}
+                onChange={(e) => update("model", e.target.value)}
+                placeholder="gpt-4o-mini"
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
+              />
+            </Field>
+            <Field label="Temperature">
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={draft.temperature}
+                  onChange={(e) => update("temperature", parseFloat(e.target.value))}
+                  className="flex-1 accent-[#c9f2d6]"
+                />
+                <span className="w-10 text-right text-[12px] tabular-nums text-[#a1a1aa]">
+                  {draft.temperature.toFixed(1)}
+                </span>
+              </div>
+            </Field>
+          </Section>
 
-            <p className="mt-3 max-w-[310px] text-[12px] leading-5 text-[#777873]">
-              
-            </p>
+          {/* Behavior */}
+          <Section icon={<IoText size={14} />} title="Behavior">
+            <Field label="System Prompt">
+              <textarea
+                value={draft.systemPrompt}
+                onChange={(e) => update("systemPrompt", e.target.value)}
+                rows={4}
+                placeholder="You are a helpful, professional assistant."
+                className="w-full resize-none rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[13px] leading-5 text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
+              />
+            </Field>
+          </Section>
+
+          {/* Actions */}
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="flex-1 rounded-lg bg-[#c9f2d6] px-4 py-2 text-[13px] font-semibold text-[#152219] transition hover:opacity-85"
+            >
+              {saved ? "Saved ✓" : "Save Settings"}
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              className="rounded-lg border border-white/[0.08] px-4 py-2 text-[13px] text-[#a1a1aa] transition hover:bg-white/[0.04] hover:text-[#f1f1eb]"
+            >
+              Reset
+            </button>
           </div>
+
+          <p className="text-center text-[10px] leading-4 text-[#55564f]">
+            Settings are stored locally on this device.
+          </p>
         </div>
       </main>
     </div>
+  );
+}
+
+function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#777873]">
+        <span className="text-[#a1a1aa]">{icon}</span>
+        {title}
+      </div>
+      <div className="flex flex-col gap-3">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[12px] font-medium text-[#a1a1aa]">{label}</span>
+      {children}
+    </label>
   );
 }

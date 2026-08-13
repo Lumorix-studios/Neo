@@ -5,6 +5,7 @@ interface TopMenuProps {
   onOpenInfoPanel: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenTab2: () => void;
+  onOpenChatSidebar: ()=>void;
 }
 
 interface MenuDef {
@@ -15,7 +16,8 @@ interface MenuDef {
 export default function TopMenu({
   onOpenInfoPanel,
   onOpenPrivacyPolicy,
-  onOpenTab2
+  onOpenTab2,
+  onOpenChatSidebar
   
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -40,6 +42,7 @@ export default function TopMenu({
    
     {label: "Settings",
       items: [
+        {label : "Configuration", action : onOpenChatSidebar},
         { label: "Information", action: onOpenInfoPanel },
         { label: "Privacy policies", action: onOpenPrivacyPolicy },
       ],
