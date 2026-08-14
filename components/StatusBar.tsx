@@ -16,7 +16,7 @@ export default function StatusBar({ sidebarOpen, onToggleSidebar }: Props) {
       <div className="flex items-center gap-3 shrink-0 text-zinc-500">
         <button
           onClick={onToggleSidebar}
-          title="Toggle Sidebar (Ctrl+B)"
+          title="Toggle Settings tab (Ctrl+B)"
           className={`
             flex items-center gap-1 px-2 py-0.5 rounded transition-colors
             ${sidebarOpen
@@ -25,7 +25,7 @@ export default function StatusBar({ sidebarOpen, onToggleSidebar }: Props) {
             }
           `}
         >
-        Sidebar
+        Settings
         </button>
       </div>
     </div>

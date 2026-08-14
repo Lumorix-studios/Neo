@@ -1,6 +1,15 @@
 import { useState } from "react";
-import { IoClose, IoSettingsSharp, IoServer, IoCube, IoText } from "react-icons/io5";
-import type { AISettings } from "../src/types";
+import {
+  IoClose,
+  IoSettingsSharp,
+  IoServer,
+  IoCube,
+  IoText,
+  IoCloud,
+  IoChevronDown,
+} from "react-icons/io5";
+import type { AISettings, ProviderId } from "../src/types";
+import { PROVIDER_OPTIONS, providerById } from "../src/providers";
 
 interface Props {
   onClose: () => void;
@@ -18,6 +27,28 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
     setSaved(false);
   };
 
+  /**
+   * When the user picks a different provider we auto-fill the base URL and
+   * model — but ONLY if they haven't already customized them away from the
+   * previous provider's defaults. This keeps hand-edited proxy URLs and
+   * custom model ids intact.
+   */
+  const handleProviderChange = (nextId: ProviderId) => {
+    const spec = providerById(nextId);
+    const prevSpec = draft.provider ? providerById(draft.provider) : undefined;
+    const usingDefaultUrl =
+      !draft.baseUrl || (prevSpec !== undefined && draft.baseUrl === prevSpec.defaultBaseUrl);
+    const usingDefaultModel =
+      !draft.model || (prevSpec !== undefined && draft.model === prevSpec.defaultModel);
+    setDraft((prev) => ({
+      ...prev,
+      provider: nextId,
+      baseUrl: usingDefaultUrl ? spec.defaultBaseUrl : prev.baseUrl,
+      model: usingDefaultModel ? spec.defaultModel : prev.model,
+    }));
+    setSaved(false);
+  };
+
   const handleSave = () => {
     onSave(draft);
     setSaved(true);
@@ -29,11 +60,16 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
     setSaved(false);
   };
 
+  const spec = providerById(draft.provider);
+  const needsKey = spec.needsAuth;
+
   return (
     <div className="flex h-full w-full flex-col bg-[#10110f] text-[#f1f1eb]">
       <header className="flex h-12 items-center gap-2 border-b border-white/[0.08] px-3">
         <div className="flex h-6 w-6 items-center justify-center rounded-md text-amber-50">
-          <span className="text-[13px] font-bold"><IoSettingsSharp size={18} /></span>
+          <span className="text-[13px] font-bold">
+            <IoSettingsSharp size={18} />
+          </span>
         </div>
         <span className="text-[12px] font-semibold tracking-tight">AI SETTINGS</span>
         <div className="flex-1" />
@@ -50,6 +86,36 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-4 px-4 py-4">
+          {/* Provider */}
+          <Section icon={<IoCloud size={14} />} title="Provider">
+            <Field label="AI Provider">
+              <select
+                value={draft.provider}
+                onChange={(e) => handleProviderChange(e.target.value as ProviderId)}
+                className="relative w-full appearance-none rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 pr-9 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
+              >
+                {PROVIDER_OPTIONS.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#152219]">
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#777873]">
+                <IoChevronDown size={13} />
+              </span>
+            </Field>
+            {spec.note ? (
+              <p className="text-[11px] leading-4 text-[#a1a1aa]">
+                {spec.note}
+              </p>
+            ) : needsKey ? (
+              <p className="text-[11px] leading-4 text-[#a1a1aa]">
+                API key required — the prefix is validated for your provider
+                (e.g. OpenAI "sk-", Anthropic "sk-ant-", Groq "gsk-").
+              </p>
+            ) : null}
+          </Section>
+
           {/* Connection */}
           <Section icon={<IoServer size={14} />} title="Connection">
             <Field label="API Endpoint (Base URL)">
@@ -67,8 +133,9 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
                   type={showKey ? "text" : "password"}
                   value={draft.apiKey}
                   onChange={(e) => update("apiKey", e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 pr-16 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
+                  placeholder={needsKey ? "Enter API key" : "Not required"}
+                  readOnly={!needsKey}
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 pr-16 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05] disabled:opacity-60"
                 />
                 <button
                   type="button"
@@ -88,7 +155,7 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
                 type="text"
                 value={draft.model}
                 onChange={(e) => update("model", e.target.value)}
-                placeholder="gpt-4o-mini"
+                placeholder="e.g. gpt-4o-mini"
                 className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
               />
             </Field>

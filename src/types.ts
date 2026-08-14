@@ -1,9 +1,20 @@
+export type ProviderId =
+  | "openai"
+  | "openrouter"
+  | "groq"
+  | "anthropic"
+  | "google"
+  | "ollama"
+  | "custom";
+
 export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
 }
 
 export interface AISettings {
+  /** Which AI provider to talk to. Drives auth, endpoint and response parsing. */
+  provider: ProviderId;
   apiKey: string;
   model: string;
   baseUrl: string;
@@ -11,7 +22,10 @@ export interface AISettings {
   temperature: number;
 }
 
+/** Defaults for every field. Adding a new field here keeps old saved
+ *  settings (loaded via `{ ...DEFAULT_SETTINGS, ...parsed }`) valid. */
 export const DEFAULT_SETTINGS: AISettings = {
+  provider: "openai",
   apiKey: "",
   model: "gpt-4o-mini",
   baseUrl: "https://api.openai.com/v1",
