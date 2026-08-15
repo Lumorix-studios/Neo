@@ -10,13 +10,23 @@ import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import SideRays from "../components/SideRays.tsx";
 import Markdown from "./components/Markdown";
+
 import "./editor.css";
-import { IoCube } from "react-icons/io5";
+import { IoCube, IoSend } from "react-icons/io5";
 import type { AISettings, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { loadSettings, saveSettings, loadChatHistory, saveChatHistory } from "./store";
 import { getProviderSpec, buildAuthHeaders } from "./providers";
 import type { ProviderSpec } from "./providers";
+import {
+  ThumbsUpIcon,
+  ThumbsDownIcon,
+  InfoIcon,
+  ExclamationMarkIcon,
+  DotsThreeVerticalIcon,
+  PauseIcon,
+  PasswordIcon
+} from "@phosphor-icons/react/dist/ssr";
 
 type JsonDict = Record<string, unknown>;
 
@@ -58,6 +68,8 @@ function sanitizeHistory(msgs: Message[]): Message[] {
 }
 
 export default function App() {
+  const [menuOpen, setMenuOpen] = useState<number | null>(null);
+  const [modelOpen, setModelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
@@ -402,9 +414,9 @@ export default function App() {
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
             <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-40 bg-gradient-to-b from-zinc-900/30 to-transparent" />
-            <div className="relative z-10 flex h-14 shrink-0 items-center justify-between border-b border-zinc-800/50 px-5">
+            <div className="relative z-10 flex h-14 shrink-0 items-center justify-between  px-5">
               <div className="flex items-center gap-3">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg  bg-zinc-900">
                   <span className="text-xs text-zinc-300">
                     <IoCube size={18} />
                   </span>
@@ -492,7 +504,49 @@ export default function App() {
                               </div>
                             ) : (
                               <div className="min-w-0 max-w-[80%] flex-1 pt-1 text-sm leading-7 text-zinc-300">
-                                <Markdown content={msg.content} />
+                                    <Markdown content={msg.content} />
+                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl">
+                                      <button
+                                        onClick={() =>
+                                          alert("Thank you for the feedback")
+                                        }>
+                                        <ThumbsUpIcon size={17} />
+                                      </button>
+                                    </span>
+                                    <span className = " hover:bg-zinc-800 rounded-2xl">
+                                      <button
+                                        onClick={() =>
+                                          alert("Thank you for the feedback")}>
+                                        <ThumbsDownIcon size={17} />
+                                      </button>
+                                    </span>
+                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl">
+                                      <button>
+                                        <InfoIcon size={17} />
+                                      </button>
+                                    </span>
+                                    <span className="relative  hover:bg-zinc-800 rounded-2xl">
+                                      <button onClick={() => setMenuOpen(menuOpen === index ? null: index)}>
+                                        <DotsThreeVerticalIcon size={19} />
+                                      </button>
+                                      {/*Opens a dropdown selector for the 3 dots. more efficient ngl. i didnt wanna add 4 other buttons plus the 3 dots is universally known to display a list of items */}
+                                      {menuOpen === index  && (
+                                        <div className="absolute right-0 top-full z-50 mt-2 w-40 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
+                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                                            onClick={() => setSidebarOpen(true)}>
+                                            Settings
+                                          </button>
+                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800">
+                                            Copy
+                                          </button>
+                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                                            onClick ={()=>alert("Thank you for reporting")}
+                                          >
+                                            Report
+                                          </button>
+                                        </div>
+                                      )}
+                                    </span>
                               </div>
                             )}
                           </div>
@@ -550,10 +604,18 @@ export default function App() {
 
                       <button
                         type="button"
-                        onClick={() => setSidebarOpen(true)}
+                        onClick={() => setModelOpen(prev=>!prev)}
                         className="rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-300"
                       >
                         {settings.model || spec.label} ▾
+                        {modelOpen && (
+                          <div className="absolute right-130 bottom-2 z-50 w-48 rounded-xl border border-white/[0.08] bg-zinc-950/90 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                            <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800">
+                              {settings.model || spec.label}
+                            </button>
+                           
+                          </div>
+                        )}
                       </button>
                     </div>
                     {isLoading ? (
@@ -563,7 +625,7 @@ export default function App() {
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/90 text-sm font-medium text-white transition-all hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-20"
                         title="Stop streaming"
                       >
-                        ⏹
+                        <PauseIcon size={23} />
                       </button>
                     ) : (
                       <button
@@ -571,7 +633,7 @@ export default function App() {
                         disabled={!message.trim() || isLoading}
                         className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-sm font-medium text-zinc-900 transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-20"
                       >
-                        ↑
+                        <IoSend/>
                       </button>
                     )}
                   </div>
