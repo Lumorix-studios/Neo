@@ -1,4 +1,4 @@
-# AgenticCoder
+
 
 A lightweight, desktop-first AI chat application built with **React**, **TypeScript**, and **Tauri**. Focused on providing a fast, native experience with a modern UI and smooth animations.
 
