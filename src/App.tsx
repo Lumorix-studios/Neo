@@ -9,6 +9,7 @@ import ClickSpark from "../components/ClickSpark";
 import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import SideRays from "../components/SideRays.tsx";
+import Markdown from "./components/Markdown";
 import "./editor.css";
 import { IoCube } from "react-icons/io5";
 import type { AISettings, Message } from "./types";
@@ -36,6 +37,26 @@ async function platformFetch(url: string, init: RequestInit): Promise<Response> 
   return fetch(url, init);
 }
 
+/**
+ * Collapse consecutive messages from the same role into one, and drop empty
+ * assistant bubbles. Some providers (notably Anthropic) reject alternating-
+ * role violations; OpenAI-compatible APIs also get confused by adjacent
+ * assistant/same-role turns left over from an aborted or empty generation.
+ */
+function sanitizeHistory(msgs: Message[]): Message[] {
+  const out: Message[] = [];
+  for (const m of msgs) {
+    if (m.role === "assistant" && m.content.trim().length === 0) continue;
+    const last = out[out.length - 1];
+    if (last && last.role === m.role) {
+      last.content = `${last.content}\n${m.content}`.trim();
+    } else {
+      out.push({ ...m });
+    }
+  }
+  return out;
+}
+
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
@@ -54,21 +75,17 @@ export default function App() {
   const streamControllerRef = useRef<AbortController | null>(null);
   // Mutable hold of the assistant text being streamed in (avoids closures capturing stale state).
   const streamedContentRef = useRef("");
-  // Throttles React re-renders while streaming: we only flush to state ~every 16ms.
-  const pendingFlushRef = useRef(false);
-  // Holds the active flush timer id so we can cancel stale flushes.
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Generation counter: each new request increments it. Pending flushes from a
-  // previous request check this and bail out, preventing stale writes.
-  const streamGenRef = useRef(0);
-  // Whether the component is still mounted (prevents setState after unmount).
+  // True while the component is mounted. Set on first mount and never reset
+  // (StrictMode double-invokes effects, which would otherwise leave us stuck
+  // believing we're unmounted and kill every streaming flush).
   const mountedRef = useRef(true);
-  // True while the user is scrolled near the bottom (auto-follow).
+  // Whether the user is scrolled near the bottom (auto-follow).
   const autoScrollRef = useRef(true);
 
   const spec: ProviderSpec = getProviderSpec(settings);
 
   useEffect(() => {
+    mountedRef.current = true;
     const handleKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
@@ -88,7 +105,7 @@ export default function App() {
     (async () => {
       const [s, h] = await Promise.all([loadSettings(), loadChatHistory()]);
       if (cancelled) return;
-      if (h.length > 0) setMessages(h);
+      if (h.length > 0) setMessages(sanitizeHistory(h));
       setSettings(s);
       setRestored(true);
     })();
@@ -125,7 +142,6 @@ export default function App() {
   useEffect(() => {
     // Abort any in-flight stream when the component unmounts.
     return () => {
-      mountedRef.current = false;
       streamControllerRef.current?.abort();
     };
   }, []);
@@ -142,58 +158,34 @@ export default function App() {
     autoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   };
 
-  /** Replace the trailing assistant placeholder's content (used while streaming). */
-  const replaceLastAssistant = (content: string) => {
+  /** Append to the trailing assistant placeholder's content (used while streaming). */
+  const setLastAssistantContent = (content: string) => {
     if (!mountedRef.current) return;
     setMessages((prev) => {
-      if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
+      if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") {
+        // No assistant bubble present — add one (e.g. non-stream fallback).
+        return [...prev, { role: "assistant", content }];
+      }
       const copy = [...prev];
       copy[copy.length - 1] = { ...copy[copy.length - 1], content };
       return copy;
     });
   };
 
-  /** Drop the trailing assistant placeholder (used when surfacing a banner error). */
-  const dropPlaceholder = () => {
+  /** Remove any trailing empty assistant bubble (used for errors / aborts). */
+  const removeEmptyAssistant = () => {
     if (!mountedRef.current) return;
     setMessages((prev) => {
       if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") return prev;
+      if (prev[prev.length - 1].content.trim().length > 0) return prev;
       return prev.slice(0, -1);
     });
-  };
-
-  /** Cancel any pending throttled flush. */
-  const clearFlushTimer = () => {
-    if (flushTimerRef.current != null) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-    pendingFlushRef.current = false;
-  };
-
-  /** Flush accumulated deltas to React state, throttled to avoid jank. */
-  const scheduleFlush = () => {
-    if (pendingFlushRef.current) return;
-    pendingFlushRef.current = true;
-    const gen = streamGenRef.current;
-    flushTimerRef.current = setTimeout(() => {
-      // Skip if the component unmounted or a newer request took over.
-      if (!mountedRef.current || gen !== streamGenRef.current) {
-        pendingFlushRef.current = false;
-        flushTimerRef.current = null;
-        return;
-      }
-      pendingFlushRef.current = false;
-      flushTimerRef.current = null;
-      replaceLastAssistant(streamedContentRef.current);
-    }, 16);
   };
 
   const stopChat = () => {
     // Abort the in-flight request. The stream loop detects the abort and
     // finalizes whatever content we collected so far.
     streamControllerRef.current?.abort();
-    clearFlushTimer();
     setIsLoading(false);
   };
 
@@ -201,20 +193,9 @@ export default function App() {
     const trimmed = message.trim();
     if (!trimmed || isLoading) return;
 
-    // Cancel any previous in-flight stream before starting a new one.
-    streamControllerRef.current?.abort();
-    streamControllerRef.current = null;
-    // Bump the generation so any pending flush from the old request is ignored.
-    streamGenRef.current += 1;
-    const myGen = streamGenRef.current;
-    clearFlushTimer();
-
-    setError(null);
-    setMessage("");
-
+    // --- Fail-fast validation BEFORE touching the in-flight stream, so a
+    //     bad new message doesn't kill a perfectly good running generation. ---
     const s = getProviderSpec(settings);
-
-    // --- Fail-fast auth validation (no network round trip needed) ---
     if (s.needsAuth) {
       const trimmedKey = settings.apiKey.trim();
       if (!trimmedKey) {
@@ -236,14 +217,21 @@ export default function App() {
       return;
     }
 
+    // --- Now it's safe to cancel any previous in-flight stream. ---
+    streamControllerRef.current?.abort();
+    streamControllerRef.current = null;
+
+    setError(null);
+    setMessage("");
+
     const endpoint = s.buildUrl(settings);
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...buildAuthHeaders(s, settings.apiKey),
     };
 
-    // History sent to the provider = all previous messages + the new user message.
-    const history: Message[] = [...messages, { role: "user", content: trimmed }];
+    // History sent to the provider = sanitized previous messages + the new user message.
+    const history: Message[] = [...sanitizeHistory(messages), { role: "user", content: trimmed }];
     const body = s.buildBody(settings, history);
 
     // Optimistically render the user message and a streaming assistant bubble.
@@ -252,7 +240,6 @@ export default function App() {
 
     setIsLoading(true);
     streamedContentRef.current = "";
-    pendingFlushRef.current = false;
 
     const abortCtrl = new AbortController();
     streamControllerRef.current = abortCtrl;
@@ -310,8 +297,13 @@ export default function App() {
         // Some proxies strip the body stream; fall back to a full JSON read.
         const data = (await res.json().catch(() => null)) as JsonDict | null;
         const content = data ? s.extractContent(data) : "";
-        replaceLastAssistant(content);
-        if (!content) setError("Empty response from model.");
+        if (content) {
+          streamedContentRef.current = content;
+          setLastAssistantContent(content);
+        } else {
+          setError("Empty response from model.");
+          removeEmptyAssistant();
+        }
         return;
       }
 
@@ -347,7 +339,10 @@ export default function App() {
               const delta = s.extractDelta(json);
               if (delta) {
                 streamedContentRef.current += delta;
-                scheduleFlush();
+                // Flush synchronously for smooth, ChatGPT-style streaming.
+                // React 19 batches within the async task; the rAF-style
+                // throttling we had before just made the stream feel laggy.
+                setLastAssistantContent(streamedContentRef.current);
               }
             } catch {
               // Partial JSON across a chunk boundary — skip; it'll arrive whole next time.
@@ -356,33 +351,30 @@ export default function App() {
           }
         }
 
-        // Stream ended normally — commit whatever we collected.
+        // Stream ended normally — commit whatever we collected. If the server
+        // sent no deltas, leave a `content === ""` bubble so the UI can show
+        // "models that returned nothing" instead of silently disappearing.
         const collected = streamedContentRef.current;
-        if (myGen === streamGenRef.current) {
-          replaceLastAssistant(collected);
-          if (!collected) setError("The model returned an empty response.");
+        setLastAssistantContent(collected);
+        if (!collected) {
+          setError("The model returned an empty response.");
         }
       } finally {
         reader.releaseLock();
       }
     } catch (err) {
-      if (myGen !== streamGenRef.current) {
-        // A newer request superseded this one; leave its message alone.
-        return;
-      }
       if (abortCtrl.signal.aborted) {
         // User stopped the generation; keep partial output, drop empty bubble.
         if (streamedContentRef.current) {
-          replaceLastAssistant(streamedContentRef.current);
+          setLastAssistantContent(streamedContentRef.current);
         } else {
-          dropPlaceholder();
+          removeEmptyAssistant();
         }
       } else {
         setError(err instanceof Error ? err.message : "Failed to reach the AI provider.");
-        dropPlaceholder();
+        removeEmptyAssistant();
       }
     } finally {
-      clearFlushTimer();
       setIsLoading(false);
       streamControllerRef.current = null;
     }
@@ -390,8 +382,6 @@ export default function App() {
 
   const newChat = () => {
     streamControllerRef.current?.abort();
-    streamGenRef.current += 1;
-    clearFlushTimer();
     setMessages([]);
     setError(null);
   };
@@ -468,11 +458,6 @@ export default function App() {
               {messages.length === 0 ? (
                 <div className="flex min-h-full items-center justify-center px-6">
                   <div className="w-full max-w-2xl pb-20">
-                    <div className="mb-7 flex justify-center">
-                      <div className="relative">
-                        <div className="absolute inset-0 rounded-2xl bg-white/5 blur-xl" />
-                      </div>
-                    </div>
                     <div className="text-center">
                       <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">
                         What can I help you with?
@@ -480,40 +465,6 @@ export default function App() {
                       <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-500">
                         Ask questions, explore ideas, write, learn, or work through a problem.
                       </p>
-                    </div>
-                    <div className="mt-10 grid grid-cols-2 gap-3">
-                      {/*<button
-                        onClick={() => useSuggestion("Help me come up with an idea for a project")}
-                        className="group rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700 hover:bg-zinc-900"
-                      >
-                        <div className="mb-3 text-sm text-zinc-400 transition group-hover:text-zinc-200">✦</div>
-                        <div className="text-sm font-medium text-zinc-200">Brainstorm</div>
-                        <div className="mt-1 text-xs leading-5 text-zinc-600">Generate ideas and explore possibilities</div>
-                      </button>*/}
-                      {/*<button
-                        onClick={() => useSuggestion("Explain this concept to me in a simple way")}
-                        className="group rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700 hover:bg-zinc-900"
-                      >
-                        <div className="mb-3 text-sm text-zinc-400 transition group-hover:text-zinc-200">◇</div>
-                        <div className="text-sm font-medium text-zinc-200">Learn</div>
-                        <div className="mt-1 text-xs leading-5 text-zinc-600">Break down difficult concepts</div>
-                      </button>*/}
-                      {/*<button
-                        onClick={() => useSuggestion("Help me write something")}
-                        className="group rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700 hover:bg-zinc-900"
-                      >
-                        <div className="mb-3 text-sm text-zinc-400 transition group-hover:text-zinc-200">Aa</div>
-                        <div className="text-sm font-medium text-zinc-200">Write</div>
-                        <div className="mt-1 text-xs leading-5 text-zinc-600">Draft, rewrite, or improve your writing</div>
-                      </button>
-                      <button
-                        onClick={() => useSuggestion("Help me solve this problem")}
-                        className="group rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700 hover:bg-zinc-900"
-                      >
-                        <div className="mb-3 text-sm text-zinc-400 transition group-hover:text-zinc-200">→</div>
-                        <div className="text-sm font-medium text-zinc-200">Solve</div>
-                        <div className="mt-1 text-xs leading-5 text-zinc-600">Work through a problem step by step</div>
-                      </button>*/}
                     </div>
                   </div>
                 </div>
@@ -524,7 +475,7 @@ export default function App() {
                       <div key={index}>
                         {msg.role === "user" ? (
                           <div className="flex justify-end">
-                            <div className="max-w-[75%] rounded-2xl rounded-br-md bg-zinc-800/90 px-4 py-3 text-sm leading-6 text-zinc-100 shadow-sm">
+                            <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-zinc-800/90 px-4 py-3 text-sm leading-6 text-zinc-100 shadow-sm">
                               {msg.content}
                             </div>
                           </div>
@@ -533,25 +484,21 @@ export default function App() {
                             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-xs text-zinc-300">
                               <IoCube size={14} />
                             </div>
-                            <div className="max-w-[80%] whitespace-pre-wrap pt-1 text-sm leading-7 text-zinc-300">
-                              {msg.content}
-                            </div>
+                            {isLoading && index === messages.length - 1 && msg.content.trim().length === 0 ? (
+                              <div className="flex items-center gap-1.5 pt-2">
+                                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
+                                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:150ms]" />
+                                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:300ms]" />
+                              </div>
+                            ) : (
+                              <div className="min-w-0 max-w-[80%] flex-1 pt-1 text-sm leading-7 text-zinc-300">
+                                <Markdown content={msg.content} />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
                     ))}
-                    {isLoading && (
-                      <div className="flex gap-3">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-xs text-zinc-300">
-                          <IoCube size={14} />
-                        </div>
-                        <div className="flex items-center gap-1.5 pt-2">
-                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
-                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:150ms]" />
-                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:300ms]" />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -595,7 +542,7 @@ export default function App() {
                       <button
                         type="button"
                         disabled
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-300 disabled:hover:bg-transparent disabled:hover:text-zinc-600 disabled:cursor-not-allowed"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-600"
                         title="Coming soon!!!!!!"
                       >
                         {"+"}

@@ -30,3 +30,83 @@
 .scrollbar-thin::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Markdown body — cleans up ReactMarkdown's default margins so the streamed
+   content blends with the rest of the chat bubbles. */
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Inline code inherits the theme from Markdown.tsx components; keep any
+   highlight.js surface tokens from leaking layout. */
+.markdown-body code.hljs {
+  background: transparent;
+  padding: 0;
+}
+
+/* highlight.js theme — dark zinc palette that matches the app chrome. */
+.hljs {
+  color: #d4d4d8;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: #818cf8;
+}
+
+.hljs-function .hljs-keyword {
+  color: #c084fc;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-variable,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #86efac;
+}
+
+.hljs-number,
+.hljs-meta,
+.hljs-built_in,
+.hljs-builtin-name {
+  color: #fbbf24;
+}
+
+.hljs-params,
+.hljs-attr,
+.hljs-property {
+  color: #93c5fd;
+}
+
+.hljs-regexp,
+.hljs-deletion {
+  color: #fca5a5;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}
