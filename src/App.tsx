@@ -10,6 +10,7 @@ import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import SideRays from "../components/SideRays.tsx";
 import Markdown from "./components/Markdown";
+import { useErrorHandler } from "./errorContext";
 
 import "./editor.css";
 import { IoCube, IoSend } from "react-icons/io5";
@@ -22,10 +23,10 @@ import {
   ThumbsUpIcon,
   ThumbsDownIcon,
   InfoIcon,
-  ExclamationMarkIcon,
+  // ExclamationMarkIcon,
   DotsThreeVerticalIcon,
   PauseIcon,
-  PasswordIcon
+  // PasswordIcon
 } from "@phosphor-icons/react/dist/ssr";
 
 type JsonDict = Record<string, unknown>;
@@ -95,6 +96,7 @@ export default function App() {
   const autoScrollRef = useRef(true);
 
   const spec: ProviderSpec = getProviderSpec(settings);
+  const { reportError } = useErrorHandler();
 
   useEffect(() => {
     mountedRef.current = true;
@@ -324,24 +326,20 @@ export default function App() {
       let buffer = "";
 
       try {
-        // Read until the server closes the stream or we are aborted. A
-        // rejected `read()` (e.g. from AbortController) propagates to the
-        // outer catch, which finalizes whatever content was collected so far.
+       
         while (!abortCtrl.signal.aborted) {
           const step = await reader.read();
           if (step.done) break;
 
           buffer += decoder.decode(step.value, { stream: true });
           const lines = buffer.split("\n");
-          // Keep the last (possibly partial) line in the buffer.
+         
           buffer = lines.pop() ?? "";
 
           for (const raw of lines) {
             let line = raw.trim();
             if (!line) continue;
-            // Strip the SSE `data:` prefix when present (OpenAI, Anthropic,
-            // Google, OpenRouter, Groq all use it). Bare JSON lines (Ollama
-            // NDJSON) simply don't have the prefix and are parsed as-is.
+           
             if (line.startsWith("data:")) line = line.slice(5).trim();
             if (!line) continue;
             if (line === "[DONE]") continue; // OpenAI-style end marker
@@ -383,7 +381,9 @@ export default function App() {
           removeEmptyAssistant();
         }
       } else {
-        setError(err instanceof Error ? err.message : "Failed to reach the AI provider.");
+        const msg = err instanceof Error ? err.message : "Failed to reach the AI provider.";
+        setError(msg);
+        reportError(msg);
         removeEmptyAssistant();
       }
     } finally {
@@ -493,9 +493,12 @@ export default function App() {
                           </div>
                         ) : (
                           <div className="flex gap-3">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-xs text-zinc-300">
-                              <IoCube size={14} />
-                            </div>
+
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-xs text-zinc-300">
+                                
+                                <IoCube size={14} />
+                              </div>
+                              {/*<span>{settings.model || spec.label}</span> */}
                             {isLoading && index === messages.length - 1 && msg.content.trim().length === 0 ? (
                               <div className="flex items-center gap-1.5 pt-2">
                                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
@@ -521,7 +524,7 @@ export default function App() {
                                       </button>
                                     </span>
                                     <span className="m-2  hover:bg-zinc-800 rounded-2xl">
-                                      <button>
+                                      <button onClick ={()=>alert("Thank you for reporting")}>
                                         <InfoIcon size={17} />
                                       </button>
                                     </span>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useErrorHandler } from "../src/errorContext";
 interface Tab2Props {
   isOpen: boolean;
   onClose: () => void;
@@ -8,12 +9,14 @@ interface Tab2Props {
 export default function Tab2({ isOpen, onClose }: Tab2Props) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
+  void setRating;
+  const { reportError } = useErrorHandler();
   const onclickDoc =
     async () => {
       try {
         await openUrl("mailto:madhusudhant207@gmail.com");
       } catch (error) {
-        console.error("Failed to MAIl : ", error);
+        reportError(error);
       }
   }
   if (!isOpen) return null;

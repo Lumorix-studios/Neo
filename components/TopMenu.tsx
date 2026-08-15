@@ -1,5 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState, useEffect, useRef } from "react";
+import { useErrorHandler } from "../src/errorContext";
 
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
@@ -22,12 +23,13 @@ export default function TopMenu({
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { reportError } = useErrorHandler();
   const onclickDoc =
     async () => {
       try {
         await openUrl("https://github.com/Lumorix-studios/Neo");
       } catch (error) {
-        console.error("Failed to open URL : ", error);
+        reportError(error);
       }
     }
 

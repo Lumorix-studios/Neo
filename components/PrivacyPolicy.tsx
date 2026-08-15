@@ -1,4 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useErrorHandler } from "../src/errorContext";
 
 interface InfoPanelProps {
   isOpen: boolean;
@@ -6,6 +7,7 @@ interface InfoPanelProps {
 }
 
 export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
+  const { reportError } = useErrorHandler();
   if (!isOpen) return null;
 
   return (
@@ -50,7 +52,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                   try {
                     await openUrl("https://github.com/Lumorix-studios/Neo/blob/main/PRIVACYPOLICY.MD");
                   } catch (error) {
-                    console.error("Failed to open URL:", error);
+                    reportError(error);
                   }
                 }}
                 label="View our Policies GitHub"

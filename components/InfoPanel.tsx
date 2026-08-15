@@ -1,12 +1,13 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import PixelTransition from './PixelTransition';
+import { useErrorHandler } from "../src/errorContext";
 
 interface InfoPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
 export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
+  const { reportError } = useErrorHandler();
   if (!isOpen) return null;
 
   return (
@@ -52,7 +53,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
               <p className="text-[13px] text-[#a1a1aa] leading-relaxed m-0 mb-3.5">
                 Made by{" "}
                 <span className="text-[#f1f1eb] font-medium">Lumorix Studios</span>
-                . A GitHub organization for our projects, not a registered company.
+                . A GitHub organization for projects, not a registered company.
               </p>
 
               <ActionButton
@@ -65,7 +66,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                   try {
                     await openUrl("https://github.com/Lumorix-studios/Neo.git");
                   } catch (error) {
-                    console.error("Failed to open URL:", error);
+                    reportError(error);
                   }
                 }}
                 label="View on GitHub"
@@ -94,7 +95,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                     try {
                       await openUrl("mailto:madhusudhant207@gmail.com?subject=Inquiries");
                     } catch (error) {
-                      console.error("Failed to open email:", error);
+                      reportError(error);
                     }
                   }}
                   label="Email"
@@ -112,7 +113,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                     try {
                       await openUrl("tel:+17722590947");
                     } catch (error) {
-                      console.error("Failed to open phone:", error);
+                      reportError(error);
                     }
                   }}
                   label="Phone"
