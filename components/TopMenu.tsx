@@ -30,6 +30,9 @@ export default function TopMenu({
         console.error("Failed to open URL : ", error);
       }
     }
+
+  
+  {/*Its self explanatory lol */ }
   const menus: MenuDef[] = [
     {
       label: "ProjectNeo",
@@ -68,7 +71,7 @@ export default function TopMenu({
   return (
     <nav
       ref={menuRef}
-      className="h-8 bg-zinc-900 border-b border-zinc-800 flex items-center px-2 flex-shrink-0 z-50 relative"
+      className="h-8 bg-zinc-900 border-b border-zinc-800 flex items-center px-2 shrink-0 z-50 relative"
       data-tauri-drag-region
     >
       <div className="relative flex items-center gap-1 z-10">

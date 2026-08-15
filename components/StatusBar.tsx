@@ -5,14 +5,15 @@ interface Props {
 
 export default function StatusBar({ sidebarOpen, onToggleSidebar }: Props) {
   return (
-    <div className="h-6 bg-zinc-900 border-t border-zinc-800 flex items-center px-3 gap-3 flex-shrink-0 text-[11px]">
+    <div className="h-6 bg-zinc-900 border-t border-zinc-800 flex items-center px-3 gap-3 shrink-0 text-[11px]">
 
-      {/* Left */}
+      {/* Left side of it */}
       <div className="flex items-center gap-3 flex-1 overflow-hidden text-zinc-500">
         <span className="text-zinc-600 truncate">v.1.0.1</span>
+        <span className = "text-zinc-600 truncate">BETA</span>
       </div>
 
-      {/* Right */}
+      {/* Right side of it */}
       <div className="flex items-center gap-3 shrink-0 text-zinc-500">
         <button
           onClick={onToggleSidebar}

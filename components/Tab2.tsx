@@ -1,14 +1,21 @@
 import { useState } from "react";
-
+import { openUrl } from "@tauri-apps/plugin-opener";
 interface Tab2Props {
   isOpen: boolean;
   onClose: () => void;
 }
-
+{/*Doesnt actually send feedbacks to us lol, well its kind a mail:to method instead of a third party way. had to work around it lol*/}
 export default function Tab2({ isOpen, onClose }: Tab2Props) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
-
+  const onclickDoc =
+    async () => {
+      try {
+        await openUrl("mailto:madhusudhant207@gmail.com");
+      } catch (error) {
+        console.error("Failed to MAIl : ", error);
+      }
+  }
   if (!isOpen) return null;
 
   return (
@@ -46,7 +53,8 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
-                onClick={() => setRating(star)}
+                // onClick={() => setRating(star)}
+                onClick={() => onclickDoc()}
                 onMouseEnter={() => setHover(star)}
                 onMouseLeave={() => setHover(0)}
                 className="p-1 transition-transform hover:scale-110"

@@ -416,9 +416,9 @@ export default function App() {
                         settings.apiKey ? "bg-emerald-500" : "bg-zinc-600"
                       }`}
                     />
-                    Neo · {spec.label}
+                    {spec.label}
                     {settings.model && (
-                      <span>· {settings.model}</span>
+                      <span>- {settings.model}</span>
                     )}
                     {!settings.apiKey && spec.needsAuth && (
                       <span className="text-zinc-500">(not configured)</span>

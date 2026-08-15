@@ -63,7 +63,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                 }
                 onClick={async () => {
                   try {
-                    await openUrl("https://github.com/Lumorix-studios/AgenticCoder");
+                    await openUrl("https://github.com/Lumorix-studios/Neo.git");
                   } catch (error) {
                     console.error("Failed to open URL:", error);
                   }
