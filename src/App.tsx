@@ -401,7 +401,7 @@ export default function App() {
     <ClickSpark sparkColor="#ffffff" sparkSize={10} sparkRadius={15} sparkCount={8} duration={400}>
       {" "}
       {/*Credit to https:Reactbits.dev for the components i use in the app */}
-      <div className="flex h-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100">
+      <div className="flex h-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <TopMenu
           onOpenInfoPanel={() => setInfoPanelOpen(true)}
           onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
@@ -440,7 +440,7 @@ export default function App() {
               </div>
               <button
                 onClick={newChat}
-                className="rounded-lg px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-300"
+                className="rounded-lg px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-300 max-sm:h-11 max-sm:w-11"
               >
                 New chat
               </button>
@@ -508,41 +508,42 @@ export default function App() {
                             ) : (
                               <div className="min-w-0 max-w-[80%] flex-1 pt-1 text-sm leading-7 text-zinc-300">
                                     <Markdown content={msg.content} />
-                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl">
+                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
                                       <button
+                                        
                                         onClick={() =>
                                           alert("Thank you for the feedback")
                                         }>
                                         <ThumbsUpIcon size={17} />
                                       </button>
                                     </span>
-                                    <span className = " hover:bg-zinc-800 rounded-2xl">
+                                    <span className = " hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
                                       <button
                                         onClick={() =>
                                           alert("Thank you for the feedback")}>
                                         <ThumbsDownIcon size={17} />
                                       </button>
                                     </span>
-                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl">
+                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
                                       <button onClick ={()=>alert("Thank you for reporting")}>
                                         <InfoIcon size={17} />
                                       </button>
                                     </span>
-                                    <span className="relative  hover:bg-zinc-800 rounded-2xl">
+                                    <span className="relative  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
                                       <button onClick={() => setMenuOpen(menuOpen === index ? null: index)}>
                                         <DotsThreeVerticalIcon size={19} />
                                       </button>
                                       {/*Opens a dropdown selector for the 3 dots. more efficient ngl. i didnt wanna add 4 other buttons plus the 3 dots is universally known to display a list of items */}
                                       {menuOpen === index  && (
                                         <div className="absolute right-0 top-full z-50 mt-2 w-40 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
-                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11"
                                             onClick={() => setSidebarOpen(true)}>
                                             Settings
                                           </button>
-                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800">
+                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11">
                                             Copy
                                           </button>
-                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11"
                                             onClick ={()=>alert("Thank you for reporting")}
                                           >
                                             Report
@@ -612,8 +613,8 @@ export default function App() {
                       >
                         {settings.model || spec.label} ▾
                         {modelOpen && (
-                          <div className="absolute right-130 bottom-2 z-50 w-48 rounded-xl border border-white/[0.08] bg-zinc-950/90 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-                            <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800">
+                          <div className="absolute left-0 bottom-full z-50 mb-2 w-48 rounded-xl border border-white/[0.08] bg-zinc-950/90 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                            <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11">
                               {settings.model || spec.label}
                             </button>
                            
@@ -625,7 +626,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={stopChat}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/90 text-sm font-medium text-white transition-all hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-20"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/90 text-sm font-medium text-white transition-all hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-20 max-sm:h-11 max-sm:w-11"
                         title="Stop streaming"
                       >
                         <PauseIcon size={23} />
@@ -634,7 +635,7 @@ export default function App() {
                       <button
                         type="submit"
                         disabled={!message.trim() || isLoading}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-sm font-medium text-zinc-900 transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-20"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-sm font-medium text-zinc-900 transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-20 max-sm:h-11 max-sm:w-11"
                       >
                         <IoSend/>
                       </button>
@@ -649,7 +650,7 @@ export default function App() {
           </main>
           <aside
             className={`shrink-0 overflow-hidden border-l border-zinc-800/60 bg-[#0c0c0f] transition-[width] duration-200 ease-out ${
-              sidebarOpen ? "w-80" : "w-0"
+              sidebarOpen ? "w-80 max-sm:w-full" : "w-0"
             }`}
           >
             {sidebarOpen && (

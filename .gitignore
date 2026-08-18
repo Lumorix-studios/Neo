@@ -109,3 +109,5 @@ CMakeLists.txt.user*
 /build*/
 /.qtcreator/
 >>>>>>> 6b0377ee51276360ed2d1bfe5c9b3f6b8fa17a79
+*.keystore
+*.jks

@@ -216,6 +216,12 @@ void main() {
         }
       };
 
+     
+      let ro: ResizeObserver | null = null;
+      if (containerRef.current) {
+        ro = new ResizeObserver(() => updateSize());
+        ro.observe(containerRef.current);
+      }
       window.addEventListener('resize', updateSize);
       updateSize();
       animationIdRef.current = requestAnimationFrame(loop);
@@ -226,6 +232,10 @@ void main() {
           animationIdRef.current = null;
         }
         window.removeEventListener('resize', updateSize);
+        if (ro) {
+          ro.disconnect();
+          ro = null;
+        }
         if (renderer) {
           try {
             const loseCtx = renderer.gl.getExtension('WEBGL_lose_context');
