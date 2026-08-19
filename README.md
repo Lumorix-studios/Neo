@@ -1,6 +1,6 @@
 
 
-A lightweight, desktop-first AI chat application built with **React**, **TypeScript**, and **Tauri**. Focused on providing a fast, native experience with a modern UI and smooth animations.
+A lightweight, desktop/mobile AI chat application built with **React**, **TypeScript**, and **Tauri**. Focused on providing a fast, native experience with a modern UI and smooth animations.
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
