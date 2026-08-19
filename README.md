@@ -1,35 +1,133 @@
+# AgenticCoder
 
+A lightweight, privacy-focused AI chat application built with **React, TypeScript, and Tauri**, designed to provide a fast, responsive, and native experience across desktop and mobile platforms.
 
-A lightweight, desktop/mobile AI chat application built with **React**, **TypeScript**, and **Tauri**. Focused on providing a fast, native experience with a modern UI and smooth animations.
-
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![Tauri](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)
-<img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white">
+<p align="left">
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white" alt="Tauri" />
+  <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
+  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" />
+  <img src="https://img.shields.io/badge/CSS-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/TOML-9C4221?style=for-the-badge&logo=toml&logoColor=white" alt="TOML" />
+  <img src="https://img.shields.io/badge/.config-Configuration-555555?style=for-the-badge" alt=".config" />
+</p>
 
 ## About
 
-AgenticCoder is a desktop application that lets you chat with AI models locally. Your data stays on your device — no collection, no transmission, no storage on external servers.
+AgenticCoder is a lightweight AI chat application focused on providing a fast, modern, and native-feeling experience across desktop and mobile platforms.
 
-## Current Features
+The application allows users to communicate with configured AI models using their own API credentials and configuration. It is designed around privacy, performance, and local data ownership, without requiring users to depend on a separate AgenticCoder cloud service.
 
-* **AI Chat** — Chat with configured AI models (requires API key)
-* **Settings Sidebar** (Ctrl+B) — Configure API key, model, system prompt, and base URL
-* **Top Menu** — Quick access to Settings, Information, Privacy Policies, and Tab 2
-* **Chat History** — Persisted locally using Tauri storage
-* **Responsive Layout** — Adapts between compact and expanded sidebar widths
-* **Animated UI** — ClickSpark, PixelTransition, and smooth transitions
-* **Command Palette** — Access all features via keyboard shortcuts
-* **Info & Privacy Panels** — Built-in policy and information views
+**All application data is saved locally on the user's device.** This includes settings, configuration, and complete chat history.
 
-## Tech Stack
+AgenticCoder does not collect, transmit, or store application data on external servers.
 
-* React
-* TypeScript
-* Tauri
-* Rust
-* Vite
-* Tailwind CSS
+When a user sends a request to an AI provider, that request is sent to the endpoint configured by the user. Data sent to third-party AI providers is therefore subject to the policies and infrastructure of those providers.
+
+## Features
+
+### AI Chat
+
+Chat with configured AI models using your own API configuration and credentials. AgenticCoder provides a clean interface for interacting with compatible AI endpoints while keeping configuration under the user's control.
+
+### Local Storage & Chat History
+
+AgenticCoder keeps application data locally on the user's device.
+
+**All chat history is saved locally**, allowing conversations to persist between sessions without requiring an AgenticCoder account or external cloud storage.
+
+Settings, API configuration, model configuration, system prompts, and other persisted application data are also stored locally.
+
+### Model Configuration
+
+The settings interface provides control over the configuration used by the application, including API keys, model names, system prompts, and base URLs.
+
+This allows users to configure the application for compatible AI services and endpoints without being locked into a single provider.
+
+### Responsive Interface
+
+The interface is designed to adapt to different screen sizes and form factors, allowing AgenticCoder to provide a consistent experience across desktop and mobile environments.
+
+### Modern UI
+
+AgenticCoder uses animated transitions and interactive components to create a responsive and polished interface.
+
+The application incorporates components such as ClickSpark, PixelTransition, and smooth interface transitions to provide a more dynamic experience.
+
+### Command Palette
+
+A built-in command palette provides quick access to application functionality and keyboard-driven workflows.
+
+Frequently used functionality can be accessed without navigating through multiple interface layers.
+
+### Information & Privacy
+
+AgenticCoder includes dedicated information and privacy views that provide users with information about the application and its approach to local data storage.
+
+## Technology
+
+AgenticCoder uses a modern multi-platform technology stack combining web technologies with native application development.
+
+### Core
+
+<p align="left">
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white" alt="Tauri" />
+  <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
+  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" />
+</p>
+
+### Frontend
+
+<p align="left">
+  <img src="https://img.shields.io/badge/CSS-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+</p>
+
+### Configuration
+
+<p align="left">
+  <img src="https://img.shields.io/badge/TOML-9C4221?style=for-the-badge&logo=toml&logoColor=white" alt="TOML" />
+  <img src="https://img.shields.io/badge/.config-Configuration-555555?style=for-the-badge" alt=".config" />
+</p>
+
+React and TypeScript provide the primary frontend architecture, while Tauri provides the native application layer. Rust handles native functionality and application infrastructure, while Kotlin supports Android-specific development.
+
+CSS and Tailwind CSS are used throughout the interface, with Vite providing the frontend development and build environment. TOML and `.config` files are used throughout the project's configuration and platform-specific infrastructure.
+
+## Architecture
+
+AgenticCoder combines a modern web frontend with a native application layer.
+
+The frontend is built with React and TypeScript, providing a component-based architecture and a responsive user interface. Tauri connects the frontend to native functionality through Rust, providing a lightweight alternative to traditional Chromium-based desktop application frameworks.
+
+The project also incorporates Kotlin for Android-specific functionality, allowing AgenticCoder to extend across desktop and mobile platforms while maintaining a unified project ecosystem.
+
+## Privacy & Data
+
+Privacy and local data ownership are fundamental principles of AgenticCoder.
+
+**All application data is saved locally on the user's device.**
+
+This includes:
+
+* Complete chat history
+* Application settings
+* API configuration
+* Model configuration
+* System prompts
+* Locally persisted application data
+
+AgenticCoder does not collect, transmit, or store this application data on external servers.
+
+The application does not require an AgenticCoder cloud account to store conversations or configuration.
+
+When communicating with an AI provider, requests are sent to the endpoint configured by the user. The handling of information by that provider is governed by that provider's own privacy policies and terms.
 
 ## Development
 
@@ -45,7 +143,7 @@ Install dependencies:
 npm install
 ```
 
-Start the development server:
+Start the development environment:
 
 ```bash
 npm run tauri dev
@@ -53,8 +151,25 @@ npm run tauri dev
 
 ## Project Status
 
-This project was started in **may 2026** and is under active development. Features, APIs, and the interface may change frequently as development progresses.
+AgenticCoder is currently in **beta**.
 
-All application data — including settings and chat history — is stored **locally on your device**. We do not collect, transmit, or store any personal data on external servers.
+The project was started in **May 2026** and is under active and continuous development. Features, APIs, architecture, platform support, and the interface may change frequently as development progresses.
 
-Feedback, bug reports, and suggestions are welcome.
+AgenticCoder is intended to be **constantly developed and improved**, with ongoing work focused on new capabilities, performance improvements, additional platform support, interface refinement, and overall stability.
+
+Because the application is currently in beta, some functionality may be incomplete or subject to change between releases.
+
+Feedback, bug reports, and suggestions are welcome and contribute to the continued development of the project.
+
+## Repository
+
+The AgenticCoder source code is available on GitHub:
+
+https://github.com/Lumorix-studios/Neo
+
+---
+
+<p align="center">
+  <strong>AgenticCoder</strong><br>
+  A lightweight, privacy-focused AI experience built for desktop and mobile.
+</p>
