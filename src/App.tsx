@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import TopMenu from "../components/TopMenu";
 import ChatSidebar from "../components/ChatSidebar.tsx";
+import ChatHistorySidebar from "../components/ChatHistorySidebar.tsx";
 import InfoPanel from "../components/InfoPanel";
 import PrivacyPolicy from "../components/PrivacyPolicy.tsx";
 import CommandPalette from "../components/CommandPalette";
@@ -14,19 +15,24 @@ import { useErrorHandler } from "./errorContext";
 
 import "./editor.css";
 import { IoCube, IoSend } from "react-icons/io5";
-import type { AISettings, Message } from "./types";
+import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
-import { loadSettings, saveSettings, loadChatHistory, saveChatHistory } from "./store";
+import {
+  loadSettings,
+  saveSettings,
+  loadSessions,
+  saveSessions,
+  loadActiveSessionId,
+  saveActiveSessionId,
+} from "./store";
 import { getProviderSpec, buildAuthHeaders } from "./providers";
 import type { ProviderSpec } from "./providers";
 import {
   ThumbsUpIcon,
   ThumbsDownIcon,
   InfoIcon,
-  // ExclamationMarkIcon,
   DotsThreeVerticalIcon,
   PauseIcon,
-  // PasswordIcon
 } from "@phosphor-icons/react/dist/ssr";
 
 type JsonDict = Record<string, unknown>;
@@ -68,10 +74,22 @@ function sanitizeHistory(msgs: Message[]): Message[] {
   return out;
 }
 
+function generateSessionId(): string {
+  return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function deriveTitle(messages: Message[]): string {
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser) return "Untitled chat";
+  const text = firstUser.content.trim();
+  return text.length > 50 ? text.slice(0, 50) + "…" : text;
+}
+
 export default function App() {
   const [menuOpen, setMenuOpen] = useState<number | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -82,6 +100,8 @@ export default function App() {
   const [restored, setRestored] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // The active streaming request's abort controller, so we can cancel it.
@@ -105,6 +125,10 @@ export default function App() {
         e.preventDefault();
         setSidebarOpen((v) => !v);
       }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        setHistorySidebarOpen((v) => !v);
+      }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         setCommandPaletteOpen((v) => !v);
@@ -117,10 +141,28 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [s, h] = await Promise.all([loadSettings(), loadChatHistory()]);
+      const [s, sess, activeId] = await Promise.all([
+        loadSettings(),
+        loadSessions(),
+        loadActiveSessionId(),
+      ]);
       if (cancelled) return;
-      if (h.length > 0) setMessages(sanitizeHistory(h));
+
       setSettings(s);
+
+      // If we have saved sessions, restore the active one (or the most recent).
+      if (sess.length > 0) {
+        setSessions(sess);
+        const target = activeId
+          ? sess.find((x) => x.id === activeId)
+          : undefined;
+        const session = target ?? sess[0];
+        if (session) {
+          setActiveSessionId(session.id);
+          setMessages(sanitizeHistory(session.messages));
+        }
+      }
+
       setRestored(true);
     })();
     return () => {
@@ -136,13 +178,42 @@ export default function App() {
     return () => clearTimeout(t);
   }, [settings, restored]);
 
+  // Persist sessions whenever they change.
   useEffect(() => {
     if (!restored) return;
     const t = setTimeout(() => {
-      saveChatHistory(messages);
+      saveSessions(sessions);
     }, 250);
     return () => clearTimeout(t);
-  }, [messages, restored]);
+  }, [sessions, restored]);
+
+  // Persist active session id.
+  useEffect(() => {
+    if (!restored) return;
+    const t = setTimeout(() => {
+      saveActiveSessionId(activeSessionId);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [activeSessionId, restored]);
+
+  // Keep the active session's messages in sync with the sessions list.
+  useEffect(() => {
+    if (!restored || !activeSessionId) return;
+    const t = setTimeout(() => {
+      setSessions((prev) => {
+        const existing = prev.find((s) => s.id === activeSessionId);
+        if (!existing) return prev;
+        const updated: ChatSession = {
+          ...existing,
+          messages,
+          updatedAt: Date.now(),
+          title: existing.title !== "Untitled chat" ? existing.title : deriveTitle(messages),
+        };
+        return prev.map((s) => (s.id === activeSessionId ? updated : s));
+      });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [messages, activeSessionId, restored]);
 
   // Keep the chat pinned to the bottom while the user hasn't scrolled up.
   useEffect(() => {
@@ -203,6 +274,31 @@ export default function App() {
     setIsLoading(false);
   };
 
+  const newChat = () => {
+    streamControllerRef.current?.abort();
+    setMessages([]);
+    setError(null);
+    setActiveSessionId(null);
+  };
+
+  const selectSession = (id: string) => {
+    streamControllerRef.current?.abort();
+    const session = sessions.find((s) => s.id === id);
+    if (!session) return;
+    setActiveSessionId(id);
+    setMessages(sanitizeHistory(session.messages));
+    setError(null);
+    setIsLoading(false);
+  };
+
+  const deleteSession = (id: string) => {
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (activeSessionId === id) {
+      setActiveSessionId(null);
+      setMessages([]);
+    }
+  };
+
   const sendMessage = async () => {
     const trimmed = message.trim();
     if (!trimmed || isLoading) return;
@@ -237,6 +333,21 @@ export default function App() {
 
     setError(null);
     setMessage("");
+
+    // If there's no active session, create one for this new conversation.
+    if (!activeSessionId) {
+      const newId = generateSessionId();
+      const now = Date.now();
+      const newSession: ChatSession = {
+        id: newId,
+        title: "Untitled chat",
+        messages: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      setSessions((prev) => [newSession, ...prev]);
+      setActiveSessionId(newId);
+    }
 
     const endpoint = s.buildUrl(settings);
     const headers: Record<string, string> = {
@@ -326,20 +437,18 @@ export default function App() {
       let buffer = "";
 
       try {
-       
         while (!abortCtrl.signal.aborted) {
           const step = await reader.read();
           if (step.done) break;
 
           buffer += decoder.decode(step.value, { stream: true });
           const lines = buffer.split("\n");
-         
           buffer = lines.pop() ?? "";
 
           for (const raw of lines) {
             let line = raw.trim();
             if (!line) continue;
-           
+
             if (line.startsWith("data:")) line = line.slice(5).trim();
             if (!line) continue;
             if (line === "[DONE]") continue; // OpenAI-style end marker
@@ -350,8 +459,6 @@ export default function App() {
               if (delta) {
                 streamedContentRef.current += delta;
                 // Flush synchronously for smooth, ChatGPT-style streaming.
-                // React 19 batches within the async task; the rAF-style
-                // throttling we had before just made the stream feel laggy.
                 setLastAssistantContent(streamedContentRef.current);
               }
             } catch {
@@ -361,9 +468,7 @@ export default function App() {
           }
         }
 
-        // Stream ended normally — commit whatever we collected. If the server
-        // sent no deltas, leave a `content === ""` bubble so the UI can show
-        // "models that returned nothing" instead of silently disappearing.
+        // Stream ended normally — commit whatever we collected.
         const collected = streamedContentRef.current;
         setLastAssistantContent(collected);
         if (!collected) {
@@ -392,11 +497,6 @@ export default function App() {
     }
   };
 
-  const newChat = () => {
-    streamControllerRef.current?.abort();
-    setMessages([]);
-    setError(null);
-  };
   return (
     <ClickSpark sparkColor="#ffffff" sparkSize={10} sparkRadius={15} sparkCount={8} duration={400}>
       {" "}
@@ -407,11 +507,21 @@ export default function App() {
           onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
           onOpenTab2={() => setTab2Open(true)}
           onOpenChatSidebar={() => setSidebarOpen(true)}
+          onOpenChatHistory={() => setHistorySidebarOpen(true)}
         />
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
         <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
+          <ChatHistorySidebar
+            isOpen={historySidebarOpen}
+            onClose={() => setHistorySidebarOpen(false)}
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSelectSession={selectSession}
+            onNewChat={newChat}
+            onDeleteSession={deleteSession}
+          />
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
             <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-40 bg-gradient-to-b from-zinc-900/30 to-transparent" />
             <div className="relative z-10 flex h-14 shrink-0 items-center justify-between  px-5">
@@ -440,9 +550,9 @@ export default function App() {
               </div>
               <button
                 onClick={newChat}
-                className="rounded-lg px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-300 max-sm:h-11 max-sm:w-11"
+                className=" bg-zinc-900 rounded-lg px-3 py-1.5 text-xs text-zinc-300 transition max-sm:h-11 max-sm:w-11"
               >
-                New chat
+                New
               </button>
             </div>
             <div className="absolute inset-0 z-0">
@@ -665,6 +775,8 @@ export default function App() {
         <StatusBar
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
+          historySidebarOpen={historySidebarOpen}
+          onToggleHistorySidebar={() => setHistorySidebarOpen((v) => !v)}
         />
         <CommandPalette
           isOpen={commandPaletteOpen}
@@ -677,6 +789,14 @@ export default function App() {
               icon: "📑",
               shortcut: "Ctrl+B",
               action: () => setSidebarOpen((v) => !v),
+            },
+            {
+              id: "toggle-history",
+              label: "Toggle Chat History",
+              category: "View",
+              icon: "💬",
+              shortcut: "Ctrl+Shift+H",
+              action: () => setHistorySidebarOpen((v) => !v),
             },
             {
               id: "open-information",

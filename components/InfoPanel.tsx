@@ -126,8 +126,8 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
             <PixelTransition
               firstContent={
                 <img
-                  src="../../src/assets/images/morph.jpg"
-                  alt="default pixel transition content, a cat!"
+                  src="https://i.pinimg.com/736x/d3/83/6d/d3836d76ab716ac3a88390323b35e589.jpg"
+                  alt="Image of a dude saying keep going. its a meme lol"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               }

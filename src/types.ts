@@ -12,6 +12,14 @@ export interface Message {
   content: string;
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AISettings {
   /** Which AI provider to talk to. Drives auth, endpoint and response parsing. */
   provider: ProviderId;

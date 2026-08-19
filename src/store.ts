@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AISettings, Message } from "./types";
+import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 
 const SETTINGS_KEY = "neochat.settings.v2";
-const HISTORY_KEY = "neochat.history.v2";
+const SESSIONS_KEY = "neochat.sessions.v1";
+const ACTIVE_SESSION_KEY = "neochat.activeSession.v1";
 
 const STORAGE_PREFIX = "neochat:";
 
@@ -62,10 +63,49 @@ export async function saveSettings(settings: AISettings): Promise<void> {
 }
 
 /**
- * Chat history
+ * Chat sessions (multiple conversations)
+ */
+export async function loadSessions(): Promise<ChatSession[]> {
+  const raw = inTauri() ? await diskRead(SESSIONS_KEY) : lsRead(SESSIONS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSessions(sessions: ChatSession[]): Promise<void> {
+  const raw = JSON.stringify(sessions);
+  if (inTauri()) {
+    const ok = await diskWrite(SESSIONS_KEY, raw);
+    if (!ok) lsWrite(SESSIONS_KEY, raw);
+  } else {
+    lsWrite(SESSIONS_KEY, raw);
+  }
+}
+
+export async function loadActiveSessionId(): Promise<string | null> {
+  const raw = inTauri() ? await diskRead(ACTIVE_SESSION_KEY) : lsRead(ACTIVE_SESSION_KEY);
+  return raw || null;
+}
+
+export async function saveActiveSessionId(id: string | null): Promise<void> {
+  const raw = id ?? "";
+  if (inTauri()) {
+    const ok = await diskWrite(ACTIVE_SESSION_KEY, raw);
+    if (!ok) lsWrite(ACTIVE_SESSION_KEY, raw);
+  } else {
+    lsWrite(ACTIVE_SESSION_KEY, raw);
+  }
+}
+
+/**
+ * Legacy single-chat history (for backward compatibility)
  */
 export async function loadChatHistory(): Promise<Message[]> {
-  const raw = inTauri() ? await diskRead(HISTORY_KEY) : lsRead(HISTORY_KEY);
+  const raw = inTauri() ? await diskRead("neochat.history.v2") : lsRead("neochat.history.v2");
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -78,9 +118,9 @@ export async function loadChatHistory(): Promise<Message[]> {
 export async function saveChatHistory(messages: Message[]): Promise<void> {
   const raw = JSON.stringify(messages.slice(-200));
   if (inTauri()) {
-    const ok = await diskWrite(HISTORY_KEY, raw);
-    if (!ok) lsWrite(HISTORY_KEY, raw);
+    const ok = await diskWrite("neochat.history.v2", raw);
+    if (!ok) lsWrite("neochat.history.v2", raw);
   } else {
-    lsWrite(HISTORY_KEY, raw);
+    lsWrite("neochat.history.v2", raw);
   }
 }

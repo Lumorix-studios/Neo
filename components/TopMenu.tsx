@@ -6,7 +6,8 @@ interface TopMenuProps {
   onOpenInfoPanel: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenTab2: () => void;
-  onOpenChatSidebar: ()=>void;
+  onOpenChatSidebar: () => void;
+  onOpenChatHistory: () => void;
 }
 
 interface MenuDef {
@@ -18,8 +19,8 @@ export default function TopMenu({
   onOpenInfoPanel,
   onOpenPrivacyPolicy,
   onOpenTab2,
-  onOpenChatSidebar
-  
+  onOpenChatSidebar,
+  onOpenChatHistory,
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -33,7 +34,6 @@ export default function TopMenu({
       }
     }
 
-  
   {/*Its self explanatory lol */ }
   const menus: MenuDef[] = [
     {
@@ -50,6 +50,12 @@ export default function TopMenu({
         {label : "Configuration", action : onOpenChatSidebar},
         { label: "Information", action: onOpenInfoPanel },
         { label: "Privacy policies", action: onOpenPrivacyPolicy },
+      ],
+    },
+    {
+      label: "Chat",
+      items: [
+        { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
       ],
     },
     {
