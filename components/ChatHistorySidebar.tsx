@@ -2,9 +2,10 @@ import { useState } from "react";
 import {
   IoClose,
   IoTrash,
-  IoChatbubbleEllipses,
+  IoChatbubble,
   IoAdd,
   IoTime,
+  IoChatbubbleOutline,
 } from "react-icons/io5";
 import type { ChatSession } from "../src/types";
 
@@ -57,7 +58,7 @@ export default function ChatHistorySidebar({
           {/* Header */}
           <header className="flex h-12 items-center gap-2 border-b border-white/[0.08] px-3">
             <div className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-300">
-              <IoChatbubbleEllipses size={18} />
+              <IoChatbubbleOutline size={18} />
             </div>
             <span className="text-[12px] font-semibold tracking-tight">CHAT HISTORY</span>
             <div className="flex-1" />
@@ -88,7 +89,7 @@ export default function ChatHistorySidebar({
           <main className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             {sorted.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                <IoChatbubbleEllipses size={28} className="text-zinc-700" />
+                <IoChatbubble size={28} className="text-zinc-700" />
                 <p className="text-[13px] text-zinc-500">No saved chats yet</p>
                 <p className="text-[11px] text-zinc-600">
                   Start a conversation and it will appear here.
