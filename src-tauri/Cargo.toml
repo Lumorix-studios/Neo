@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.0.3"
+version = "1.0.4"
 description = "A bridge between ai providers and you"
 authors = ["you"]
 license = ""

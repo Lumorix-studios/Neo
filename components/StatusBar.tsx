@@ -16,7 +16,7 @@ export default function StatusBar({
 
       {/* Left side of it */}
       <div className="flex items-center gap-3 flex-1 overflow-hidden text-zinc-500">
-        <span className="text-zinc-600 truncate">v.1.0.3</span>
+        <span className="text-zinc-600 truncate">v.1.0.4</span>
         <span className = "text-zinc-600 truncate">BETA</span>
       </div>
 
