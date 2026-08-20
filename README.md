@@ -11,8 +11,6 @@ A lightweight, privacy-focused AI chat application built with **React, TypeScrip
   <img src="https://img.shields.io/badge/CSS-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" />
   <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
   <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/TOML-9C4221?style=for-the-badge&logo=toml&logoColor=white" alt="TOML" />
-  <img src="https://img.shields.io/badge/.config-Configuration-555555?style=for-the-badge" alt=".config" />
 </p>
 
 ## About
