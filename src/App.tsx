@@ -505,6 +505,36 @@ export default function App() {
       reader.releaseLock();
     }
 
+    // If streaming produced no text (common when the HTTP plugin buffers the
+    // entire response and the reader never yields deltas), fall back to a
+    // non-streaming request so the user always gets a reply.
+    if (!full && !signal.aborted) {
+      try {
+        const nonStreamBody = {
+          ...(s.buildBody(effectiveSettings, history) as Record<string, unknown>),
+          stream: false,
+        } as Record<string, unknown>;
+        // Google uses a different URL for streaming vs. non-streaming.
+        const nonStreamUrl = endpoint.includes("streamGenerateContent")
+          ? endpoint.replace("streamGenerateContent", "generateContent")
+          : endpoint;
+        const fallbackRes = await platformFetch(nonStreamUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(nonStreamBody),
+          signal,
+        });
+        if (fallbackRes.ok) {
+          const data = (await fallbackRes.json().catch(() => null)) as JsonDict | null;
+          if (data) {
+            full = s.extractContent(data);
+          }
+        }
+      } catch {
+        /* stream error — keep whatever we have (may be empty) */
+      }
+    }
+
     return full;
   };
 
