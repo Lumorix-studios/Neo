@@ -18,6 +18,8 @@ export interface ChatSession {
   messages: Message[];
   createdAt: number;
   updatedAt: number;
+  /** Per-session AI settings (model/provider) so each chat tab can use a different AI. */
+  settings?: AISettings;
 }
 
 export interface AISettings {

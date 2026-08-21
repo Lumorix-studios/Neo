@@ -1,38 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   IoClose,
-  IoSettingsSharp,
   IoServer,
   IoCube,
   IoText,
   IoCloud,
   IoChevronDown,
+  IoSettingsOutline,
+  IoHardwareChip,
 } from "react-icons/io5";
 import type { AISettings, ProviderId } from "../src/types";
 import { PROVIDER_OPTIONS, providerById } from "../src/providers";
+import LocalModels from "./LocalModels";
 
 interface Props {
   onClose: () => void;
   settings: AISettings;
   onSave: (settings: AISettings) => void;
+  onSelectLocalModel: (modelName: string) => void;
 }
 
-export default function ChatSidebar({ onClose, settings, onSave }: Props) {
+export default function ChatSidebar({ onClose, settings, onSave, onSelectLocalModel }: Props) {
   const [draft, setDraft] = useState<AISettings>(settings);
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showLocalModels, setShowLocalModels] = useState(false);
+
+  // Keep the draft in sync when the parent settings change (e.g. a local
+  // model was selected, or settings were loaded from disk).
+  useEffect(() => {
+    setDraft(settings);
+  }, [settings]);
 
   const update = <K extends keyof AISettings>(key: K, value: AISettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   };
-
-  /**
-   * When the user picks a different provider we auto-fill the base URL and
-   * model — but ONLY if they haven't already customized them away from the
-   * previous provider's defaults. This keeps hand-edited proxy URLs and
-   * custom model ids intact.
-   */
   const handleProviderChange = (nextId: ProviderId) => {
     const spec = providerById(nextId);
     const prevSpec = draft.provider ? providerById(draft.provider) : undefined;
@@ -68,10 +71,10 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
       <header className="flex h-12 items-center gap-2 border-b border-white/[0.08] px-3">
         <div className="flex h-6 w-6 items-center justify-center rounded-md text-amber-50">
           <span className="text-[13px] font-bold">
-            <IoSettingsSharp size={18} />
+            <IoSettingsOutline size={18} />
           </span>
         </div>
-        <span className="text-[12px] font-semibold tracking-tight">AI SETTINGS</span>
+        <span className="text-[12px] font-semibold tracking-tight">Settings</span>
         <div className="flex-1" />
         <button
           type="button"
@@ -83,9 +86,29 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
           <IoClose size={16} />
         </button>
       </header>
-
+      {showLocalModels ? (
+        <LocalModels
+          onClose={() => setShowLocalModels(false)}
+          onSelectModel={(modelName) => {
+            onSelectLocalModel(modelName);
+            setShowLocalModels(false);
+          }}
+          selectedModel={draft.model}
+        />
+      ) : (
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-4 px-4 py-4">
+          {/* Local Models shortcut */}
+          <button
+            type="button"
+            onClick={() => setShowLocalModels(true)}
+            className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-4 py-3 text-[13px] font-medium text-[#f1f1eb] transition hover:bg-white/[0.05]"
+          >
+            <IoHardwareChip size={16} className="text-[#a1a1aa]" />
+            Local Models
+            <span className="ml-auto text-[11px] text-[#777873]">Ollama</span>
+          </button>
+
           {/* Provider */}
           <Section icon={<IoCloud size={14} />} title="Provider">
             <Field label="AI Provider">
@@ -109,11 +132,15 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
                 {spec.note}
               </p>
             ) : needsKey ? (
+                
               <p className="text-[11px] leading-4 text-[#a1a1aa]">
                 API key required — the prefix is validated for your provider
                 (e.g. OpenAI "sk-", Anthropic "sk-ant-", Groq "gsk-").
-              </p>
+                </p>
+                
             ) : null}
+            
+            
           </Section>
 
           {/* Connection */}
@@ -134,8 +161,7 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
                   value={draft.apiKey}
                   onChange={(e) => update("apiKey", e.target.value)}
                   placeholder={needsKey ? "Enter API key" : "Not required"}
-                  readOnly={!needsKey}
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 pr-16 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05] disabled:opacity-60"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 pr-16 text-[13px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
                 />
                 <button
                   type="button"
@@ -192,6 +218,7 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
 
           {/* Actions */}
           <div className="mt-1 flex items-center gap-2">
+            
             <button
               type="button"
               onClick={handleSave}
@@ -213,6 +240,7 @@ export default function ChatSidebar({ onClose, settings, onSave }: Props) {
           </p>
         </div>
       </main>
+      )}
     </div>
   );
 }

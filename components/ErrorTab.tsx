@@ -3,9 +3,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 interface ErrorTabProps {
   isOpen: boolean;
   onClose: () => void;
+  message?: string;
 }
 
-export default function ErrorTab({ isOpen, onClose }: ErrorTabProps) {
+export default function ErrorTab({ isOpen, onClose, message }: ErrorTabProps) {
   if (!isOpen) return null;
   
   return (
@@ -70,6 +71,16 @@ export default function ErrorTab({ isOpen, onClose }: ErrorTabProps) {
 
         {/* Body */}
         <div className="px-6 py-8 min-h-[50px]">
+          {message ? (
+            <p className="text-[13px] leading-6 text-[#a1a1aa] break-words">
+              {message}
+            </p>
+          ) : (
+            <p className="text-[13px] leading-6 text-[#a1a1aa]">
+              An unexpected error occurred. You can close this dialog and try
+              again, or report the issue to help us fix it.
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -91,7 +102,7 @@ export default function ErrorTab({ isOpen, onClose }: ErrorTabProps) {
                 try {
                   await openUrl("https://github.com/Lumorix-studios/Neo/issues");
                 } catch (error) {
-                  reportError(error);
+                  console.error(error);
                 }
               }}
               className="px-4 py-1.5 rounded-lg bg-[#c9f2d6] text-[#152219] text-[13px] font-semibold transition hover:opacity-85"

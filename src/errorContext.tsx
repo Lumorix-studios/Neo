@@ -2,7 +2,7 @@ import { Component, createContext, useContext, useState, type ReactNode } from "
 import ErrorTab from "../components/ErrorTab";
 
 interface ErrorContextValue {
-  /** Report an error anywhere — opens the global empty error tab. */
+  /** Report an error anywhere — opens the global error tab with the message. */
   reportError: (error: unknown) => void;
 }
 
@@ -16,14 +16,23 @@ export function useErrorHandler(): ErrorContextValue {
 /**
  * Global error provider.
  *
- * - `reportError(message)` — call from any `catch` block: opens the empty tab.
+ * - `reportError(message)` — call from any `catch` block: opens the error tab
+ *   with the message so the user sees what went wrong.
  * - `ErrorBoundary` — wraps children, catches render errors and opens the tab too.
  */
 export function ErrorProvider({ children }: { children: ReactNode }) {
   const [errorTabOpen, setErrorTabOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
 
   const reportError = (message: unknown) => {
     console.error(message);
+    const text =
+      message instanceof Error
+        ? message.message
+        : typeof message === "string"
+          ? message
+          : undefined;
+    setErrorMessage(text);
     setErrorTabOpen(true);
   };
 
@@ -32,8 +41,12 @@ export function ErrorProvider({ children }: { children: ReactNode }) {
       <ErrorBoundary reportError={reportError}>
         {children}
       </ErrorBoundary>
-      {/* The global empty tab that opens on ANY error in the app */}
-      <ErrorTab isOpen={errorTabOpen} onClose={() => setErrorTabOpen(false)} />
+      {/* The global error tab that opens on ANY error in the app */}
+      <ErrorTab
+        isOpen={errorTabOpen}
+        onClose={() => setErrorTabOpen(false)}
+        message={errorMessage}
+      />
     </ErrorContext.Provider>
   );
 }

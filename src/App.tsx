@@ -11,7 +11,6 @@ import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import SideRays from "../components/SideRays.tsx";
 import Markdown from "./components/Markdown";
-import { useErrorHandler } from "./errorContext";
 
 import "./editor.css";
 import { IoCube, IoSend } from "react-icons/io5";
@@ -25,8 +24,19 @@ import {
   loadActiveSessionId,
   saveActiveSessionId,
 } from "./store";
-import { getProviderSpec, buildAuthHeaders } from "./providers";
+import { getProviderSpec, buildAuthHeaders, PROVIDER_OPTIONS, providerById } from "./providers";
 import type { ProviderSpec } from "./providers";
+import AgenticActivity from "./components/AgenticActivity";
+import {
+  AGENTIC_PROMPT,
+  activityId,
+  executeTool,
+  formatToolResult,
+  isDestructive,
+  parseToolCalls,
+  stripToolCalls,
+} from "./agentic";
+import type { AgenticActivity as AgenticActivityType } from "./agentic";
 import {
   ThumbsUpIcon,
   ThumbsDownIcon,
@@ -102,7 +112,17 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activities, setActivities] = useState<AgenticActivityType[]>([]);
+  const [pendingApproval, setPendingApproval] =
+    useState<AgenticActivityType | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Resolver for the pending destructive-tool approval dialog.
+  const approvalRef = useRef<{
+    id: string;
+    resolve: (approved: boolean) => void;
+  } | null>(null);
+  // Cap the number of tool rounds to avoid runaway loops.
+  const MAX_TOOL_ROUNDS = 12;
 
   // The active streaming request's abort controller, so we can cancel it.
   const streamControllerRef = useRef<AbortController | null>(null);
@@ -116,7 +136,6 @@ export default function App() {
   const autoScrollRef = useRef(true);
 
   const spec: ProviderSpec = getProviderSpec(settings);
-  const { reportError } = useErrorHandler();
 
   useEffect(() => {
     mountedRef.current = true;
@@ -172,8 +191,7 @@ export default function App() {
 
   useEffect(() => {
     if (!restored) return;
-    const t = setTimeout(() => {
-      saveSettings(settings);
+    const t = setTimeout(() => {      saveSettings(settings);
     }, 250);
     return () => clearTimeout(t);
   }, [settings, restored]);
@@ -208,6 +226,7 @@ export default function App() {
           messages,
           updatedAt: Date.now(),
           title: existing.title !== "Untitled chat" ? existing.title : deriveTitle(messages),
+          settings: existing.settings ?? settings,
         };
         return prev.map((s) => (s.id === activeSessionId ? updated : s));
       });
@@ -234,6 +253,34 @@ export default function App() {
   const handleSaveSettings = (next: AISettings) => {
     setSettings(next);
     void saveSettings(next);
+
+    // Persist the settings into the active session so each chat tab
+    // remembers which AI it was using.
+    if (activeSessionId) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === activeSessionId ? { ...s, settings: next } : s))
+      );
+    }
+  };
+
+  const handleSelectLocalModel = (modelName: string) => {
+    // Switch to the Ollama provider and set the selected local model.
+    const next: AISettings = {
+      ...settings,
+      provider: "ollama",
+      model: modelName,
+      baseUrl: "http://localhost:11434",
+      apiKey: "",
+    };
+    setSettings(next);
+    void saveSettings(next);
+
+    // Remember the local model choice for the active session too.
+    if (activeSessionId) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === activeSessionId ? { ...s, settings: next } : s))
+      );
+    }
   };
 
   const handleScroll = () => {
@@ -287,6 +334,10 @@ export default function App() {
     if (!session) return;
     setActiveSessionId(id);
     setMessages(sanitizeHistory(session.messages));
+    // Restore the AI provider/model this tab was using (fall back to global).
+    if (session.settings) {
+      setSettings(session.settings);
+    }
     setError(null);
     setIsLoading(false);
   };
@@ -299,12 +350,194 @@ export default function App() {
     }
   };
 
+  /** Approve a pending destructive tool call. */
+  const handleApproveTool = (id: string) => {
+    const pending = approvalRef.current;
+    if (!pending || pending.id !== id) return;
+    setPendingApproval(null);
+    approvalRef.current = null;
+    pending.resolve(true);
+  };
+
+  /** Deny a pending destructive tool call. */
+  const handleDenyTool = (id: string) => {
+    const pending = approvalRef.current;
+    if (!pending || pending.id !== id) return;
+    setPendingApproval(null);
+    approvalRef.current = null;
+    pending.resolve(false);
+  };
+
+  /** Ask the user to approve a destructive tool call. */
+  const requestApproval = (id: string): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      approvalRef.current?.resolve(false); // resolve any stale dialog
+      approvalRef.current = { id, resolve };
+    });
+
+  /** Run one streaming request and return the full raw model text. */
+  const streamRound = async (
+    history: Message[],
+    agentic: boolean,
+    signal: AbortSignal
+  ): Promise<string> => {
+    const s = getProviderSpec(settings);
+    const endpoint = s.buildUrl(settings);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...buildAuthHeaders(s, settings.apiKey),
+    };
+    // Only append the agentic tool protocol when the user's message looks
+    // like a file operation. Normal chat uses the plain system prompt so the
+    // model isn't confused by tool instructions (which caused empty replies).
+    const effectiveSettings: AISettings = agentic
+      ? {
+          ...settings,
+          systemPrompt: `${settings.systemPrompt}\n\n${AGENTIC_PROMPT}`,
+        }
+      : settings;
+    const body = s.buildBody(effectiveSettings, history);
+
+    // Use the signal from sendMessage so cancellation is handled by a single
+    // source of truth (no separate per-round AbortController).
+    let res: Response;
+    try {
+      res = await platformFetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (netErr) {
+      if (signal.aborted) {
+        throw new Error("__ABORTED__");
+      }
+      throw new Error(
+        `Could not connect to ${endpoint}: ${
+          netErr instanceof Error ? netErr.message : String(netErr)
+        }`
+      );
+    }
+
+    if (signal.aborted) throw new Error("__ABORTED__");
+
+    if (!res.ok) {
+      let detail: string = `HTTP ${res.status} ${res.statusText}`;
+      try {
+        const text = await res.text();
+        if (text) {
+          const trimmed = text.trim();
+          // If the server returned HTML (e.g. a website instead of an API),
+          // don't dump the whole page — show a concise message instead.
+          if (trimmed.startsWith("<") || trimmed.toLowerCase().includes("<!doctype")) {
+            detail = `The server returned an HTML page (not an API response). Check that the base URL points to a valid AI API endpoint, not a website.`;
+          } else {
+            try {
+              const parsed = JSON.parse(trimmed) as JsonDict;
+              const errMsg = parsed?.error as JsonDict | undefined;
+              detail =
+                (errMsg?.message as string) ||
+                (parsed?.message as string) ||
+                trimmed;
+            } catch {
+              detail = trimmed.length > 500 ? trimmed.slice(0, 500) + "…" : trimmed;
+            }
+          }
+        }
+      } catch {
+        /* keep the status-based detail */
+      }
+      let msg = `API error (${res.status}): ${detail}`;
+      if (res.status === 401 || res.status === 403) {
+        msg += ` ${s.authErrorHint(res.status, settings)}`;
+      }
+      throw new Error(msg);
+    }
+
+    const bodyStream = res.body;
+    if (!bodyStream) {
+      const data = (await res.json().catch(() => null)) as JsonDict | null;
+      return data ? s.extractContent(data) : "";
+    }
+
+    const reader = bodyStream.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let full = streamedContentRef.current; // preserve any prior-round visible text
+
+    try {
+      while (!signal.aborted) {
+        let step: { done: boolean; value?: Uint8Array };
+        try {
+          step = await reader.read();
+        } catch (e) {
+          if (signal.aborted) break;
+          throw e;
+        }
+        if (step.done) break;
+
+        buffer += decoder.decode(step.value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const raw of lines) {
+          let line = raw.trim();
+          if (!line) continue;
+          if (line.startsWith("data:")) line = line.slice(5).trim();
+          if (!line) continue;
+          if (line === "[DONE]") continue;
+          if (line.startsWith(":")) continue;
+          try {
+            const json = JSON.parse(line);
+            const delta = s.extractDelta(json);
+            if (delta) {
+              full += delta;
+              streamedContentRef.current = full;
+              // Show only non-tool text to the user as it streams.
+              setLastAssistantContent(stripToolCalls(full));
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return full;
+  };
+
+  /** Heuristic: does the user's message look like a file/folder operation? */
+  const looksLikeFileRequest = (text: string): boolean => {
+    const t = text.toLowerCase();
+    const keywords = [
+      "read file", "read the file", "open file", "open the file",
+      "create file", "create a file", "make file", "make a file",
+      "write file", "write to file", "write a file",
+      "edit file", "edit the file", "update file", "update the file",
+      "delete file", "delete the file", "remove file", "remove the file",
+      "delete folder", "delete directory", "remove folder", "remove directory",
+      "create folder", "create directory", "make folder", "make directory",
+      "list folder", "list directory", "list files", "show files",
+      "search file", "search files", "find file", "find files",
+      "rename file", "rename folder", "move file", "move folder",
+      "append to file", "replace in file",
+      "read the code", "read my code", "look at my code",
+      "show me the code", "show the file", "show me the file",
+      "what's in", "what is in", "whats in",
+      "create a project", "make a project", "build a project",
+      "create component", "make component", "create a component",
+      "file", "folder", "directory", "path",
+    ];
+    return keywords.some((k) => t.includes(k));
+  };
+
   const sendMessage = async () => {
     const trimmed = message.trim();
     if (!trimmed || isLoading) return;
 
-    // --- Fail-fast validation BEFORE touching the in-flight stream, so a
-    //     bad new message doesn't kill a perfectly good running generation. ---
+    // --- Fail-fast validation BEFORE touching the in-flight stream. ---
     const s = getProviderSpec(settings);
     if (s.needsAuth) {
       const trimmedKey = settings.apiKey.trim();
@@ -333,8 +566,10 @@ export default function App() {
 
     setError(null);
     setMessage("");
+    setActivities([]);
 
     // If there's no active session, create one for this new conversation.
+    // Snapshot the current AI settings so this tab remembers its model.
     if (!activeSessionId) {
       const newId = generateSessionId();
       const now = Date.now();
@@ -344,24 +579,24 @@ export default function App() {
         messages: [],
         createdAt: now,
         updatedAt: now,
+        settings,
       };
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newId);
     }
 
-    const endpoint = s.buildUrl(settings);
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...buildAuthHeaders(s, settings.apiKey),
-    };
-
-    // History sent to the provider = sanitized previous messages + the new user message.
-    const history: Message[] = [...sanitizeHistory(messages), { role: "user", content: trimmed }];
-    const body = s.buildBody(settings, history);
-
     // Optimistically render the user message and a streaming assistant bubble.
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+    // Provider conversation for this agentic run.
+    const agentHistory: Message[] = [
+      ...sanitizeHistory(messages),
+      { role: "user", content: trimmed },
+    ];
+
+    // Decide whether to enable agentic (file-tool) mode for this request.
+    const agentic = looksLikeFileRequest(trimmed);
 
     setIsLoading(true);
     streamedContentRef.current = "";
@@ -370,130 +605,127 @@ export default function App() {
     streamControllerRef.current = abortCtrl;
 
     try {
-      let res: Response;
-      try {
-        res = await platformFetch(endpoint, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal: abortCtrl.signal,
-        });
-      } catch (netErr) {
-        if (abortCtrl.signal.aborted) return;
-        throw new Error(
-          `Could not connect to ${endpoint}: ${
-            netErr instanceof Error ? netErr.message : String(netErr)
-          }`,
-          { cause: netErr }
-        );
-      }
+      let finalText = "";
+      let toolRounds = 0;
 
-      if (abortCtrl.signal.aborted) return;
+      while (!abortCtrl.signal.aborted) {
+        const raw = await streamRound(agentHistory, agentic, abortCtrl.signal);
+        if (abortCtrl.signal.aborted) break;
+        toolRounds++;
 
-      if (!res.ok) {
-        let detail: string = `HTTP ${res.status} ${res.statusText}`;
-        try {
-          const text = await res.text();
-          if (text) {
-            try {
-              const parsed = JSON.parse(text) as JsonDict;
-              const errMsg = parsed?.error as JsonDict | undefined;
-              detail =
-                (errMsg?.message as string) ||
-                (parsed?.message as string) ||
-                text;
-            } catch {
-              detail = text;
-            }
+        // Remember the model's full reply (including any tool_call blocks).
+        agentHistory.push({ role: "assistant", content: raw });
+        const visible = stripToolCalls(raw).trim();
+        if (visible) finalText = visible;
+
+        const calls = parseToolCalls(raw);
+
+        // If the model produced no tool calls, we're done.
+        if (calls.length === 0 || toolRounds >= MAX_TOOL_ROUNDS) {
+          if (toolRounds >= MAX_TOOL_ROUNDS && calls.length > 0) {
+            setError("Reached the maximum number of agentic tool turns. Stopping.");
           }
-        } catch {
-          /* keep the status-based detail */
+          break;
         }
-        let msg = `API error (${res.status}): ${detail}`;
-        if (res.status === 401 || res.status === 403) {
-          msg += ` ${s.authErrorHint(res.status, settings)}`;
-        }
-        throw new Error(msg);
-      }
 
-      // --- Stream the response body chunk by chunk ---
-      const bodyStream = res.body;
-      if (!bodyStream) {
-        // Some proxies strip the body stream; fall back to a full JSON read.
-        const data = (await res.json().catch(() => null)) as JsonDict | null;
-        const content = data ? s.extractContent(data) : "";
-        if (content) {
-          streamedContentRef.current = content;
-          setLastAssistantContent(content);
-        } else {
-          setError("Empty response from model.");
-          removeEmptyAssistant();
-        }
-        return;
-      }
+        // Feed tool results back to the model, one round at a time.
+        const resultBlocks: string[] = [];
+        for (const call of calls) {
+          const id = activityId();
+          const activity: AgenticActivityType = {
+            id,
+            tool: call.name,
+            args: call.arguments,
+            status: "pending",
+          };
+          setActivities((prev) => [...prev, activity]);
 
-      const reader = bodyStream.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-
-      try {
-        while (!abortCtrl.signal.aborted) {
-          const step = await reader.read();
-          if (step.done) break;
-
-          buffer += decoder.decode(step.value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const raw of lines) {
-            let line = raw.trim();
-            if (!line) continue;
-
-            if (line.startsWith("data:")) line = line.slice(5).trim();
-            if (!line) continue;
-            if (line === "[DONE]") continue; // OpenAI-style end marker
-            if (line.startsWith(":")) continue; // SSE keep-alive comment
-            try {
-              const json = JSON.parse(line);
-              const delta = s.extractDelta(json);
-              if (delta) {
-                streamedContentRef.current += delta;
-                // Flush synchronously for smooth, ChatGPT-style streaming.
-                setLastAssistantContent(streamedContentRef.current);
-              }
-            } catch {
-              // Partial JSON across a chunk boundary — skip; it'll arrive whole next time.
+          // Destructive tools require explicit user approval.
+          if (isDestructive(call.name)) {
+            setActivities((prev) =>
+              prev.map((a) => (a.id === id ? { ...a, status: "pending" } : a))
+            );
+            setPendingApproval(activity);
+            const approved = await requestApproval(id);
+            setPendingApproval(null);
+            if (!approved) {
+              const denied: AgenticActivityType = {
+                ...activity,
+                status: "denied",
+              };
+              setActivities((prev) =>
+                prev.map((a) => (a.id === id ? denied : a))
+              );
+              resultBlocks.push(
+                formatToolResult({
+                  ok: false,
+                  output: "User denied approval for this operation. Do not retry it; explain and propose alternatives.",
+                })
+              );
               continue;
             }
+            setActivities((prev) =>
+              prev.map((a) => (a.id === id ? { ...a, status: "approved" } : a))
+            );
           }
+
+          // Run the tool.
+          setActivities((prev) =>
+            prev.map((a) => (a.id === id ? { ...a, status: "running" } : a))
+          );
+          const result = await executeTool(call.name, call.arguments);
+          setActivities((prev) =>
+            prev.map((a) =>
+              a.id === id
+                ? result.ok
+                  ? { ...a, status: "done", output: result.output }
+                  : { ...a, status: "error", error: result.output }
+                : a
+            )
+          );
+          resultBlocks.push(formatToolResult(result));
         }
 
-        // Stream ended normally — commit whatever we collected.
+        // Send the tool results back to the model and loop.
+        agentHistory.push({
+          role: "user",
+          content: resultBlocks.join("\n\n"),
+        });
+      }
+
+      // Commit the final visible answer.
+      if (finalText) {
+        setLastAssistantContent(finalText);
+      } else {
         const collected = streamedContentRef.current;
-        setLastAssistantContent(collected);
-        if (!collected) {
+        const cleaned = stripToolCalls(collected).trim();
+        if (cleaned) {
+          setLastAssistantContent(cleaned);
+        } else {
           setError("The model returned an empty response.");
+          removeEmptyAssistant();
         }
-      } finally {
-        reader.releaseLock();
       }
     } catch (err) {
       if (abortCtrl.signal.aborted) {
-        // User stopped the generation; keep partial output, drop empty bubble.
-        if (streamedContentRef.current) {
-          setLastAssistantContent(streamedContentRef.current);
+        // User stopped the generation; keep partial output.
+        const partial = stripToolCalls(streamedContentRef.current).trim();
+        if (partial) {
+          setLastAssistantContent(partial);
         } else {
           removeEmptyAssistant();
         }
       } else {
         const msg = err instanceof Error ? err.message : "Failed to reach the AI provider.";
         setError(msg);
-        reportError(msg);
         removeEmptyAssistant();
       }
     } finally {
       setIsLoading(false);
       streamControllerRef.current = null;
+      approvalRef.current?.resolve(false);
+      approvalRef.current = null;
+      setPendingApproval(null);
     }
   };
 
@@ -671,6 +903,12 @@ export default function App() {
                 </div>
               )}
             </div>
+            <AgenticActivity
+              items={activities}
+              pending={pendingApproval}
+              onApprove={handleApproveTool}
+              onDeny={handleDenyTool}
+            />
             {error && (
               <div className="relative z-20 mx-auto w-full max-w-3xl px-5 pt-2">
                 <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-[13px] text-red-300">
@@ -723,11 +961,47 @@ export default function App() {
                       >
                         {settings.model || spec.label} ▾
                         {modelOpen && (
-                          <div className="absolute left-0 bottom-full z-50 mb-2 w-48 rounded-xl border border-white/[0.08] bg-zinc-950/90 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-                            <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11">
-                              {settings.model || spec.label}
-                            </button>
-                           
+                          <div className="absolute left-0 bottom-full z-50 mb-2 w-56 rounded-xl border border-white/[0.08] bg-zinc-950/90 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-zinc-500">
+                              Switch AI provider
+                            </div>
+                            {PROVIDER_OPTIONS.map((p) => (
+                              <button
+                                key={p.id}
+                                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition hover:bg-zinc-800 ${
+                                  settings.provider === p.id
+                                    ? "text-zinc-100"
+                                    : "text-zinc-400"
+                                }`}
+                                onClick={() => {
+                                  const next = providerById(p.id);
+                                  const updated = {
+                                    ...settings,
+                                    provider: p.id,
+                                    baseUrl: next.defaultBaseUrl,
+                                    model: next.defaultModel,
+                                  };
+                                  setSettings(updated);
+                                  void saveSettings(updated);
+                                  // Persist to the active session too.
+                                  if (activeSessionId) {
+                                    setSessions((prev) =>
+                                      prev.map((s) =>
+                                        s.id === activeSessionId
+                                          ? { ...s, settings: updated }
+                                          : s
+                                      )
+                                    );
+                                  }
+                                  setModelOpen(false);
+                                }}
+                              >
+                                <span>{p.label}</span>
+                                {settings.provider === p.id && (
+                                  <span className="text-[10px] text-emerald-400">●</span>
+                                )}
+                              </button>
+                            ))}
                           </div>
                         )}
                       </button>
@@ -768,6 +1042,7 @@ export default function App() {
                 onClose={() => setSidebarOpen(false)}
                 settings={settings}
                 onSave={handleSaveSettings}
+                onSelectLocalModel={handleSelectLocalModel}
               />
             )}
           </aside>

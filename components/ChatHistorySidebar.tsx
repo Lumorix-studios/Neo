@@ -6,8 +6,10 @@ import {
   IoAdd,
   IoTime,
   IoChatbubbleOutline,
+  IoCube,
 } from "react-icons/io5";
 import type { ChatSession } from "../src/types";
+import { providerById } from "../src/providers";
 
 interface Props {
   isOpen: boolean;
@@ -121,6 +123,15 @@ export default function ChatHistorySidebar({
                           {formatDate(session.updatedAt)}
                           <span className="text-zinc-700">·</span>
                           {session.messages.length} messages
+                          {session.settings && (
+                            <>
+                              <span className="text-zinc-700">·</span>
+                              <IoCube size={10} className="text-zinc-500" />
+                              <span className="truncate text-zinc-500">
+                                {providerById(session.settings.provider).label} - {session.settings.model}
+                              </span>
+                            </>
+                          )}
                         </p>
                       </div>
 
