@@ -9,29 +9,76 @@ interface AgenticActivityProps {
   onDeny: (id: string) => void;
 }
 
-const STATUS_COLORS: Record<AgenticActivityType["status"], string> = {
-  pending: "text-yellow-400 border-yellow-400/30 bg-yellow-400/5",
-  running: "text-blue-400 border-blue-400/30 bg-blue-400/5",
-  approved: "text-blue-400 border-blue-400/30 bg-blue-400/5",
-  denied: "text-red-400 border-red-400/30 bg-red-400/5",
-  done: "text-emerald-400 border-emerald-400/30 bg-emerald-400/5",
-  error: "text-red-400 border-red-400/30 bg-red-400/5",
-};
-
-const STATUS_ICON: Record<AgenticActivityType["status"], string> = {
-  pending: "⏳",
-  running: "🔄",
-  approved: "✅",
-  denied: "⛔",
-  done: "✔️",
-  error: "❌",
+/** Tiny status dot — no emoji, Cursor-style. */
+const STATUS_DOT: Record<AgenticActivityType["status"], string> = {
+  pending: "bg-amber-400",
+  running: "bg-blue-400 animate-pulse",
+  approved: "bg-zinc-500",
+  denied: "bg-red-400",
+  done: "bg-emerald-400",
+  error: "bg-red-400",
 };
 
 function shortPath(p: string): string {
-  if (p.length <= 64) return p;
+  if (p.length <= 56) return p;
   const parts = p.replace(/\\/g, "/").split("/");
   if (parts.length <= 2) return p;
   return `${parts[0]}/…/${parts[parts.length - 1]}`;
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={`h-3 w-3 shrink-0 text-zinc-600 transition-transform ${open ? "rotate-90" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <path d="M6 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Compact mono preview of the tool arguments, collapsible when long. */
+function ArgsPreview({ args }: { args: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
+  const entries = Object.entries(args);
+  const isLong = entries.some(([, v]) => String(v).length > 120);
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-md border border-zinc-800/80 bg-black/40">
+      <pre
+        className={`overflow-auto px-2.5 py-2 font-mono text-[11px] leading-5 text-zinc-400 ${
+          expanded ? "max-h-64" : "max-h-24"
+        }`}
+      >
+        {entries.map(([k, v]) => {
+          const raw = String(v);
+          const val =
+            k === "path" || k === "new_path"
+              ? shortPath(raw)
+              : raw.length > 400 && !expanded
+                ? raw.slice(0, 400) + "…"
+                : raw;
+          return (
+            <div key={k} className="break-all">
+              <span className="text-zinc-600">{k}: </span>
+              {val}
+            </div>
+          );
+        })}
+      </pre>
+      {isLong && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full border-t border-zinc-800/80 px-2.5 py-1 text-left text-[10px] text-zinc-500 transition hover:bg-zinc-800/50 hover:text-zinc-300"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function AgenticActivity({
@@ -41,100 +88,126 @@ export default function AgenticActivity({
   onDeny,
 }: AgenticActivityProps) {
   const [closed, setClosed] = useState<string[]>([]);
+  const [expandedRows, setExpandedRows] = useState<string[]>([]);
 
+  // Cursor-style keyboard shortcuts: Enter accepts, Esc rejects. The effect
+  // only re-registers when the approval dialog opens/closes or the callbacks
+  // change — no refs needed.
   useEffect(() => {
-    if (pending) {
-      setClosed((prev) => prev.filter((id) => id !== pending.id));
-    }
-  }, [pending?.id]);
+    if (!pending) return;
+    const id = pending.id;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onApprove(id);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onDeny(id);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [pending, onApprove, onDeny]);
 
   const remove = (id: string) => setClosed((prev) => [...prev, id]);
   const isClosed = (id: string) => closed.includes(id);
+  const toggleRow = (id: string) =>
+    setExpandedRows((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
 
   const visible = items.filter((item) => !isClosed(item.id));
   if (visible.length === 0 && !pending) return null;
 
   return (
     <div className="relative z-20 mx-auto w-full max-w-3xl px-5 pt-2">
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {pending && (
-          <div className="rounded-xl border border-yellow-400/40 bg-[#11110c]/95 p-4 shadow-xl backdrop-blur">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[13px] font-medium text-yellow-300">
-                  <span>{STATUS_ICON.pending}</span>
-                  <span>{TOOL_LABELS[pending.tool]}</span>
-                  <span className="text-[11px] text-yellow-400/60">
-                    requires your approval
+          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900 shadow-lg shadow-black/40">
+            <div className="flex items-center justify-between gap-3 px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT.pending}`} />
+                <span className="text-[12px] font-medium text-zinc-200">
+                  {TOOL_LABELS[pending.tool]}
+                </span>
+                {typeof pending.args.path === "string" && (
+                  <span className="truncate font-mono text-[11px] text-zinc-500">
+                    {shortPath(pending.args.path)}
                   </span>
-                </div>
-                <div className="mt-1.5 space-y-1 font-mono text-[11px] text-zinc-400">
-                      {Object.entries(pending.args).map(([k, v]) => {
-                        const val: string =
-                          k === "path" || k === "new_path"
-                            ? shortPath(String(v))
-                            : String(v);
-                        return (
-                          <div key={k}>
-                            <span className="text-zinc-600">{k}:</span>{" "}
-                            {val}
-                          </div>
-                        );
-                      })}
-                </div>
+                )}
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   onClick={() => onDeny(pending.id)}
-                  className="rounded-lg border border-red-400/30 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-400/10"
+                  className="rounded-md px-2.5 py-1 text-[11px] font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  title="Reject (Esc)"
                 >
-                  Deny
+                  Reject
                 </button>
                 <button
                   onClick={() => onApprove(pending.id)}
-                  className="rounded-lg bg-yellow-400/90 px-3 py-1.5 text-xs font-semibold text-[#11100a] transition hover:bg-yellow-300"
+                  className="rounded-md bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-900 transition hover:bg-white"
+                  title="Accept (Enter)"
                 >
-                  Approve
+                  Accept
                 </button>
               </div>
+            </div>
+            <div className="px-3 pb-2.5">
+              <ArgsPreview args={pending.args} />
             </div>
           </div>
         )}
 
-        {visible.map((item) => (
-          <div
-            key={item.id}
-            className={`rounded-lg border px-3 py-2 ${STATUS_COLORS[item.status]}`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2 text-xs">
-                <span>{STATUS_ICON[item.status]}</span>
-                <span className="font-medium">{TOOL_LABELS[item.tool]}</span>
+        {visible.map((item) => {
+          const open = expandedRows.includes(item.id);
+          const hasDetail = !!(item.output || item.error);
+          return (
+            <div
+              key={item.id}
+              className="group rounded-lg border border-zinc-800/80 bg-zinc-900/60"
+            >
+              <button
+                onClick={() => hasDetail && toggleRow(item.id)}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+                  hasDetail ? "cursor-pointer hover:bg-zinc-800/40" : "cursor-default"
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[item.status]}`} />
+                <span className="text-[12px] font-medium text-zinc-300">
+                  {TOOL_LABELS[item.tool]}
+                </span>
                 {item.args.path != null && (
-                  <span className="truncate font-mono text-[10px] opacity-70">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-500">
                     {shortPath(String(item.args.path))}
                   </span>
                 )}
-              </div>
-              <button
-                onClick={() => remove(item.id)}
-                className="shrink-0 text-[10px] text-zinc-500 transition hover:text-zinc-300"
-              >
-                ✕
+                {hasDetail && <Chevron open={open} />}
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(item.id);
+                  }}
+                  className="ml-1 shrink-0 text-[11px] text-zinc-700 opacity-0 transition hover:text-zinc-300 group-hover:opacity-100"
+                >
+                  ✕
+                </span>
               </button>
+              {open && item.output && (
+                <pre className="mx-3 mb-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-zinc-800/80 bg-black/40 px-2.5 py-2 font-mono text-[11px] leading-5 text-zinc-400">
+                  {item.output}
+                </pre>
+              )}
+              {open && item.error && (
+                <pre className="mx-3 mb-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-2 font-mono text-[11px] leading-5 text-red-300">
+                  {item.error}
+                </pre>
+              )}
             </div>
-            {item.output && (
-              <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 px-2 py-1.5 font-mono text-[10px] leading-5 text-zinc-400">
-                {item.output}
-              </pre>
-            )}
-            {item.error && (
-              <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-red-500/5 px-2 py-1.5 font-mono text-[10px] leading-5 text-red-300">
-                {item.error}
-              </pre>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

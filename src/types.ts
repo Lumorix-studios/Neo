@@ -7,9 +7,20 @@ export type ProviderId =
   | "ollama"
   | "custom";
 
+export interface NativeToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 export interface Message {
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
+  /** Assistant-native tool invocations (OpenAI/Anthropic/Ollama/Gemini). */
+  toolCalls?: NativeToolCall[];
+  /** Tool-result correlation id when role is `tool`. */
+  toolCallId?: string;
+  toolName?: string;
 }
 
 export interface ChatSession {

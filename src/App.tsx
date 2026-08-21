@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import TopMenu from "../components/TopMenu";
 import ChatSidebar from "../components/ChatSidebar.tsx";
 import ChatHistorySidebar from "../components/ChatHistorySidebar.tsx";
@@ -32,11 +34,18 @@ import {
   activityId,
   executeTool,
   formatToolResult,
+  ingestNativeChunk,
   isDestructive,
+  nativeAccToCalls,
   parseToolCalls,
   stripToolCalls,
+  type NativeToolAcc,
+  type ToolCall,
 } from "./agentic";
 import type { AgenticActivity as AgenticActivityType } from "./agentic";
+import FileExplorer from "./components/FileExplorer";
+import CodeEditor from "./components/CodeEditor";
+import type { EditorTab } from "./components/CodeEditor";
 import {
   ThumbsUpIcon,
   ThumbsDownIcon,
@@ -46,6 +55,34 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 
 type JsonDict = Record<string, unknown>;
+
+/** Newline character (avoids escape-sequence issues in generated code). */
+const NL = String.fromCharCode(10);
+
+/** Result of one streaming round: visible text + any native tool calls. */
+interface StreamRoundResult {
+  text: string;
+  nativeCalls: ToolCall[];
+}
+
+/**
+ * Cap tool results fed back to the model so a huge read_file / list_dir /
+ * search_files output cannot blow the context window. Keeps the head and tail
+ * with an explicit truncation marker in between.
+ */
+const MAX_TOOL_OUTPUT = 8000;
+
+function truncateToolOutput(output: string): string {
+  if (output.length <= MAX_TOOL_OUTPUT) return output;
+  const head = Math.floor(MAX_TOOL_OUTPUT * 0.6);
+  const tail = MAX_TOOL_OUTPUT - head;
+  const omitted = output.length - head - tail;
+  return (
+    output.slice(0, head) +
+    `${NL}[... output truncated — ${omitted} characters omitted ...]${NL}` +
+    output.slice(output.length - tail)
+  );
+}
 
 async function platformFetch(url: string, init: RequestInit): Promise<Response> {
   const win = window as unknown as { __TAURI_INTERNALS__?: unknown };
@@ -64,19 +101,23 @@ async function platformFetch(url: string, init: RequestInit): Promise<Response> 
   return fetch(url, init);
 }
 
-/**
- * Collapse consecutive messages from the same role into one, and drop empty
- * assistant bubbles. Some providers (notably Anthropic) reject alternating-
- * role violations; OpenAI-compatible APIs also get confused by adjacent
- * assistant/same-role turns left over from an aborted or empty generation.
- */
+
 function sanitizeHistory(msgs: Message[]): Message[] {
   const out: Message[] = [];
   for (const m of msgs) {
-    if (m.role === "assistant" && m.content.trim().length === 0) continue;
+    // Keep assistant messages that carry native tool calls even when their
+    // text content is empty — dropping them orphans the tool-result messages.
+    const hasNativeCalls = !!(m.toolCalls && m.toolCalls.length > 0);
+    if (m.role === "assistant" && m.content.trim().length === 0 && !hasNativeCalls) continue;
     const last = out[out.length - 1];
-    if (last && last.role === m.role) {
-      last.content = `${last.content}\n${m.content}`.trim();
+    if (
+      last &&
+      last.role === m.role &&
+      !(last.toolCalls && last.toolCalls.length > 0) &&
+      !hasNativeCalls
+    ) {
+      last.content = `${last.content}
+${m.content}`.trim();
     } else {
       out.push({ ...m });
     }
@@ -135,6 +176,13 @@ export default function App() {
   // Whether the user is scrolled near the bottom (auto-follow).
   const autoScrollRef = useRef(true);
 
+  // --- IDE / Code editor state ---
+  const [ideOpen, setIdeOpen] = useState(false);
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
+  const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
+  const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
+  const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
+
   const spec: ProviderSpec = getProviderSpec(settings);
 
   useEffect(() => {
@@ -151,6 +199,10 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         setCommandPaletteOpen((v) => !v);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setIdeOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", handleKey);
@@ -232,7 +284,7 @@ export default function App() {
       });
     }, 250);
     return () => clearTimeout(t);
-  }, [messages, activeSessionId, restored]);
+  }, [messages, activeSessionId, restored, settings]);
 
   // Keep the chat pinned to the bottom while the user hasn't scrolled up.
   useEffect(() => {
@@ -350,6 +402,107 @@ export default function App() {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // IDE / Code editor handlers
+  // ---------------------------------------------------------------------------
+
+  /** Ask the user to pick a workspace folder for the file explorer. */
+  const pickWorkspaceFolder = async () => {
+    try {
+      const dir = await open({ directory: true, multiple: false });
+      if (typeof dir === "string" && dir) {
+        setWorkspaceRoot(dir);
+        // A different workspace means a fresh editor context.
+        setEditorTabs([]);
+        setActiveEditorPath(null);
+        setExplorerRefreshKey((k) => k + 1);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /** Ask the user to pick one or more files to open directly in the editor.
+   *  Only the picked files are opened — no workspace folder is loaded. */
+  const pickWorkspaceFiles = async () => {
+    try {
+      const files = await open({ multiple: true, directory: false });
+      if (!files) return;
+      const list = Array.isArray(files) ? files : [files];
+      for (const f of list) {
+        await openFileInEditor(f);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /** Max simultaneously open editor tabs (LRU-evicted beyond this). */
+  const MAX_OPEN_TABS = 10;
+
+  /** Open a file from the explorer in an editor tab. */
+  const openFileInEditor = async (path: string) => {
+    setActiveEditorPath(path);
+    if (editorTabs.some((t) => t.path === path)) return;
+    try {
+      const content = await invoke<string>("fs_read_file", { path });
+      setEditorTabs((prev) => {
+        if (prev.some((t) => t.path === path)) return prev;
+        let next: EditorTab[] = [...prev, { path, content, dirty: false }];
+        // LRU cap: evict oldest clean tabs so the pane never fills with
+        // every file ever opened.
+        while (next.length > MAX_OPEN_TABS) {
+          const evictIdx = next.findIndex((t) => !t.dirty && t.path !== path);
+          if (evictIdx === -1) break;
+          next = next.filter((_, i) => i !== evictIdx);
+        }
+        return next;
+      });
+    } catch (e) {
+      setError(`Failed to open ${path}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  /** Close every open editor tab. */
+  const closeAllEditorTabs = () => {
+    setEditorTabs([]);
+    setActiveEditorPath(null);
+  };
+
+  /** Close an editor tab, falling back to a neighbouring tab. */
+  const closeEditorTab = (path: string) => {
+    const idx = editorTabs.findIndex((t) => t.path === path);
+    if (idx === -1) return;
+    const next = editorTabs.filter((t) => t.path !== path);
+    setEditorTabs(next);
+    if (activeEditorPath === path) {
+      const fallback = next[Math.min(idx, next.length - 1)];
+      setActiveEditorPath(fallback ? fallback.path : null);
+    }
+  };
+
+  /** Mark a tab dirty as its content changes. */
+  const updateEditorContent = (path: string, content: string) => {
+    setEditorTabs((prev) =>
+      prev.map((t) => (t.path === path ? { ...t, content, dirty: true } : t))
+    );
+  };
+
+  /** Persist the active tab back to disk via the Tauri fs command. */
+  const saveEditorFile = async (path: string) => {
+    const tab = editorTabs.find((t) => t.path === path);
+    if (!tab) return;
+    try {
+      await invoke("fs_write_file", { path, content: tab.content });
+      setEditorTabs((prev) =>
+        prev.map((t) => (t.path === path ? { ...t, dirty: false } : t))
+      );
+      setExplorerRefreshKey((k) => k + 1);
+    } catch (e) {
+      setError(`Failed to save ${path}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   /** Approve a pending destructive tool call. */
   const handleApproveTool = (id: string) => {
     const pending = approvalRef.current;
@@ -375,12 +528,17 @@ export default function App() {
       approvalRef.current = { id, resolve };
     });
 
-  /** Run one streaming request and return the full raw model text. */
+  /**
+   * Run one streaming request; return the visible text plus any NATIVE tool
+   * calls the model emitted via function-calling (OpenAI/Anthropic/Gemini/
+   * Ollama). Native calls carry no text deltas, so they must be accumulated
+   * separately — otherwise agentic rounds end with an empty response.
+   */
   const streamRound = async (
     history: Message[],
     agentic: boolean,
     signal: AbortSignal
-  ): Promise<string> => {
+  ): Promise<StreamRoundResult> => {
     const s = getProviderSpec(settings);
     const endpoint = s.buildUrl(settings);
     const headers: Record<string, string> = {
@@ -393,10 +551,14 @@ export default function App() {
     const effectiveSettings: AISettings = agentic
       ? {
           ...settings,
-          systemPrompt: `${settings.systemPrompt}\n\n${AGENTIC_PROMPT}`,
+          systemPrompt: `${settings.systemPrompt}
+
+${AGENTIC_PROMPT}`,
         }
       : settings;
-    const body = s.buildBody(effectiveSettings, history);
+    // Pass enableTools so agentic rounds include the native tool schemas
+    // (OpenAI/Anthropic/Gemini/Ollama function-calling definitions).
+    const body = s.buildBody(effectiveSettings, history, { enableTools: agentic });
 
     // Use the signal from sendMessage so cancellation is handled by a single
     // source of truth (no separate per-round AbortController).
@@ -410,12 +572,13 @@ export default function App() {
       });
     } catch (netErr) {
       if (signal.aborted) {
-        throw new Error("__ABORTED__");
+        throw new Error("__ABORTED__", { cause: netErr });
       }
       throw new Error(
         `Could not connect to ${endpoint}: ${
           netErr instanceof Error ? netErr.message : String(netErr)
-        }`
+        }`,
+        { cause: netErr }
       );
     }
 
@@ -457,13 +620,19 @@ export default function App() {
     const bodyStream = res.body;
     if (!bodyStream) {
       const data = (await res.json().catch(() => null)) as JsonDict | null;
-      return data ? s.extractContent(data) : "";
+      const acc0: NativeToolAcc[] = [];
+      if (data) {
+        ingestNativeChunk(data, acc0);
+        return { text: s.extractContent(data), nativeCalls: nativeAccToCalls(acc0) };
+      }
+      return { text: "", nativeCalls: [] };
     }
 
     const reader = bodyStream.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
     let full = streamedContentRef.current; // preserve any prior-round visible text
+    const nativeAcc: NativeToolAcc[] = [];
 
     try {
       while (!signal.aborted) {
@@ -477,7 +646,7 @@ export default function App() {
         if (step.done) break;
 
         buffer += decoder.decode(step.value, { stream: true });
-        const lines = buffer.split("\n");
+        const lines = buffer.split(NL);
         buffer = lines.pop() ?? "";
 
         for (const raw of lines) {
@@ -488,7 +657,10 @@ export default function App() {
           if (line === "[DONE]") continue;
           if (line.startsWith(":")) continue;
           try {
-            const json = JSON.parse(line);
+            const json = JSON.parse(line) as Record<string, unknown>;
+            // Accumulate native function-calling chunks so tool-only rounds
+            // are not lost when no text deltas are emitted.
+            ingestNativeChunk(json, nativeAcc);
             const delta = s.extractDelta(json);
             if (delta) {
               full += delta;
@@ -511,7 +683,7 @@ export default function App() {
     if (!full && !signal.aborted) {
       try {
         const nonStreamBody = {
-          ...(s.buildBody(effectiveSettings, history) as Record<string, unknown>),
+          ...(s.buildBody(effectiveSettings, history, { enableTools: agentic }) as Record<string, unknown>),
           stream: false,
         } as Record<string, unknown>;
         // Google uses a different URL for streaming vs. non-streaming.
@@ -528,6 +700,7 @@ export default function App() {
           const data = (await fallbackRes.json().catch(() => null)) as JsonDict | null;
           if (data) {
             full = s.extractContent(data);
+            ingestNativeChunk(data, nativeAcc);
           }
         }
       } catch {
@@ -535,7 +708,7 @@ export default function App() {
       }
     }
 
-    return full;
+    return { text: full, nativeCalls: nativeAccToCalls(nativeAcc) };
   };
 
   /** Heuristic: does the user's message look like a file/folder operation? */
@@ -639,16 +812,35 @@ export default function App() {
       let toolRounds = 0;
 
       while (!abortCtrl.signal.aborted) {
-        const raw = await streamRound(agentHistory, agentic, abortCtrl.signal);
+        const round = await streamRound(agentHistory, agentic, abortCtrl.signal);
         if (abortCtrl.signal.aborted) break;
         toolRounds++;
+        const raw = round.text;
 
-        // Remember the model's full reply (including any tool_call blocks).
-        agentHistory.push({ role: "assistant", content: raw });
+        // Remember the model's full reply. Native tool calls ride along on the
+        // assistant message so providers serialize them back in their own
+        // protocol on the next round (tool_use / functionCall / tool_calls).
+        agentHistory.push({
+          role: "assistant",
+          content: raw,
+          ...(round.nativeCalls.length > 0
+            ? {
+                toolCalls: round.nativeCalls.map((c, i) => ({
+                  id: c.id ?? `call_${toolRounds}_${i}`,
+                  name: c.name,
+                  arguments: c.arguments,
+                })),
+              }
+            : {}),
+        });
         const visible = stripToolCalls(raw).trim();
         if (visible) finalText = visible;
 
-        const calls = parseToolCalls(raw);
+        // Merge native function-calls with text-based (<tool_call>) calls.
+        const calls: { call: ToolCall; native: boolean }[] = [
+          ...round.nativeCalls.map((c) => ({ call: c, native: true })),
+          ...parseToolCalls(raw).map((c) => ({ call: c, native: false })),
+        ];
 
         // If the model produced no tool calls, we're done.
         if (calls.length === 0 || toolRounds >= MAX_TOOL_ROUNDS) {
@@ -658,9 +850,11 @@ export default function App() {
           break;
         }
 
-        // Feed tool results back to the model, one round at a time.
+        // Execute tools; route results back using each protocol:
+        // native calls -> role:"tool" messages, text calls -> <tool_result>.
+        const nativeResults: Message[] = [];
         const resultBlocks: string[] = [];
-        for (const call of calls) {
+        for (const { call, native } of calls) {
           const id = activityId();
           const activity: AgenticActivityType = {
             id,
@@ -686,12 +880,18 @@ export default function App() {
               setActivities((prev) =>
                 prev.map((a) => (a.id === id ? denied : a))
               );
-              resultBlocks.push(
-                formatToolResult({
-                  ok: false,
-                  output: "User denied approval for this operation. Do not retry it; explain and propose alternatives.",
-                })
-              );
+              const denial =
+                "User denied approval for this operation. Do not retry it; explain and propose alternatives.";
+              if (native) {
+                nativeResults.push({
+                  role: "tool",
+                  content: denial,
+                  toolCallId: call.id,
+                  toolName: call.name,
+                });
+              } else {
+                resultBlocks.push(formatToolResult({ ok: false, output: denial }));
+              }
               continue;
             }
             setActivities((prev) =>
@@ -713,14 +913,28 @@ export default function App() {
                 : a
             )
           );
-          resultBlocks.push(formatToolResult(result));
+          // Truncate large outputs before they enter the model's context.
+          if (native) {
+            nativeResults.push({
+              role: "tool",
+              content: truncateToolOutput(result.output),
+              toolCallId: call.id,
+              toolName: call.name,
+            });
+          } else {
+            resultBlocks.push(
+              formatToolResult({ ...result, output: truncateToolOutput(result.output) })
+            );
+          }
         }
 
         // Send the tool results back to the model and loop.
-        agentHistory.push({
-          role: "user",
-          content: resultBlocks.join("\n\n"),
-        });
+        if (nativeResults.length > 0) {
+          agentHistory.push(...nativeResults);
+        }
+        if (resultBlocks.length > 0) {
+          agentHistory.push({ role: "user", content: resultBlocks.join(NL + NL) });
+        }
       }
 
       // Commit the final visible answer.
@@ -770,6 +984,7 @@ export default function App() {
           onOpenTab2={() => setTab2Open(true)}
           onOpenChatSidebar={() => setSidebarOpen(true)}
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
+          onOpenIde={() => setIdeOpen(true)}
         />
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
@@ -1062,6 +1277,75 @@ export default function App() {
               </form>
             </div>
           </main>
+          {/* Integrated IDE panel: file explorer + code editor beside the chat */}
+          {ideOpen && (
+            <section className="flex min-w-0 flex-1 flex-col border-l border-zinc-800 bg-[#0c0c0e]">
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800 px-3">
+                <div className="text-[12px] font-medium uppercase tracking-wide text-zinc-400">
+                  Code Editor
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void pickWorkspaceFolder()}
+                    className="rounded-md bg-zinc-800 px-3 py-1 text-[12px] text-zinc-200 transition hover:bg-zinc-700"
+                  >
+                    Open Folder
+                  </button>
+                  <button
+                    onClick={() => void pickWorkspaceFiles()}
+                    className="rounded-md bg-zinc-800 px-3 py-1 text-[12px] text-zinc-200 transition hover:bg-zinc-700"
+                  >
+                    Open File
+                  </button>
+                  <button
+                    onClick={() => setIdeOpen(false)}
+                    className="rounded-md px-2 py-1 text-[12px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
+                  >
+                    Close ✕
+                  </button>
+                </div>
+              </div>
+              {workspaceRoot || editorTabs.length > 0 ? (
+                <div className="flex min-h-0 flex-1">
+                  {workspaceRoot && (
+                    <FileExplorer
+                      root={workspaceRoot}
+                      activePath={activeEditorPath}
+                      refreshKey={explorerRefreshKey}
+                      onOpenFile={(p) => void openFileInEditor(p)}
+                    />
+                  )}
+                  <CodeEditor
+                    tabs={editorTabs}
+                    activePath={activeEditorPath}
+                    onSelect={setActiveEditorPath}
+                    onClose={closeEditorTab}
+                    onChange={updateEditorContent}
+                    onSave={(p) => void saveEditorFile(p)}
+                    onCloseAll={closeAllEditorTabs}
+                  />
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-sm text-zinc-500">
+                  <p>Open a folder or file to browse and edit.</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => void pickWorkspaceFolder()}
+                      className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-white"
+                    >
+                      Open Folder
+                    </button>
+                    <button
+                      onClick={() => void pickWorkspaceFiles()}
+                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800"
+                    >
+                      Open File
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
           <aside
             className={`shrink-0 overflow-hidden border-l border-zinc-800/60 bg-[#0c0c0f] transition-[width] duration-200 ease-out ${
               sidebarOpen ? "w-80 max-sm:w-full" : "w-0"
@@ -1131,6 +1415,14 @@ export default function App() {
               icon: "⏹",
               shortcut: "Esc",
               action: isLoading ? stopChat : () => {},
+            },
+            {
+              id: "open-ide",
+              label: "Open Code Editor",
+              category: "View",
+              icon: "📝",
+              shortcut: "Ctrl+Shift+E",
+              action: () => setIdeOpen(true),
             },
           ]}
         />

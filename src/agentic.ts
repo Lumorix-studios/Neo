@@ -1,24 +1,12 @@
 /**
  * Agentic filesystem tools.
  *
- * The AI (local Ollama or any cloud provider) drives these tools through a
- * simple text protocol that works with every model:
- *
- *   <tool_call>
- *   {"name": "read_file", "arguments": {"path": "src/main.ts"}}
- *   </tool_call>
- *
- * The app executes the tool and feeds the result back as:
- *
- *   <tool_result>
- *   ...output...
- *   </tool_result>
- *
- * The conversation loops until the model produces a final answer without a
- * tool call. Destructive operations (write, delete, rename) require explicit
- * user approval before they are executed.
+ * Tool-capable models receive native function/tool schemas (OpenAI, Anthropic,
+ * Gemini, Ollama, OpenRouter, Groq). Models that only emit text still work via
+ * XML / JSON fallbacks. Destructive operations require user approval.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { debugLog } from "./debugLog";
 
 export type ToolName =
   | "read_file"
@@ -34,6 +22,7 @@ export type ToolName =
   | "rename";
 
 export interface ToolCall {
+  id?: string;
   name: ToolName;
   arguments: Record<string, unknown>;
 }
@@ -75,6 +64,257 @@ export function isDestructive(name: ToolName): boolean {
   return DESTRUCTIVE.includes(name);
 }
 
+const TOOL_NAME_SET = new Set<string>([
+  "read_file",
+  "read_file_range",
+  "write_file",
+  "append_file",
+  "replace_in_file",
+  "delete_file",
+  "delete_dir",
+  "create_dir",
+  "list_dir",
+  "search_files",
+  "rename",
+]);
+
+export function isToolName(name: string): name is ToolName {
+  return TOOL_NAME_SET.has(name);
+}
+
+/** Resolve a model-supplied path against the open workspace root. */
+export function resolveFsPath(input: string, workspaceRoot?: string | null): string {
+  const p = String(input ?? "").trim();
+  if (!p) return p;
+  if (/^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("/") || p.startsWith("\\\\")) return p;
+  if (!workspaceRoot) return p;
+  const root = workspaceRoot.replace(/[\\/]+$/, "");
+  const useWin = /\\/.test(root) || /^[a-zA-Z]:/.test(root);
+  const sep = useWin ? "\\" : "/";
+  const rel = p.replace(/^[\\/]+/, "").replace(/[\\/]+/g, sep);
+  return `${root}${sep}${rel}`;
+}
+
+interface JsonSchema {
+  type: "object";
+  properties: Record<string, { type: string; description: string }>;
+  required: string[];
+}
+
+const pathProp = { type: "string", description: "File or folder path. Absolute, or relative to the workspace root." };
+
+export const TOOL_JSON_SCHEMAS: Record<ToolName, { description: string; parameters: JsonSchema }> = {
+  read_file: {
+    description: "Read the full contents of a text file.",
+    parameters: { type: "object", properties: { path: pathProp }, required: ["path"] },
+  },
+  read_file_range: {
+    description: "Read a line range from a text file. end_line=0 means until EOF.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        start_line: { type: "integer", description: "1-based start line." },
+        end_line: { type: "integer", description: "1-based end line, or 0 for EOF." },
+      },
+      required: ["path"],
+    },
+  },
+  write_file: {
+    description: "Create or overwrite a file (creates parent folders).",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        content: { type: "string", description: "Full file contents to write." },
+      },
+      required: ["path", "content"],
+    },
+  },
+  append_file: {
+    description: "Append text to a file, creating it if missing.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        content: { type: "string", description: "Text to append." },
+      },
+      required: ["path", "content"],
+    },
+  },
+  replace_in_file: {
+    description: "Replace the first exact occurrence of search with replace.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        search: { type: "string", description: "Exact text to find." },
+        replace: { type: "string", description: "Replacement text." },
+      },
+      required: ["path", "search", "replace"],
+    },
+  },
+  delete_file: {
+    description: "Permanently delete a file.",
+    parameters: { type: "object", properties: { path: pathProp }, required: ["path"] },
+  },
+  delete_dir: {
+    description: "Recursively delete a folder.",
+    parameters: { type: "object", properties: { path: pathProp }, required: ["path"] },
+  },
+  create_dir: {
+    description: "Create a folder (and parents).",
+    parameters: { type: "object", properties: { path: pathProp }, required: ["path"] },
+  },
+  list_dir: {
+    description: "List files and folders in a directory.",
+    parameters: { type: "object", properties: { path: pathProp }, required: ["path"] },
+  },
+  search_files: {
+    description: "Recursively search for pattern in file paths, or file contents when content=true.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        pattern: { type: "string", description: "Case-insensitive substring to match." },
+        content: { type: "boolean", description: "Search file contents instead of paths." },
+      },
+      required: ["path", "pattern"],
+    },
+  },
+  rename: {
+    description: "Rename or move a file or folder.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        new_path: { type: "string", description: "Destination path." },
+      },
+      required: ["path", "new_path"],
+    },
+  },
+};
+
+/** OpenAI / OpenRouter / Groq / Ollama / custom compatible tools array. */
+export const OPENAI_TOOLS = (Object.keys(TOOL_JSON_SCHEMAS) as ToolName[]).map((name) => ({
+  type: "function" as const,
+  function: {
+    name,
+    description: TOOL_JSON_SCHEMAS[name].description,
+    parameters: TOOL_JSON_SCHEMAS[name].parameters,
+  },
+}));
+
+/** Anthropic `tools` array. */
+export const ANTHROPIC_TOOLS = (Object.keys(TOOL_JSON_SCHEMAS) as ToolName[]).map((name) => ({
+  name,
+  description: TOOL_JSON_SCHEMAS[name].description,
+  input_schema: TOOL_JSON_SCHEMAS[name].parameters,
+}));
+
+/** Gemini functionDeclarations. */
+export const GEMINI_FUNCTION_DECLARATIONS = (Object.keys(TOOL_JSON_SCHEMAS) as ToolName[]).map((name) => ({
+  name,
+  description: TOOL_JSON_SCHEMAS[name].description,
+  parameters: TOOL_JSON_SCHEMAS[name].parameters,
+}));
+
+export interface NativeToolAcc {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+function parseArgBlob(raw: string): Record<string, unknown> {
+  const t = raw.trim();
+  if (!t) return {};
+  try {
+    const v = JSON.parse(t) as unknown;
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  return { _raw: t };
+}
+
+export function nativeAccToCalls(acc: NativeToolAcc[]): ToolCall[] {
+  return acc
+    .filter((a) => a.name)
+    .map((a) => ({
+      id: a.id || undefined,
+      name: a.name as ToolName,
+      arguments: parseArgBlob(a.arguments),
+    }));
+}
+
+/** Fold a provider stream/response chunk into accumulated native tool calls. */
+export function ingestNativeChunk(json: unknown, acc: NativeToolAcc[]): void {
+  if (!json || typeof json !== "object") return;
+  const j = json as Record<string, unknown>;
+
+  const ingestList = (list: unknown, indexed: boolean) => {
+    if (!Array.isArray(list)) return;
+    for (let i = 0; i < list.length; i++) {
+      const tc = list[i] as Record<string, unknown>;
+      if (!tc || typeof tc !== "object") continue;
+      const idx = indexed && typeof tc.index === "number" ? tc.index : acc.length > 0 && !tc.id ? acc.length - 1 : acc.length;
+      while (acc.length <= idx) acc.push({ id: "", name: "", arguments: "" });
+      if (typeof tc.id === "string" && tc.id) acc[idx].id = tc.id;
+      const fn = (tc.function as Record<string, unknown> | undefined) ?? tc;
+      if (typeof fn.name === "string" && fn.name) acc[idx].name = fn.name;
+      const args = fn.arguments ?? fn.args ?? fn.input;
+      if (typeof args === "string") acc[idx].arguments += args;
+      else if (args && typeof args === "object") acc[idx].arguments = JSON.stringify(args);
+    }
+  };
+
+  const choices = j.choices as Array<Record<string, unknown>> | undefined;
+  const choice = choices?.[0];
+  const delta = choice?.delta as Record<string, unknown> | undefined;
+  const msg = (choice?.message ?? j.message) as Record<string, unknown> | undefined;
+  ingestList(delta?.tool_calls, true);
+  ingestList(msg?.tool_calls, false);
+
+  if (j.type === "content_block_start") {
+    const cb = j.content_block as Record<string, unknown> | undefined;
+    if (cb?.type === "tool_use") {
+      const input = cb.input && typeof cb.input === "object" ? JSON.stringify(cb.input) : "";
+      acc.push({
+        id: typeof cb.id === "string" ? cb.id : `ant_${acc.length}`,
+        name: typeof cb.name === "string" ? cb.name : "",
+        arguments: input,
+      });
+    }
+  }
+  if (j.type === "content_block_delta") {
+    const d = j.delta as Record<string, unknown> | undefined;
+    if (d?.type === "input_json_delta" && acc.length > 0) {
+      acc[acc.length - 1].arguments += String(d.partial_json ?? "");
+    }
+  }
+
+  const parts =
+    (j.candidates as Array<{ content?: { parts?: Array<Record<string, unknown>> } }> | undefined)?.[0]
+      ?.content?.parts ?? [];
+  for (const p of parts) {
+    const fc = p?.functionCall as Record<string, unknown> | undefined;
+    if (fc && typeof fc.name === "string") {
+      acc.push({
+        id: `gem_${acc.length}`,
+        name: fc.name,
+        arguments: JSON.stringify(fc.args ?? fc.arguments ?? {}),
+      });
+    }
+  }
+}
+
+export function agenticSystemPrompt(workspaceRoot?: string | null): string {
+  const ws = workspaceRoot
+    ? `Workspace root: ${workspaceRoot}\nPrefer paths relative to this root. Absolute paths also work.\n`
+    : "If the user has not opened a folder, ask for a path or use absolute paths.\n";
+  return `${AGENTIC_PROMPT}\n\n${ws}`;
+}
+
 function inTauri(): boolean {
   const win = window as unknown as { __TAURI_INTERNALS__?: unknown };
   return !!win.__TAURI_INTERNALS__;
@@ -109,7 +349,19 @@ async function browserFallback(name: ToolName, args: Record<string, unknown>): P
  * Execute a single tool call. Returns a ToolResult that is fed back to the
  * model as a `<tool_result>` block.
  */
-export async function executeTool(name: ToolName, args: Record<string, unknown>): Promise<ToolResult> {
+export async function executeTool(
+  name: ToolName,
+  args: Record<string, unknown>,
+  workspaceRoot?: string | null
+): Promise<ToolResult> {
+  const resolved: Record<string, unknown> = { ...args };
+  if (typeof resolved.path === "string") {
+    resolved.path = resolveFsPath(resolved.path, workspaceRoot);
+  }
+  if (typeof resolved.new_path === "string") {
+    resolved.new_path = resolveFsPath(resolved.new_path, workspaceRoot);
+  }
+  args = resolved;
   if (!inTauri()) {
     return browserFallback(name, args);
   }
@@ -194,34 +446,118 @@ export async function executeTool(name: ToolName, args: Record<string, unknown>)
   }
 }
 
+function coerceArgs(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  if (typeof raw === "string") return parseArgBlob(raw);
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  return {};
+}
+
+function pushNamedCall(calls: ToolCall[], name: unknown, args: unknown): void {
+  if (typeof name !== "string" || !name) return;
+  calls.push({ name: name as ToolName, arguments: coerceArgs(args) });
+}
+
+function tryParseJsonCall(blob: string, calls: ToolCall[]): boolean {
+  try {
+    const parsed = JSON.parse(blob) as {
+      name?: string;
+      tool?: string;
+      arguments?: unknown;
+      parameters?: unknown;
+      args?: unknown;
+    };
+    const name = parsed.name ?? parsed.tool;
+    if (typeof name === "string") {
+      pushNamedCall(calls, name, parsed.arguments ?? parsed.parameters ?? parsed.args ?? {});
+      return true;
+    }
+  } catch {
+    /* not json */
+  }
+  return false;
+}
+
 /**
- * Parse a model response for `<tool_call>` blocks. Returns the list of calls
- * in the order they appear. Malformed blocks are ignored so the model can
- * still produce a plain answer.
+ * Parse text tool calls from many model families (XML, Hermes, Qwen, markdown JSON).
  */
 export function parseToolCalls(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
-  const re = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
+  const re = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
   let m: RegExpExecArray | null;
+  let xmlBlocks = 0;
+  let jsonOk = 0;
+  let jsonFail = 0;
   while ((m = re.exec(text)) !== null) {
-    try {
-      const parsed = JSON.parse(m[1]) as { name?: string; arguments?: Record<string, unknown> };
-      if (parsed.name && typeof parsed.name === "string") {
-        calls.push({
-          name: parsed.name as ToolName,
-          arguments: parsed.arguments ?? {},
-        });
+    xmlBlocks++;
+    const inner = m[1].trim();
+    if (tryParseJsonCall(inner, calls)) {
+      jsonOk++;
+      continue;
+    }
+    const fn = inner.match(/<function=([^>\s]+)>[\s\S]*?<\/function>/i) ?? inner.match(/^([a-zA-Z0-9_]+)\s*\n/);
+    if (fn) {
+      const name = fn[1];
+      const argObj: Record<string, unknown> = {};
+      const argRe = /<parameter=([^>]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
+      let am: RegExpExecArray | null;
+      while ((am = argRe.exec(inner)) !== null) argObj[am[1]] = am[2];
+      if (Object.keys(argObj).length === 0) {
+        tryParseJsonCall(inner.replace(/^[^\n]+\n/, ""), calls);
+      } else {
+        pushNamedCall(calls, name, argObj);
       }
-    } catch {
-      // Malformed JSON — skip this block.
+      jsonOk++;
+    } else {
+      jsonFail++;
     }
   }
+
+  const invokeRe = /<invoke\s+name="([^"]+)">([\s\S]*?)<\/invoke>/gi;
+  while ((m = invokeRe.exec(text)) !== null) {
+    const argObj: Record<string, unknown> = {};
+    const argRe = /<parameter\s+name="([^"]+)">([\s\S]*?)<\/parameter>/gi;
+    let am: RegExpExecArray | null;
+    while ((am = argRe.exec(m[2])) !== null) argObj[am[1]] = am[2];
+    pushNamedCall(calls, m[1], argObj);
+  }
+
+  const hermesRe = /<function=([^>\s]+)>([\s\S]*?)<\/function>/gi;
+  while ((m = hermesRe.exec(text)) !== null) {
+    if (!tryParseJsonCall(m[2], calls)) {
+      const argObj: Record<string, unknown> = {};
+      const argRe = /<parameter=([^>]+)>\s*([\s\S]*?)\s*<\/parameter>/gi;
+      let am: RegExpExecArray | null;
+      while ((am = argRe.exec(m[2])) !== null) argObj[am[1]] = am[2];
+      pushNamedCall(calls, m[1], argObj);
+    }
+  }
+
+  const fenceRe = /```(?:json|tool_call|tool)?\s*([\s\S]*?)```/gi;
+  while ((m = fenceRe.exec(text)) !== null) {
+    tryParseJsonCall(m[1].trim(), calls);
+  }
+
+  // #region agent log
+  debugLog("B", "agentic.ts:parseToolCalls", "parseToolCalls result", {
+    xmlBlocks,
+    jsonOk,
+    jsonFail,
+    callsFound: calls.length,
+    callNames: calls.map((c) => c.name),
+    textLen: text.length,
+  });
+  // #endregion
   return calls;
 }
 
-/** Strip `<tool_call>` blocks from a response so the visible answer is clean. */
+/** Strip tool-call markup from a response so the visible answer is clean. */
 export function stripToolCalls(text: string): string {
-  return text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "").trim();
+  return text
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, "")
+    .replace(/<invoke[\s\S]*?<\/invoke>/gi, "")
+    .trim();
 }
 
 /** Build a `<tool_result>` block to feed back to the model. */
@@ -268,18 +604,20 @@ edit, delete, search, or manage files and folders, use the tools below.
 Available tools:
 ${Object.values(TOOL_DESCRIPTIONS).map((d) => `- ${d}`).join("\n")}
 
-How to call a tool — emit exactly one block per tool call, with valid JSON:
+Prefer the native tool/function-calling API when it is available.
+
+If you can only emit text, use exactly one JSON block:
 
 <tool_call>
-{"name": "read_file", "arguments": {"path": "C:/path/to/file.txt"}}
+{"name": "read_file", "arguments": {"path": "src/main.ts"}}
 </tool_call>
 
 Rules:
-1. Call at most ONE tool per message. Wait for the <tool_result> before the next call.
+1. Call at most ONE tool per message. Wait for the tool result before the next call.
 2. After a tool result, continue working: read more, edit, search, etc., one tool at a time.
 3. When you have everything you need, reply with your final answer in plain text (no tool_call blocks).
 4. Destructive tools (write_file, append_file, replace_in_file, delete_file, delete_dir, create_dir, rename) require user approval — the app will ask the user before executing them. If the user denies, you will receive an error result; adapt accordingly.
-5. Use absolute paths. On Windows use backslashes or forward slashes (both work).
+5. Paths may be absolute or relative to the workspace root.
 6. Keep file contents you write complete and correct — do not truncate.
 7. If a tool errors, read the error and try a different approach.
 `.trim();

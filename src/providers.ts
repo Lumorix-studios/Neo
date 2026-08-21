@@ -13,7 +13,8 @@
  *    with an actionable message
  *  - produce a helpful hint when the provider returns an auth / config error
  */
-import type { AISettings, Message, ProviderId } from "./types";
+import type { AISettings, Message, NativeToolCall, ProviderId } from "./types";
+import { ANTHROPIC_TOOLS, GEMINI_FUNCTION_DECLARATIONS, OPENAI_TOOLS } from "./agentic";
 
 export interface ProviderSpec {
   id: ProviderId;
@@ -36,7 +37,7 @@ export interface ProviderSpec {
   buildUrl: (settings: AISettings) => string;
   /** Build the JSON request body from the conversation history (excludes the system prompt
    * which each provider attaches in its own shape). */
-  buildBody: (settings: AISettings, history: Message[]) => object;
+  buildBody: (settings: AISettings, history: Message[], opts?: BuildBodyOptions) => object;
   /** Pull a text delta out of a decoded stream chunk. Return `null` when the
    * chunk carries no new text (a role event, usage metadata, `[DONE]`, etc.). */
   extractDelta: (json: unknown) => string | null;
@@ -72,7 +73,111 @@ interface OllamaShape {
   message?: { content?: string };
 }
 
-const bearer = (value: string) => `Bearer ${value}`;
+export interface BuildBodyOptions {
+  enableTools?: boolean;
+}
+
+function toolArgsJson(tc: NativeToolCall): string {
+  return JSON.stringify(tc.arguments ?? {});
+}
+
+function toOpenAiMessages(history: Message[]): object[] {
+  const out: object[] = [];
+  for (const m of history) {
+    if (m.role === "tool") {
+      out.push({
+        role: "tool",
+        tool_call_id: m.toolCallId ?? m.toolName ?? "tool",
+        content: m.content,
+      });
+      continue;
+    }
+    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+      out.push({
+        role: "assistant",
+        content: m.content || null,
+        tool_calls: m.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: toolArgsJson(tc) },
+        })),
+      });
+      continue;
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
+function toAnthropicMessages(history: Message[]): object[] {
+  const out: object[] = [];
+  for (let i = 0; i < history.length; i++) {
+    const m = history[i];
+    if (m.role === "tool") continue;
+    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+      const content: object[] = [];
+      if (m.content.trim()) content.push({ type: "text", text: m.content });
+      for (const tc of m.toolCalls) {
+        content.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.arguments ?? {} });
+      }
+      out.push({ role: "assistant", content });
+      const results: object[] = [];
+      while (i + 1 < history.length && history[i + 1].role === "tool") {
+        i++;
+        const t = history[i];
+        results.push({
+          type: "tool_result",
+          tool_use_id: t.toolCallId ?? t.toolName,
+          content: t.content,
+        });
+      }
+      if (results.length) out.push({ role: "user", content: results });
+      continue;
+    }
+    if (m.role === "system") continue;
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
+function toGeminiContents(history: Message[]): object[] {
+  const out: object[] = [];
+  for (let i = 0; i < history.length; i++) {
+    const m = history[i];
+    if (m.role === "tool") continue;
+    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+      out.push({
+        role: "model",
+        parts: m.toolCalls.map((tc) => ({
+          functionCall: { name: tc.name, args: tc.arguments ?? {} },
+        })),
+      });
+      const parts: object[] = [];
+      while (i + 1 < history.length && history[i + 1].role === "tool") {
+        i++;
+        const t = history[i];
+        parts.push({
+          functionResponse: {
+            name: t.toolName ?? "unknown",
+            response: { result: t.content },
+          },
+        });
+      }
+      if (parts.length) out.push({ role: "user", parts });
+      continue;
+    }
+    out.push({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    });
+  }
+  return out;
+}
+
+/** Format an API key as a Bearer token header value. */
+function bearer(key: string): string {
+  return `Bearer ${key}`;
+}
 
 /**
  * Build the authentication headers for a provider. Keys are only attached when
@@ -100,11 +205,12 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     authQueryParam: null,
     extraHeaders: {},
     buildUrl: (s) => `${s.baseUrl.replace(/\/+$/, "")}/chat/completions`,
-    buildBody: (s, history) => ({
+    buildBody: (s, history, opts) => ({
       model: s.model,
-      messages: [{ role: "system", content: s.systemPrompt }, ...history],
+      messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
+      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;
@@ -135,11 +241,12 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       "X-Title": "Neo",
     },
     buildUrl: (s) => `${s.baseUrl.replace(/\/+$/, "")}/chat/completions`,
-    buildBody: (s, history) => ({
+    buildBody: (s, history, opts) => ({
       model: s.model,
-      messages: [{ role: "system", content: s.systemPrompt }, ...history],
+      messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
+      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;
@@ -165,11 +272,12 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     authQueryParam: null,
     extraHeaders: {},
     buildUrl: (s) => `${s.baseUrl.replace(/\/+$/, "")}/chat/completions`,
-    buildBody: (s, history) => ({
+    buildBody: (s, history, opts) => ({
       model: s.model,
-      messages: [{ role: "system", content: s.systemPrompt }, ...history],
+      messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
+      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;
@@ -195,13 +303,14 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     authQueryParam: null,
     extraHeaders: { "anthropic-version": "2023-06-01" },
     buildUrl: (s) => `${s.baseUrl.replace(/\/+$/, "")}/v1/messages`,
-    buildBody: (s, history) => ({
+    buildBody: (s, history, opts) => ({
       model: s.model,
       system: s.systemPrompt,
-      messages: history, // Anthropic does not accept a "system" role inside messages
+      messages: toAnthropicMessages(history),
       max_tokens: 4096,
       temperature: s.temperature,
       stream: true,
+      ...(opts?.enableTools ? { tools: ANTHROPIC_TOOLS } : {}),
     }),
     extractDelta: (j) => {
       const obj = j as AnthropicShape;
@@ -232,15 +341,17 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       const base = s.baseUrl.replace(/\/+$/, "");
       const url = new URL(`${base}/models/${encodeURIComponent(s.model)}:streamGenerateContent`);
       url.searchParams.set("key", s.apiKey);
+      // Request SSE so the response streams line-by-line. Without this,
+      // Google returns one big JSON array and streaming yields no deltas
+      // (which previously caused empty replies).
+      url.searchParams.set("alt", "sse");
       return url.toString();
     },
-    buildBody: (s, history) => ({
-      contents: history.map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      })),
+    buildBody: (s, history, opts) => ({
+      contents: toGeminiContents(history),
       system_instruction: { parts: [{ text: s.systemPrompt }] },
       generationConfig: { temperature: s.temperature },
+      ...(opts?.enableTools ? { tools: [{ functionDeclarations: GEMINI_FUNCTION_DECLARATIONS }] } : {}),
     }),
     extractDelta: (j) => {
       const t = (j as GoogleShape)?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -268,11 +379,12 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     authQueryParam: null,
     extraHeaders: {},
     buildUrl: (s) => `${s.baseUrl.replace(/\/+$/, "")}/api/chat`,
-    buildBody: (s, history) => ({
+    buildBody: (s, history, opts) => ({
       model: s.model,
-      messages: [{ role: "system", content: s.systemPrompt }, ...history],
+      messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       stream: true,
       options: { temperature: s.temperature },
+      ...(opts?.enableTools ? { tools: OPENAI_TOOLS } : {}),
     }),
     // Ollama sends newline-delimited JSON (no `data:` prefix). The final chunk
     // has `done: true` and must be ignored.
@@ -300,11 +412,12 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     authQueryParam: null,
     extraHeaders: {},
     buildUrl: (s) => `${s.baseUrl.replace(/\/+$/, "")}/chat/completions`,
-    buildBody: (s, history) => ({
+    buildBody: (s, history, opts) => ({
       model: s.model,
-      messages: [{ role: "system", content: s.systemPrompt }, ...history],
+      messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
+      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;

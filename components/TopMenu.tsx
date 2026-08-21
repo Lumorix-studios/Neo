@@ -8,6 +8,7 @@ interface TopMenuProps {
   onOpenTab2: () => void;
   onOpenChatSidebar: () => void;
   onOpenChatHistory: () => void;
+  onOpenIde: () => void;
 }
 
 interface MenuDef {
@@ -21,6 +22,7 @@ export default function TopMenu({
   onOpenTab2,
   onOpenChatSidebar,
   onOpenChatHistory,
+  onOpenIde,
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -56,6 +58,12 @@ export default function TopMenu({
       label: "Chat",
       items: [
         { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
+      ],
+    },
+    {
+      label: "IDE",
+      items: [
+        { label: "Code Editor", action: onOpenIde, shortcut: "Ctrl+Shift+E" },
       ],
     },
     {
