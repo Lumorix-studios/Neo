@@ -90,7 +90,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
             title={e.path}
           >
             <span className="flex w-3 shrink-0 items-center justify-center text-[10px] text-zinc-500">
-              {e.is_dir ? (isOpen ? "▾" : "▸") : null}
+              {e.is_dir ? (isOpen ? "▾" : ">") : null}
             </span>
             {!e.is_dir && <LangBadge path={e.path} />}
             <span className="truncate">{e.name}</span>

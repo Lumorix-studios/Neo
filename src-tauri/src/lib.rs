@@ -200,9 +200,6 @@ fn delete_local_model(model_name: String) -> Result<bool, String> {
     Ok(true)
 }
 
-// ---------------------------------------------------------------------------
-// Agentic filesystem tools
-// ---------------------------------------------------------------------------
 
 #[derive(serde::Serialize)]
 struct FsEntry {

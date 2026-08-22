@@ -4,7 +4,6 @@ import {
   IoTrash,
   IoChatbubble,
   IoAdd,
-  IoTime,
   IoChatbubbleOutline,
   IoCube,
 } from "react-icons/io5";
@@ -21,20 +20,20 @@ interface Props {
   onDeleteSession: (id: string) => void;
 }
 
-function formatDate(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const diff = now.getTime() - ts;
-  const day = 24 * 60 * 60 * 1000;
+// function formatDate(ts: number): string {
+//   const d = new Date(ts);
+//   const now = new Date();
+//   const diff = now.getTime() - ts;
+//   const day = 24 * 60 * 60 * 1000;
 
-  if (diff < day) {
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  if (diff < 7 * day) {
-    return d.toLocaleDateString([], { weekday: "short" });
-  }
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
-}
+//   if (diff < day) {
+//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+//   }
+//   if (diff < 7 * day) {
+//     return d.toLocaleDateString([], { weekday: "short" });
+//   }
+//   return d.toLocaleDateString([], { month: "short", day: "numeric" });
+// }
 
 export default function ChatHistorySidebar({
   isOpen,
@@ -52,7 +51,7 @@ export default function ChatHistorySidebar({
   return (
     <aside
       className={`shrink-0 overflow-hidden border-r border-zinc-800/60 bg-[#0c0c0f] transition-[width] duration-200 ease-out ${
-        isOpen ? "w-72 max-sm:w-full" : "w-0"
+        isOpen ? "w-80 max-sm:w-full" : "w-0"
       }`}
     >
       {isOpen && (
@@ -119,19 +118,19 @@ export default function ChatHistorySidebar({
                           {session.title || "Untitled chat"}
                         </p>
                         <p className="mt-0.5 flex items-center gap-1 text-[10px] text-zinc-600">
-                          <IoTime size={10} />
-                          {formatDate(session.updatedAt)}
-                          <span className="text-zinc-700">·</span>
-                          {session.messages.length} messages
+                          {/* <IoTime size={10} /> */}
+                          {/* {formatDate(session.updatedAt)} */}
+                          {/* <span className="text-zinc-700">·</span> */}
+                          {/* {session.messages.length} messages */}
                           {session.settings && (
                             <>
-                              <span className="text-zinc-700">·</span>
+                              {/* <span className="text-zinc-700">·</span> */}
                               <IoCube size={10} className="text-zinc-500" />
                               <span className="truncate text-zinc-500">
                                 {providerById(session.settings.provider).label} - {session.settings.model}
                               </span>
                             </>
-                          )}
+                          )} 
                         </p>
                       </div>
 

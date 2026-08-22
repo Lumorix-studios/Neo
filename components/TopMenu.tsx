@@ -14,6 +14,7 @@ interface TopMenuProps {
 interface MenuDef {
   label: string;
   items: { label: string; action: () => void; shortcut?: string; disabled?: boolean }[];
+  
 }
 
 export default function TopMenu({
@@ -47,23 +48,25 @@ export default function TopMenu({
     ],
     },
    
-    {label: "Settings",
-      items: [
-        {label : "Configuration", action : onOpenChatSidebar},
-        { label: "Information", action: onOpenInfoPanel },
-        { label: "Privacy policies", action: onOpenPrivacyPolicy },
-      ],
-    },
-    {
-      label: "Chat",
-      items: [
-        { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
-      ],
-    },
+    // {
+    //   label: "Chat",
+    //   items: [
+    //     { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
+    //   ],
+    // },
     {
       label: "IDE",
       items: [
-        { label: "Code Editor", action: onOpenIde, shortcut: "Ctrl+Shift+E" },
+        { label: "Open", action: onOpenIde, shortcut: "Ctrl+Shift+E" },
+      ],
+    },
+    
+    {label: "Settings",
+      items: [
+        {label : "Api Config", action : onOpenChatSidebar},
+        { label: "Information", action: onOpenInfoPanel },
+        { label: "Privacy policies", action: onOpenPrivacyPolicy},
+        { label: "Chat", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" }
       ],
     },
     {

@@ -100,7 +100,13 @@ async function platformFetch(url: string, init: RequestInit): Promise<Response> 
   }
   return fetch(url, init);
 }
+const sendFeedback = (feedback: "good" | "bad" | "report") => {
+  const subject = encodeURIComponent("AgenticCoder Feedback");
+  const body = encodeURIComponent(`Feedback: ${feedback}`);
 
+  window.location.href =
+    `mailto:madhusudhant207@gmail.com?subject=${subject}&body=${body}`;
+};
 
 function sanitizeHistory(msgs: Message[]): Message[] {
   const out: Message[] = [];
@@ -169,9 +175,6 @@ export default function App() {
   const streamControllerRef = useRef<AbortController | null>(null);
   // Mutable hold of the assistant text being streamed in (avoids closures capturing stale state).
   const streamedContentRef = useRef("");
-  // True while the component is mounted. Set on first mount and never reset
-  // (StrictMode double-invokes effects, which would otherwise leave us stuck
-  // believing we're unmounted and kill every streaming flush).
   const mountedRef = useRef(true);
   // Whether the user is scrolled near the bottom (auto-follow).
   const autoScrollRef = useRef(true);
@@ -402,11 +405,7 @@ export default function App() {
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // IDE / Code editor handlers
-  // ---------------------------------------------------------------------------
-
-  /** Ask the user to pick a workspace folder for the file explorer. */
+  
   const pickWorkspaceFolder = async () => {
     try {
       const dir = await open({ directory: true, multiple: false });
@@ -503,6 +502,52 @@ export default function App() {
     }
   };
 
+  // Mirror of editorTabs for use inside intervals / async callbacks.
+  const editorTabsRef = useRef<EditorTab[]>([]);
+  editorTabsRef.current = editorTabs;
+
+  /**
+   * Re-read one open tab's file from disk and adopt external changes.
+   * Clean tabs follow the file on disk, so edits made by the AI's tools
+   * (or any other process) appear in the editor live. Tabs with unsaved
+   * user edits are left untouched. Tabs whose file disappeared are closed
+   * unless they hold unsaved work.
+   */
+  const syncTabWithDisk = async (path: string) => {
+    let disk: string | null = null;
+    try {
+      disk = await invoke<string>("fs_read_file", { path });
+    } catch {
+      disk = null; // file was deleted / moved / is unreadable
+    }
+    setEditorTabs((prev) => {
+      const idx = prev.findIndex((t) => t.path === path);
+      if (idx === -1) return prev;
+      const tab = prev[idx];
+      if (disk === null) return tab.dirty ? prev : prev.filter((t) => t.path !== path);
+      if (tab.dirty || tab.content === disk) return prev;
+      const next = [...prev];
+      next[idx] = { ...tab, content: disk };
+      return next;
+    });
+  };
+
+  /** Refresh every open tab from disk. */
+  const syncAllOpenTabs = () => {
+    for (const t of editorTabsRef.current) void syncTabWithDisk(t.path);
+  };
+  // Ref indirection so intervals and the tool loop always call the latest closure.
+  const syncAllOpenTabsRef = useRef<() => void>(() => {});
+  syncAllOpenTabsRef.current = syncAllOpenTabs;
+
+  // Poll the filesystem while the IDE panel is open so external edits
+  // (AI tools, other editors, git operations) show up without reopening.
+  useEffect(() => {
+    if (!ideOpen) return;
+    const id = window.setInterval(() => syncAllOpenTabsRef.current(), 1200);
+    return () => window.clearInterval(id);
+  }, [ideOpen]);
+
   /** Approve a pending destructive tool call. */
   const handleApproveTool = (id: string) => {
     const pending = approvalRef.current;
@@ -528,12 +573,7 @@ export default function App() {
       approvalRef.current = { id, resolve };
     });
 
-  /**
-   * Run one streaming request; return the visible text plus any NATIVE tool
-   * calls the model emitted via function-calling (OpenAI/Anthropic/Gemini/
-   * Ollama). Native calls carry no text deltas, so they must be accumulated
-   * separately — otherwise agentic rounds end with an empty response.
-   */
+  
   const streamRound = async (
     history: Message[],
     agentic: boolean,
@@ -545,9 +585,7 @@ export default function App() {
       "Content-Type": "application/json",
       ...buildAuthHeaders(s, settings.apiKey),
     };
-    // Only append the agentic tool protocol when the user's message looks
-    // like a file operation. Normal chat uses the plain system prompt so the
-    // model isn't confused by tool instructions (which caused empty replies).
+    
     const effectiveSettings: AISettings = agentic
       ? {
           ...settings,
@@ -556,8 +594,7 @@ export default function App() {
 ${AGENTIC_PROMPT}`,
         }
       : settings;
-    // Pass enableTools so agentic rounds include the native tool schemas
-    // (OpenAI/Anthropic/Gemini/Ollama function-calling definitions).
+   
     const body = s.buildBody(effectiveSettings, history, { enableTools: agentic });
 
     // Use the signal from sendMessage so cancellation is handled by a single
@@ -677,9 +714,6 @@ ${AGENTIC_PROMPT}`,
       reader.releaseLock();
     }
 
-    // If streaming produced no text (common when the HTTP plugin buffers the
-    // entire response and the reader never yields deltas), fall back to a
-    // non-streaming request so the user always gets a reply.
     if (!full && !signal.aborted) {
       try {
         const nonStreamBody = {
@@ -817,9 +851,7 @@ ${AGENTIC_PROMPT}`,
         toolRounds++;
         const raw = round.text;
 
-        // Remember the model's full reply. Native tool calls ride along on the
-        // assistant message so providers serialize them back in their own
-        // protocol on the next round (tool_use / functionCall / tool_calls).
+        
         agentHistory.push({
           role: "assistant",
           content: raw,
@@ -913,6 +945,11 @@ ${AGENTIC_PROMPT}`,
                 : a
             )
           );
+          // Reflect filesystem mutations in the editor + explorer immediately.
+          if (result.ok) {
+            syncAllOpenTabsRef.current();
+            if (isDestructive(call.name)) setExplorerRefreshKey((k) => k + 1);
+          }
           // Truncate large outputs before they enter the model's context.
           if (native) {
             nativeResults.push({
@@ -974,7 +1011,7 @@ ${AGENTIC_PROMPT}`,
   };
 
   return (
-    <ClickSpark sparkColor="#ffffff" sparkSize={10} sparkRadius={15} sparkCount={8} duration={400}>
+    <ClickSpark sparkColor="#ffffff" sparkSize={0} sparkRadius={15} sparkCount={8} duration={400}>
       {" "}
       {/*Credit to https:Reactbits.dev for the components i use in the app */}
       <div className="flex h-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
@@ -1039,8 +1076,8 @@ ${AGENTIC_PROMPT}`,
                 speed={3.5}
                 rayColor1="#EAB308"
                 rayColor2="#96c8ff"
-                intensity={2}
-                spread={10}
+                intensity={3}
+                spread={19}
                 origin="top-right"
                 tilt={0}
                 saturation={1.5}
@@ -1099,7 +1136,7 @@ ${AGENTIC_PROMPT}`,
                                       <button
                                         
                                         onClick={() =>
-                                          alert("Thank you for the feedback")
+                                          sendFeedback("good")
                                         }>
                                         <ThumbsUpIcon size={17} />
                                       </button>
@@ -1107,17 +1144,20 @@ ${AGENTIC_PROMPT}`,
                                     <span className = " hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
                                       <button
                                         onClick={() =>
-                                          alert("Thank you for the feedback")}>
+                                          sendFeedback("bad")}>
                                         <ThumbsDownIcon size={17} />
                                       </button>
                                     </span>
                                     <span className="m-2  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
-                                      <button onClick ={()=>alert("Thank you for reporting")}>
+                                      <button 
+                                        onClick ={()=>sendFeedback("report")}>
                                         <InfoIcon size={17} />
                                       </button>
                                     </span>
                                     <span className="relative  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
-                                      <button onClick={() => setMenuOpen(menuOpen === index ? null: index)}>
+                                      <button 
+                                        onClick={() => 
+                                        setMenuOpen(menuOpen === index ? null: index)}>
                                         <DotsThreeVerticalIcon size={19} />
                                       </button>
                                       {/*Opens a dropdown selector for the 3 dots. more efficient ngl. i didnt wanna add 4 other buttons plus the 3 dots is universally known to display a list of items */}
@@ -1130,11 +1170,11 @@ ${AGENTIC_PROMPT}`,
                                           <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11">
                                             Copy
                                           </button>
-                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11"
+                                          {/* <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11"
                                             onClick ={()=>alert("Thank you for reporting")}
-                                          >
-                                            Report
-                                          </button>
+                                          > */}
+                                            {/* Report
+                                          </button> */}
                                         </div>
                                       )}
                                     </span>
@@ -1192,9 +1232,9 @@ ${AGENTIC_PROMPT}`,
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        disabled
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-600"
-                        title="Coming soon!!!!!!"
+                        onClick={()=>setIdeOpen(true)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-100"
+                        title="Upload files/folders"
                       >
                         {"+"}
                       </button>
@@ -1279,29 +1319,40 @@ ${AGENTIC_PROMPT}`,
           </main>
           {/* Integrated IDE panel: file explorer + code editor beside the chat */}
           {ideOpen && (
-            <section className="flex min-w-0 flex-1 flex-col border-l border-zinc-800 bg-[#0c0c0e]">
-              <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800 px-3">
-                <div className="text-[12px] font-medium uppercase tracking-wide text-zinc-400">
-                  Code Editor
+            <section className="flex min-w-0 flex-1 flex-col border-l border-zinc-800/80 bg-[#0b0b0e]">
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-[#111114] px-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                    Workspace
+                  </span>
+                  {workspaceRoot && (
+                    <span
+                      className="max-w-[220px] truncate rounded bg-white/[0.05] px-1.5 py-0.5 text-[10.5px] text-zinc-500"
+                      title={workspaceRoot}
+                    >
+                      {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     onClick={() => void pickWorkspaceFolder()}
-                    className="rounded-md bg-zinc-800 px-3 py-1 text-[12px] text-zinc-200 transition hover:bg-zinc-700"
+                    className="rounded-md border border-zinc-800 bg-white/[0.03] px-2.5 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-700 hover:bg-white/[0.07]"
                   >
                     Open Folder
                   </button>
                   <button
                     onClick={() => void pickWorkspaceFiles()}
-                    className="rounded-md bg-zinc-800 px-3 py-1 text-[12px] text-zinc-200 transition hover:bg-zinc-700"
+                    className="rounded-md border border-zinc-800 bg-white/[0.03] px-2.5 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-700 hover:bg-white/[0.07]"
                   >
                     Open File
                   </button>
                   <button
                     onClick={() => setIdeOpen(false)}
-                    className="rounded-md px-2 py-1 text-[12px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
+                    aria-label="Close editor panel"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-[13px] text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-100"
                   >
-                    Close ✕
+                    ✕
                   </button>
                 </div>
               </div>
@@ -1326,18 +1377,26 @@ ${AGENTIC_PROMPT}`,
                   />
                 </div>
               ) : (
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-sm text-zinc-500">
-                  <p>Open a folder or file to browse and edit.</p>
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/60 font-mono text-lg text-zinc-600">
+                    {"</>"}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-400">Open a workspace</p>
+                    <p className="mt-1 text-xs leading-5 text-zinc-600">
+                      Browse files, edit code, and watch the AI's changes land live.
+                    </p>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => void pickWorkspaceFolder()}
-                      className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-white"
+                      className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white shadow-[0_0_16px_rgba(14,165,233,0.3)] transition hover:bg-sky-400"
                     >
                       Open Folder
                     </button>
                     <button
                       onClick={() => void pickWorkspaceFiles()}
-                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800"
+                      className="rounded-lg border border-zinc-700 bg-white/[0.03] px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.07]"
                     >
                       Open File
                     </button>

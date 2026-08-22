@@ -1,10 +1,4 @@
-/**
- * Agentic filesystem tools.
- *
- * Tool-capable models receive native function/tool schemas (OpenAI, Anthropic,
- * Gemini, Ollama, OpenRouter, Groq). Models that only emit text still work via
- * XML / JSON fallbacks. Destructive operations require user approval.
- */
+
 import { invoke } from "@tauri-apps/api/core";
 import { debugLog } from "./debugLog";
 
