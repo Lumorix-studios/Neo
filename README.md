@@ -1,4 +1,4 @@
-# AgenticCoder
+# NEO
 
 A lightweight, privacy-focused AI chat application built with **React, TypeScript, and Tauri**, designed to provide a fast, responsive, and native experience across desktop and mobile platforms.
 
@@ -15,13 +15,13 @@ A lightweight, privacy-focused AI chat application built with **React, TypeScrip
 
 ## About
 
-AgenticCoder is a lightweight AI chat application focused on providing a fast, modern, and native-feeling experience across desktop and mobile platforms.
+NEO is a lightweight AI chat application focused on providing a fast, modern, and native-feeling experience across desktop and mobile platforms.
 
 The application allows users to communicate with configured AI models using their own API credentials and configuration. It is designed around privacy, performance, and local data ownership, without requiring users to depend on a separate AgenticCoder cloud service.
 
 **All application data is saved locally on the user's device.** This includes settings, configuration, and complete chat history.
 
-AgenticCoder does not collect, transmit, or store application data on external servers.
+NEO does not collect, transmit, or store application data on external servers.
 
 When a user sends a request to an AI provider, that request is sent to the endpoint configured by the user. Data sent to third-party AI providers is therefore subject to the policies and infrastructure of those providers.
 
@@ -33,7 +33,7 @@ Chat with configured AI models using your own API configuration and credentials.
 
 ### Local Storage & Chat History
 
-AgenticCoder keeps application data locally on the user's device.
+NEO keeps application data locally on the user's device.
 
 **All chat history is saved locally**, allowing conversations to persist between sessions without requiring an AgenticCoder account or external cloud storage.
 
@@ -51,13 +51,13 @@ The interface is designed to adapt to different screen sizes and form factors, a
 
 ### Modern UI
 
-AgenticCoder uses animated transitions and interactive components to create a responsive and polished interface.
+NEO uses animated transitions and interactive components to create a responsive and polished interface.
 
 The application incorporates components such as ClickSpark, PixelTransition, and smooth interface transitions to provide a more dynamic experience.
 
 ### Integrated Code Editor
 
-AgenticCoder includes a built-in code editor panel (toggle with `Ctrl+Shift+E`) that turns the app into a lightweight IDE alongside your chat.
+NEO includes a built-in code editor panel (toggle with `Ctrl+Shift+E`) that turns the app into a lightweight IDE alongside your chat.
 
 * **File explorer** — browse any folder on your machine as a workspace, or open individual files directly
 * **Multi-tab editing** — up to 10 simultaneously open tabs with LRU eviction, dirty-state indicators, and close-all support
@@ -91,11 +91,11 @@ Frequently used functionality can be accessed without navigating through multipl
 
 ### Information & Privacy
 
-AgenticCoder includes dedicated information and privacy views that provide users with information about the application and its approach to local data storage.
+NEO includes dedicated information and privacy views that provide users with information about the application and its approach to local data storage.
 
 ## Technology
 
-AgenticCoder uses a modern multi-platform technology stack combining web technologies with native application development.
+NEO uses a modern multi-platform technology stack combining web technologies with native application development.
 
 ### Core
 
@@ -128,7 +128,7 @@ CSS and Tailwind CSS are used throughout the interface, with Vite providing the 
 
 ## Architecture
 
-AgenticCoder combines a modern web frontend with a native application layer.
+NEO combines a modern web frontend with a native application layer.
 
 The frontend is built with React and TypeScript, providing a component-based architecture and a responsive user interface. Tauri connects the frontend to native functionality through Rust, providing a lightweight alternative to traditional Chromium-based desktop application frameworks.
 
@@ -151,7 +151,7 @@ This includes:
 
 When you use the integrated code editor and agentic file tools, AgenticCoder reads and writes files **only within the workspace folder you explicitly open** (or individual files you pick). These file operations happen entirely on your device through the local Tauri/Rust layer — no file contents are uploaded anywhere by us. File contents are only sent over the network when you ask the AI to work with them, in which case they go directly to the AI provider endpoint you configured.
 
-AgenticCoder does not collect, transmit, or store this application data on external servers.
+NEO does not collect, transmit, or store this application data on external servers.
 
 The application does not require an AgenticCoder cloud account to store conversations or configuration.
 
@@ -179,11 +179,11 @@ npm run tauri dev
 
 ## Project Status
 
-AgenticCoder is currently in **beta**.
+NEO is currently in **beta**.
 
 The project was started in **May 2026** and is under active and continuous development. Features, APIs, architecture, platform support, and the interface may change frequently as development progresses.
 
-AgenticCoder is intended to be **constantly developed and improved**, with ongoing work focused on new capabilities, performance improvements, additional platform support, interface refinement, and overall stability.
+NEO is intended to be **constantly developed and improved**, with ongoing work focused on new capabilities, performance improvements, additional platform support, interface refinement, and overall stability.
 
 Because the application is currently in beta, some functionality may be incomplete or subject to change between releases.
 
@@ -191,7 +191,7 @@ Feedback, bug reports, and suggestions are welcome and contribute to the continu
 
 ## Repository
 
-The AgenticCoder source code is available on GitHub:
+The source code is available on GitHub:
 
 https://github.com/Lumorix-studios/Neo
 
