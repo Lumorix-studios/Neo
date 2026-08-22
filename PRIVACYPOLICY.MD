@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last Updated:** August 7, 2026
+**Last Updated:** August 22, 2026
 
 ## AgenticCoder Privacy Policy
 
@@ -19,6 +19,16 @@ All application data, including settings and configuration, is saved **only on y
 Application preferences, configuration, and other locally stored data remain on your device.
 
 AgenticCoder does not automatically upload or synchronize this information to any servers operated by us.
+
+## Filesystem Access (Code Editor & Agentic File Tools)
+
+AgenticCoder includes an integrated code editor and agentic file tools that can read and write files on your device. This access is strictly scoped:
+
+* **You choose the scope.** The application only accesses the workspace folder you explicitly open, or the individual files you select through the file picker. It never scans or indexes arbitrary locations on your device.
+* **All file operations are local.** Reading, writing, editing, renaming, searching, and deleting files is performed entirely on your device through the local native (Tauri/Rust) layer. No file contents are uploaded to any servers operated by us.
+* **AI modifications require approval.** When the AI requests a destructive operation (writing, editing, deleting, creating, or renaming files), AgenticCoder asks for your explicit approval before executing it. Every tool call is displayed in an activity feed with its status and result.
+* **Live editor sync.** Open editor tabs re-read their files from disk so changes made by the AI — or by any other process on your device — appear in real time. This polling reads only files you have opened in the editor.
+* **AI provider visibility.** If you ask the AI to read or modify a file, the relevant file contents are sent directly to the AI provider endpoint you configured so the model can work with them. How those providers handle that data is governed by their own privacy policies and terms.
 
 ## No Warranty
 

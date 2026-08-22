@@ -55,11 +55,39 @@ AgenticCoder uses animated transitions and interactive components to create a re
 
 The application incorporates components such as ClickSpark, PixelTransition, and smooth interface transitions to provide a more dynamic experience.
 
+### Integrated Code Editor
+
+AgenticCoder includes a built-in code editor panel (toggle with `Ctrl+Shift+E`) that turns the app into a lightweight IDE alongside your chat.
+
+* **File explorer** — browse any folder on your machine as a workspace, or open individual files directly
+* **Multi-tab editing** — up to 10 simultaneously open tabs with LRU eviction, dirty-state indicators, and close-all support
+* **Syntax highlighting** — dependency-free highlighting for TypeScript, JavaScript, Python, Rust, Go, C/C++, C#, Java, Ruby, PHP, Swift, Kotlin, SQL, HTML/CSS, Markdown, YAML/TOML, Shell, and more
+* **Editor essentials** — line-number gutter, active-line highlight, breadcrumb path bar, cursor position in the status bar, smart Tab/Shift+Tab indentation, auto-indent on Enter, and native undo history
+* **Live external updates** — when the AI modifies a file (or anything else changes it on disk), open tabs update in real time without reopening the file
+
+### Agentic File Tools
+
+When a request involves files or folders, AgenticCoder enables agentic tool mode, giving the model access to filesystem tools:
+
+`read_file`, `read_file_range`, `write_file`, `append_file`, `replace_in_file`, `delete_file`, `delete_dir`, `create_dir`, `list_dir`, `search_files`, `rename`
+
+Destructive operations always require explicit user approval before they run, and every tool call is shown in an activity feed with its status and output. Files written by the AI stream straight into the integrated editor so changes are visible the moment they land.
+
 ### Command Palette
 
-A built-in command palette provides quick access to application functionality and keyboard-driven workflows.
+A built-in command palette provides quick access to application functionality and keyboard-driven workflows (`Ctrl+Shift+P`).
 
 Frequently used functionality can be accessed without navigating through multiple interface layers.
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+B` | Toggle AI settings sidebar |
+| `Ctrl+Shift+H` | Toggle chat history |
+| `Ctrl+Shift+P` | Open command palette |
+| `Ctrl+Shift+E` | Toggle code editor panel |
+| `Ctrl+S` | Save the active file in the editor |
 
 ### Information & Privacy
 
@@ -120,6 +148,8 @@ This includes:
 * Model configuration
 * System prompts
 * Locally persisted application data
+
+When you use the integrated code editor and agentic file tools, AgenticCoder reads and writes files **only within the workspace folder you explicitly open** (or individual files you pick). These file operations happen entirely on your device through the local Tauri/Rust layer — no file contents are uploaded anywhere by us. File contents are only sent over the network when you ask the AI to work with them, in which case they go directly to the AI provider endpoint you configured.
 
 AgenticCoder does not collect, transmit, or store this application data on external servers.
 
