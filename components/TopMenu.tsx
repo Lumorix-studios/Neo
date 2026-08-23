@@ -62,7 +62,7 @@ export default function TopMenu({
     },
     {label : "View",
       items : [
-        {label : "Open Terminal", action : null},
+        {label : "Open Terminal", action : onOpenTerminal, shortcut: "Ctrl+`"},
       ]
     },
     {label: "Settings",
