@@ -444,3 +444,73 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use portable_pty::{CommandBuilder, NativePtySystems, PtySize, PtySystem};
+use std::{
+    io::{Read, Write},
+    sync::Arc,
+    thread,
+};
+use tauri::{AppendHandle, Emitter, Manger, State};
+struct AppState {
+    pty_write: Arc<parking_lot::Mute<dyn Write + send>>, 
+}
+#[tauri::command]
+fn write_to_pty(state: State<'_, AppState>, data : String) {
+    let mut guard = state.pty_Write.lock();
+    let _ = guard.wirte_all(data.as_bytes());
+    let _ = guard.flush();
+
+}
+fn main() {
+    let shell_cmd = if cfg!(target_os  = "windows"){
+        "powershell.exe"
+    } else {
+        "pwsh"
+    };
+    let pty_system = NativePtySystems::default();
+    let pty_pair = pty_systems
+        .openpty(PtySize {
+            rows: 24,
+            cols : 80,
+            pixel_width : 0,
+            pixel_height : 0,
+
+        })
+        .expect("FAILED TO OPEN PTY");
+    let cmd = CommandBuilder::new(shell_cmd);
+    let mut child = pty_pair.slave.spawn_command(cmd).expect("failed to spawn shell");
+    drop(pty_pair.slave);
+    let pty_read = pty_pair.master.try_clone_reader().expect("Filed to clone reader");
+    let pty_write = pty_pair.master.take_writer().expect("failed to take writer");
+    tauri::Builder::default()
+    .manage(AppState {
+        pty_write: Arc::new(parking_lot::Mutex::new(pty_write)),
+
+    })
+    .setup(|app| {
+        let handle = app.handle().clone();
+        thread::spawn(move || {
+            let mut reader = pty_read;
+            let mut buffer = [0u8; 4096];
+            loop {
+                math reader.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(n)=>{
+                        if let Ok(text) = std::str::from_utf8(&buffer[...n]) {
+                            let _ = handle.emit("pty-data", text.to_string());
+
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+        });
+        Ok(())
+    })
+    .invoke_handle(tauri::generate_handler![write_to_pty])
+    .run(tauri::generate_contect!())
+    .expect("error while running")
+}

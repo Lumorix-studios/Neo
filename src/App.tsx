@@ -13,6 +13,7 @@ import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import SideRays from "../components/SideRays.tsx";
 import Markdown from "./components/Markdown";
+import Terminal from "../components/terminal";
 
 import "./editor.css";
 import { IoCube, IoSend } from "react-icons/io5";
@@ -65,11 +66,6 @@ interface StreamRoundResult {
   nativeCalls: ToolCall[];
 }
 
-/**
- * Cap tool results fed back to the model so a huge read_file / list_dir /
- * search_files output cannot blow the context window. Keeps the head and tail
- * with an explicit truncation marker in between.
- */
 const MAX_TOOL_OUTPUT = 8000;
 
 function truncateToolOutput(output: string): string {
@@ -146,6 +142,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState<number | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [onOpenTerminal, setOpenTerminal] = useState(false);
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
@@ -1022,10 +1019,12 @@ ${AGENTIC_PROMPT}`,
           onOpenChatSidebar={() => setSidebarOpen(true)}
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
           onOpenIde={() => setIdeOpen(true)}
+          onOpenTerminal={ () => setOpenTerminal(true) }
         />
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
         <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
+        <Terminal isOpen={onOpenTerminal} onClose={()=>setOpenTerminal(false)} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <ChatHistorySidebar
             isOpen={historySidebarOpen}

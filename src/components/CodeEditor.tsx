@@ -87,10 +87,7 @@ export default function CodeEditor({
     setCursor({ line: lines.length, col: lines[lines.length - 1].length + 1 });
   };
 
-  /**
-   * Replace the [from,to) range with `text`, preferring execCommand so the
-   * native undo stack survives. Falls back to a controlled-state edit.
-   */
+  
   const replaceRange = (text: string, from: number, to: number) => {
     const el = taRef.current;
     if (!el || !active) return;
@@ -169,8 +166,8 @@ export default function CodeEditor({
 
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0d0d10]">
-      {/* ── Tab strip ─────────────────────────────────────────────── */}
-      <div className="flex h-9 shrink-0 items-stretch border-b border-zinc-800/80 bg-[#111114]">
+      {/* ── Tab strip */}
+      <div className="flex h-9 shrink-0 items-stretch  bg-[#111114]">
         <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.length === 0 && (
             <div className="flex items-center px-3 text-[11.5px] text-zinc-600">
@@ -227,7 +224,7 @@ export default function CodeEditor({
         </div>
 
         {/* Tab actions */}
-        <div className="flex shrink-0 items-center gap-1.5 border-l border-zinc-800/60 px-2">
+        <div className="flex shrink-0 items-center gap-1.5  px-2">
           {tabs.length > 0 && onCloseAll && (
             <button
               type="button"
@@ -257,7 +254,7 @@ export default function CodeEditor({
       {active ? (
         <>
           {/* ── Breadcrumbs ─────────────────────────────────────── */}
-          <div className="flex h-7 shrink-0 items-center gap-1 overflow-hidden border-b border-zinc-800/50 px-3 text-[11px] text-zinc-600">
+          <div className="flex h-7 shrink-0 items-center gap-1 overflow-hidden  px-3 text-[11px] text-zinc-600">
             {visibleCrumbs.map((seg, i) => (
               <span key={`${seg}-${i}`} className="flex items-center gap-1 whitespace-nowrap">
                 {i > 0 && <span className="text-zinc-700">›</span>}
@@ -335,8 +332,8 @@ export default function CodeEditor({
             </div>
           </div>
 
-          {/* ── Status bar ──────────────────────────────────────── */}
-          <div className="flex h-6 shrink-0 items-center justify-between border-t border-zinc-800/80 bg-[#111114] px-3 text-[10.5px] text-zinc-500">
+          {/* ── Status bar  */}
+          <div className="flex h-6 shrink-0 items-center justify-between  bg-[#111114] px-3 text-[10.5px] text-zinc-500">
             <div className="flex items-center gap-3">
               <span>
                 Ln {cursor.line}, Col {cursor.col}
@@ -360,7 +357,7 @@ export default function CodeEditor({
           </div>
         </>
       ) : (
-        /* ── Empty state ───────────────────────────────────────── */
+        /* ── Empty state */
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/60 font-mono text-lg text-zinc-600">
             {"</>"}
