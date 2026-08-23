@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { Terminal as XTerm } from "xterm";
+import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "xterm/css/xterm.css";
@@ -7,13 +9,26 @@ import "xterm/css/xterm.css";
 interface TerminalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Workspace folder the shell should cd into when it opens. */
+  cwd?: string | null;
 }
 
-export default function Terminal({ isOpen, onClose }: TerminalProps) {
+/** Height bounds for the resizable terminal panel (px). */
+const MIN_HEIGHT = 120;
+const MAX_HEIGHT_RATIO = 0.85;
+
+export default function Terminal({ isOpen, onClose, cwd }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   // Controls the slide animation (kept mounted so the terminal persists)
   const [shown, setShown] = useState(false);
+  // Panel height in px (resizable by dragging the top edge).
+  const [height, setHeight] = useState(() =>
+    typeof window === "undefined" ? 400 : Math.round(window.innerHeight * 0.45)
+  );
+  // Active drag session for the resize handle.
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
   // Slide in / out when isOpen changes
   useEffect(() => {
@@ -37,9 +52,17 @@ export default function Terminal({ isOpen, onClose }: TerminalProps) {
         foreground: "#ffffff",
       },
     });
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
     term.open(containerRef.current);
+    try {
+      fitAddon.fit();
+    } catch {
+      /* container not measurable yet */
+    }
     term.writeln("Terminal ready.");
     xtermRef.current = term;
+    fitAddonRef.current = fitAddon;
 
     // Capture user keyboard input and invoke the Rust command
     const dataListener = term.onData((data) => {
@@ -60,7 +83,23 @@ export default function Terminal({ isOpen, onClose }: TerminalProps) {
       if (unlistenPty) unlistenPty();
       term.dispose();
       xtermRef.current = null;
+      fitAddonRef.current = null;
     };
+  }, []);
+
+  // Reflow the terminal grid whenever its container is resized.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      try {
+        fitAddonRef.current?.fit();
+      } catch {
+        /* container hidden / zero-sized */
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // Focus the terminal whenever it slides in
@@ -69,6 +108,42 @@ export default function Terminal({ isOpen, onClose }: TerminalProps) {
       xtermRef.current?.focus();
     }
   }, [isOpen, shown]);
+
+  // Keep the shell's working directory in sync with the workspace folder.
+  // The PTY hosts a long-lived interactive shell, so we issue a `cd` command
+  // whenever the terminal opens or the workspace changes while it's open.
+  const syncedCwdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !cwd || !xtermRef.current) return;
+    if (syncedCwdRef.current === cwd) return;
+    syncedCwdRef.current = cwd;
+    const normalized = cwd.replace(/[\\/]+$/, "");
+    invoke("write_to_pty", { data: `cd "${normalized}"\r` }).catch(() => {});
+  }, [isOpen, cwd]);
+
+  // --- Resize-handle drag logic ---
+  const onResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragRef.current = { startY: e.clientY, startHeight: height };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const max = Math.round(window.innerHeight * MAX_HEIGHT_RATIO);
+    const next = drag.startHeight - (e.clientY - drag.startY);
+    setHeight(Math.min(max, Math.max(MIN_HEIGHT, next)));
+  };
+
+  const onResizeEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    dragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+  };
 
   return (
     <div
@@ -79,6 +154,19 @@ export default function Terminal({ isOpen, onClose }: TerminalProps) {
       }}
       aria-hidden={!isOpen}
     >
+      {/* Drag handle: grab this edge to resize the terminal vertically */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        title="Drag to resize terminal"
+        onPointerDown={onResizeStart}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeEnd}
+        onPointerCancel={onResizeEnd}
+        className="group flex h-2 w-full cursor-row-resize items-center justify-center bg-[#111111] border-t border-white/10 select-none touch-none"
+      >
+        <span className="h-1 w-10 rounded-full bg-white/15 transition-colors group-hover:bg-white/35" />
+      </div>
       <div className="flex items-center justify-between px-4 py-2 bg-[#111111] border-t border-white/10">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold text-[#f1f1eb]">Terminal</span>
@@ -98,7 +186,7 @@ export default function Terminal({ isOpen, onClose }: TerminalProps) {
         ref={containerRef}
         style={{
           width: "100%",
-          height: "45vh",
+          height: `${height}px`,
           backgroundColor: "#1e1e1e",
           padding: "8px",
         }}

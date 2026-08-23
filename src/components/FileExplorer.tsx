@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FsEntry } from "../agentic";
-import { LangBadge } from "./CodeEditor";
 
 const SKIP = new Set([
   "node_modules",
@@ -26,8 +25,247 @@ interface NodeState {
   open?: boolean;
 }
 
+/* ===========================================================================
+ * File-type icons — compact, Material-Icon-Theme-style SVGs rendered inline
+ * so there are zero asset/network dependencies.
+ * ======================================================================== */
+
+const ICON_TEXT_PROPS = {
+  textAnchor: "middle" as const,
+  dominantBaseline: "central" as const,
+  fontFamily: "ui-sans-serif, system-ui, sans-serif",
+};
+
+/** Rounded-square language badge with a short label (TS / JS / GO …). */
+function Badge({ bg, fg, label }: { bg: string; fg: string; label: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+      <rect x="1.5" y="1.5" width="13" height="13" rx="3.5" fill={bg} />
+      <text x="8" y="8.6" fontSize={label.length > 2 ? 5.4 : 6.6} fontWeight="700" fill={fg} {...ICON_TEXT_PROPS}>
+        {label}
+      </text>
+    </svg>
+  );
+}
+
+const ReactIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <g stroke="#61dafb" strokeWidth="0.9" fill="none">
+      <ellipse cx="8" cy="8" rx="6.4" ry="2.6" />
+      <ellipse cx="8" cy="8" rx="6.4" ry="2.6" transform="rotate(60 8 8)" />
+      <ellipse cx="8" cy="8" rx="6.4" ry="2.6" transform="rotate(120 8 8)" />
+    </g>
+    <circle cx="8" cy="8" r="1.35" fill="#61dafb" />
+  </svg>
+);
+
+const JsonIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <text x="8" y="8.6" fontSize="9" fontWeight="700" fill="#cbcb41" {...ICON_TEXT_PROPS}>
+      {"{}"}
+    </text>
+  </svg>
+);
+
+const CssIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <path d="M2.5 1.75h11L12.4 13.2 8 14.5l-4.4-1.3z" fill="#663399" />
+    <text x="8" y="8.8" fontSize="7" fontWeight="700" fill="#fff" {...ICON_TEXT_PROPS}>
+      #
+    </text>
+  </svg>
+);
+
+const HtmlIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <path d="M2.5 1.75h11L12.4 13.2 8 14.5l-4.4-1.3z" fill="#e44d26" />
+    <text x="8" y="8.8" fontSize="6" fontWeight="700" fill="#fff" {...ICON_TEXT_PROPS}>
+      {"<>"}
+    </text>
+  </svg>
+);
+
+const PythonIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <path d="M8 1.5c-2.2 0-3.4.9-3.4 2.4V6H8v.8H3.2C1.8 6.8 1 8 1 9.6c0 1.7.8 2.9 2.2 2.9h1.4v-2c0-1.5 1.2-2.6 2.7-2.6h3.4c1.2 0 2.1-.9 2.1-2.1V3.9C12.8 2.4 10.2 1.5 8 1.5z" fill="#3776ab" />
+    <path d="M8 14.5c2.2 0 3.4-.9 3.4-2.4V10H8v-.8h4.8c1.4 0 2.2-1.2 2.2-2.8 0-1.7-.8-2.9-2.2-2.9h-1.4v2c0 1.5-1.2 2.6-2.7 2.6H5.3c-1.2 0-2.1.9-2.1 2.1v1.9c0 1.5 2.6 2.4 4.8 2.4z" fill="#ffd43b" />
+    <circle cx="6.1" cy="3.9" r=".65" fill="#fff" />
+    <circle cx="9.9" cy="12.1" r=".65" fill="#fff" />
+  </svg>
+);
+
+const RustIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <circle cx="8" cy="8" r="5.4" fill="none" stroke="#ce422b" strokeWidth="2.6" strokeDasharray="2.05 1.55" />
+    <circle cx="8" cy="8" r="2.1" fill="#ce422b" />
+  </svg>
+);
+
+const MarkdownIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <rect x="1" y="3" width="14" height="10" rx="2" fill="#519aba" />
+    <text x="5.4" y="8.8" fontSize="6.4" fontWeight="700" fill="#fff" {...ICON_TEXT_PROPS}>
+      M
+    </text>
+    <path d="M10.6 6v3.4m0 0L9.2 8m1.4 1.4L12 8" stroke="#fff" strokeWidth="1.1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const ShellIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <rect x="1.25" y="2.25" width="13.5" height="11.5" rx="2" fill="#1e2430" stroke="#3b4252" strokeWidth="0.8" />
+    <path d="M4 6l2 1.7L4 9.4" stroke="#89e051" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M7.6 9.8h4" stroke="#89e051" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const ImageIcon = ({ tint = "#7cb342" }: { tint?: string }) => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" fill="none" stroke={tint} strokeWidth="1.2" />
+    <circle cx="5.6" cy="6.1" r="1.15" fill="#ffd54f" />
+    <path d="M3.4 12l3.1-3.4 2.2 2.3 2.3-2.6 2.6 3.7z" fill={tint} opacity="0.85" />
+  </svg>
+);
+
+const GitIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <g stroke="#f4511e" strokeWidth="1.2" fill="none" strokeLinecap="round">
+      <path d="M4.5 5.5v5" />
+      <path d="M4.5 8c0-2 7-1 7-3" />
+    </g>
+    <circle cx="4.5" cy="4" r="1.6" fill="#f4511e" />
+    <circle cx="4.5" cy="12" r="1.6" fill="#f4511e" />
+    <circle cx="11.5" cy="3.6" r="1.6" fill="#f4511e" />
+  </svg>
+);
+
+const LockIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <rect x="3.25" y="7" width="9.5" height="7" rx="1.5" fill="#8d8d93" />
+    <path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" fill="none" stroke="#8d8d93" strokeWidth="1.4" />
+    <circle cx="8" cy="10.2" r="1" fill="#3f3f46" />
+  </svg>
+);
+
+const DatabaseIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <g fill="none" stroke="#dd6b20" strokeWidth="1.2">
+      <ellipse cx="8" cy="4" rx="5.5" ry="2.1" />
+      <path d="M2.5 4v8c0 1.16 2.46 2.1 5.5 2.1s5.5-.94 5.5-2.1V4" />
+      <path d="M2.5 8c0 1.16 2.46 2.1 5.5 2.1S13.5 9.16 13.5 8" />
+    </g>
+  </svg>
+);
+
+const RubyIcon = () => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <path d="M4.5 2.5h7L14 6l-6 7.5L2 6z" fill="#cc342d" />
+    <path d="M4.5 2.5L8 6l3.5-3.5M2 6h12M8 6l-2 7.5M8 6l2 7.5" stroke="#fff" strokeWidth="0.55" opacity="0.55" fill="none" />
+  </svg>
+);
+
+/** Document sheet with folded corner + optional accent lines. */
+const DocIcon = ({ tint = "#8d8d93", lines = true }: { tint?: string; lines?: boolean }) => (
+  <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+    <path d="M4 1.75h5.2L12.5 5v8.25a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-10.5a1 1 0 0 1 1-1z" fill="none" stroke={tint} strokeWidth="1.15" strokeLinejoin="round" />
+    <path d="M9.2 1.75V5h3.3" fill="none" stroke={tint} strokeWidth="1.15" strokeLinejoin="round" />
+    {lines && (
+      <g stroke={tint} strokeWidth="1" strokeLinecap="round" opacity="0.7">
+        <path d="M5.2 8h5.6M5.2 10.4h5.6M5.2 12.4h3.4" />
+      </g>
+    )}
+  </svg>
+);
+
+function FileIcon({ name }: { name: string }) {
+  const lower = name.toLowerCase();
+  const ext = lower.includes(".") ? lower.split(".").pop()! : "";
+
+  if (lower === ".gitignore" || lower === ".gitattributes" || lower === ".gitmodules") return <GitIcon />;
+  if (lower.endsWith(".lock")) return <LockIcon />;
+  if (lower.startsWith("dockerfile")) return (
+    <Badge bg="#2496ed" fg="#ffffff" label="DK" />
+  );
+
+  switch (ext) {
+    case "ts": case "mts": return <Badge bg="#3178c6" fg="#ffffff" label="TS" />;
+    case "tsx": case "jsx": return <ReactIcon />;
+    case "js": case "mjs": case "cjs": return <Badge bg="#f7df1e" fg="#111111" label="JS" />;
+    case "json": case "jsonc": return <JsonIcon />;
+    case "css": case "scss": case "less": return <CssIcon />;
+    case "html": case "htm": case "xml": return <HtmlIcon />;
+    case "svg": return <ImageIcon tint="#ffb74d" />;
+    case "py": case "pyw": return <PythonIcon />;
+    case "rs": return <RustIcon />;
+    case "md": case "markdown": return <MarkdownIcon />;
+    case "sh": case "bash": case "zsh": case "ps1": return <ShellIcon />;
+    case "png": case "jpg": case "jpeg": case "gif": case "webp": case "bmp": case "ico": case "avif":
+      return <ImageIcon />;
+    case "sql": return <DatabaseIcon />;
+    case "go": return <Badge bg="#00add8" fg="#111111" label="GO" />;
+    case "java": return <Badge bg="#b07219" fg="#ffffff" label="JV" />;
+    case "c": case "h": return <Badge bg="#5c6bc0" fg="#ffffff" label="C" />;
+    case "cpp": case "cc": case "hpp": return <Badge bg="#f34b7d" fg="#ffffff" label="C+" />;
+    case "cs": return <Badge bg="#178600" fg="#ffffff" label="C#" />;
+    case "rb": return <RubyIcon />;
+    case "php": return <Badge bg="#4f5d95" fg="#ffffff" label="PH" />;
+    case "swift": return <Badge bg="#f05138" fg="#ffffff" label="SW" />;
+    case "kt": case "kts": return <Badge bg="#a97bff" fg="#111111" label="KT" />;
+    case "yaml": case "yml": return <DocIcon tint="#ef5350" />;
+    case "toml": return <DocIcon tint="#ff7043" />;
+    case "txt": case "log": return <DocIcon />;
+    default: return <DocIcon />;
+  }
+}
+
+/* --- Chrome icons -------------------------------------------------------- */
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={`h-3 w-3 shrink-0 text-zinc-500 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+function FolderIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={`h-4 w-4 shrink-0 transition-colors duration-150 ${open ? "text-sky-400" : "text-zinc-500 group-hover:text-zinc-400"}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {open ? (
+        <>
+          <path d="M1.5 12.5V3.75A.75.75 0 0 1 2.25 3h3l1.5 1.75h5.25a.75.75 0 0 1 .75.75V7" />
+          <path d="M1.5 12.5l1.9-4.55a.75.75 0 0 1 .69-.45h9.36a.5.5 0 0 1 .46.7L12.2 12.5H1.5z" />
+        </>
+      ) : (
+        <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
+      )}
+    </svg>
+  );
+}
+
+/* ===========================================================================
+ * Component
+ * ======================================================================== */
+
 export default function FileExplorer({ root, activePath, refreshKey, onOpenFile }: FileExplorerProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({});
+  const [query, setQuery] = useState("");
 
   const loadDir = useCallback(async (path: string) => {
     try {
@@ -66,16 +304,58 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
       return;
     }
     const cur = nodes[entry.path];
-    if (cur?.open) {
+    if (cur?.open && !query) {
       setNodes((prev) => ({ ...prev, [entry.path]: { ...prev[entry.path], open: false } }));
       return;
     }
     void loadDir(entry.path);
   };
 
-  const renderList = (path: string, depth: number) => {
-    const entries = nodes[path]?.entries ?? [];
-    return entries.map((e) => {
+  const sortEntries = (list: FsEntry[]) =>
+    [...list].sort((a, b) => {
+      if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
+  /** True when an entry (or any loaded descendant) matches the filter. */
+  const matches = useCallback(
+    (entry: FsEntry): boolean => {
+      if (!query) return true;
+      const q = query.toLowerCase();
+      if (entry.name.toLowerCase().includes(q)) return true;
+      if (!entry.is_dir) return false;
+      const kids = nodes[entry.path]?.entries ?? [];
+      return kids.some(matches);
+    },
+    [query, nodes]
+  );
+
+  const collapseAll = () => {
+    setNodes((prev) => {
+      const next: Record<string, NodeState> = {};
+      for (const [k, v] of Object.entries(prev)) next[k] = { ...v, open: k === root };
+      return next;
+    });
+  };
+
+  const renderList = (path: string, depth: number): ReactNode => {
+    const raw = path === root ? nodes[root]?.entries ?? [] : nodes[path]?.entries ?? [];
+    const list = sortEntries(raw).filter(matches);
+
+    if (path === root && list.length === 0) {
+      return (
+        <div className="flex flex-col items-center gap-1 px-4 py-8 text-center">
+          <svg viewBox="0 0 16 16" className="h-6 w-6 text-zinc-700" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
+          </svg>
+          <p className="text-[11px] leading-5 text-zinc-600">
+            {query ? `No files match “${query}”` : "This folder is empty."}
+          </p>
+        </div>
+      );
+    }
+
+    return list.map((e) => {
       const isOpen = !!nodes[e.path]?.open;
       const active = activePath === e.path;
       return (
@@ -83,19 +363,31 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
           <button
             type="button"
             onClick={() => toggle(e)}
-            className={`flex w-full items-center gap-1.5 truncate px-2 py-[3px] text-left text-[12px] ${
-              active ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200"
+            className={`group relative mx-1 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md py-[4.5px] pr-2 text-left text-[12px] transition-colors duration-100 ${
+              active
+                ? "bg-sky-500/[0.12] text-zinc-100"
+                : e.is_dir
+                  ? "text-zinc-300 hover:bg-white/[0.05]"
+                  : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
             }`}
-            style={{ paddingLeft: 8 + depth * 12 }}
+            style={{ paddingLeft: 6 }}
             title={e.path}
           >
-            <span className="flex w-3 shrink-0 items-center justify-center text-[10px] text-zinc-500">
-              {e.is_dir ? (isOpen ? "▾" : ">") : null}
+            {active && (
+              <span className="absolute -left-1 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r-full bg-sky-400" />
+            )}
+            <span className="flex w-3 shrink-0 items-center justify-center">
+              {e.is_dir && <ChevronIcon open={isOpen} />}
             </span>
-            {!e.is_dir && <LangBadge path={e.path} />}
-            <span className="truncate">{e.name}</span>
+            {e.is_dir ? <FolderIcon open={isOpen} /> : <FileIcon name={e.name} />}
+            <span className={`truncate ${active ? "font-medium" : ""}`}>{e.name}</span>
           </button>
-          {e.is_dir && isOpen ? renderList(e.path, depth + 1) : null}
+          {/* Children sit inside an indented container with a subtle guide line */}
+          {e.is_dir && isOpen && (
+            <div className="relative ml-[17px] border-l border-white/[0.07] pl-0">
+              {renderList(e.path, depth + 1)}
+            </div>
+          )}
         </div>
       );
     });
@@ -104,11 +396,84 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
   const name = root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? root;
 
   return (
-    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950/80">
-      <div className="truncate border-b border-zinc-800 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-        {name}
+    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-zinc-800/80 bg-[#0d0d11]">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-zinc-800/80">
+        <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            Explorer
+          </span>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={collapseAll}
+              title="Collapse folders"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h10M5.5 3.5L3 6l2.5 2.5M13 10H3M10.5 7.5L13 10l-2.5 2.5" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadDir(root)}
+              title="Refresh"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.6h-2.6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Workspace name */}
+        <div className="flex items-center gap-1.5 px-3 pb-2">
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-sky-400/80" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
+          </svg>
+          <span className="truncate text-[12px] font-medium text-zinc-200" title={root}>
+            {name}
+          </span>
+        </div>
+
+        {/* Filter box */}
+        <div className="relative px-2.5 pb-2.5">
+          <svg
+            viewBox="0 0 16 16"
+            className="pointer-events-none absolute left-[18px] top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-600"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          >
+            <circle cx="7" cy="7" r="4.4" />
+            <path d="M10.4 10.4L13.5 13.5" />
+          </svg>
+          <input
+            value={query}
+            onChange={(ev) => setQuery(ev.target.value)}
+            placeholder="Filter files…"
+            spellCheck={false}
+            className="w-full rounded-lg border border-zinc-800/80 bg-black/30 py-1.5 pl-7 pr-2.5 text-[11.5px] text-zinc-200 placeholder-zinc-600 outline-none transition focus:border-sky-500/50 focus:bg-black/40 focus:ring-2 focus:ring-sky-500/10"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              title="Clear filter"
+              className="absolute right-[18px] top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-zinc-500 transition hover:text-zinc-200"
+            >
+              <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">{renderList(root, 0)}</div>
+
+      {/* ── Tree ───────────────────────────────────────────────────────── */}
+      <div className="min-h-0 flex-1 overflow-y-auto py-1.5">{renderList(root, 0)}</div>
     </aside>
   );
 }

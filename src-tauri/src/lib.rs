@@ -329,9 +329,7 @@ fn fs_list_dir(path: String) -> Result<Vec<FsEntry>, String> {
     Ok(out)
 }
 
-/// Recursively search a directory. When `content` is true the pattern is
-/// matched against file contents, otherwise against file paths. Matching is a
-/// case-insensitive substring test.
+
 #[tauri::command]
 fn fs_search_files(path: String, pattern: String, content: Option<bool>) -> Result<Vec<String>, String> {
     fn walk(dir: &Path, pattern: &str, in_content: bool, out: &mut Vec<String>) -> Result<(), String> {

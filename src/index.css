@@ -1,5 +1,42 @@
 @import "tailwindcss";
+
 body {
-    margin : 0;
+  margin: 0;
 }
 
+/* ---------------------------------------------------------------------------
+ * Global slim scrollbars — applied to every scrollable surface so nothing
+ * falls back to the chunky OS-default bars. Thumb is nearly invisible at
+ * rest and only becomes visible while scrolling / hovering, VS Code style.
+ * ------------------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(113, 113, 122, 0.35) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.3);
+  border-radius: 999px;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.45);
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background: rgba(161, 161, 170, 0.6);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

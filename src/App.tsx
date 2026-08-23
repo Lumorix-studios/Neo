@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -14,7 +15,6 @@ import Tab2 from "../components/Tab2.tsx";
 import SideRays from "../components/SideRays.tsx";
 import Markdown from "./components/Markdown";
 import Terminal from "../components/terminal";
-
 import "./editor.css";
 import { IoCube, IoSend } from "react-icons/io5";
 import type { AISettings, ChatSession, Message } from "./types";
@@ -46,6 +46,7 @@ import {
 import type { AgenticActivity as AgenticActivityType } from "./agentic";
 import FileExplorer from "./components/FileExplorer";
 import CodeEditor from "./components/CodeEditor";
+import IdeMenuBar from "./components/IdeMenuBar";
 import type { EditorTab } from "./components/CodeEditor";
 import {
   ThumbsUpIcon,
@@ -107,8 +108,6 @@ const sendFeedback = (feedback: "good" | "bad" | "report") => {
 function sanitizeHistory(msgs: Message[]): Message[] {
   const out: Message[] = [];
   for (const m of msgs) {
-    // Keep assistant messages that carry native tool calls even when their
-    // text content is empty — dropping them orphans the tool-result messages.
     const hasNativeCalls = !!(m.toolCalls && m.toolCalls.length > 0);
     if (m.role === "assistant" && m.content.trim().length === 0 && !hasNativeCalls) continue;
     const last = out[out.length - 1];
@@ -178,6 +177,9 @@ export default function App() {
 
   // --- IDE / Code editor state ---
   const [ideOpen, setIdeOpen] = useState(false);
+  // Resizable width of the IDE panel (px), adjusted by dragging its left edge.
+  const [ideWidth, setIdeWidth] = useState(520);
+  const ideDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
@@ -463,6 +465,33 @@ export default function App() {
   const closeAllEditorTabs = () => {
     setEditorTabs([]);
     setActiveEditorPath(null);
+  };
+
+  // --- IDE panel resize-handle drag logic ---
+  const MIN_IDE_WIDTH = 280;
+
+  const onIdeResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    ideDragRef.current = { startX: e.clientX, startWidth: ideWidth };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onIdeResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = ideDragRef.current;
+    if (!drag) return;
+    // Keep room for the chat pane and settings sidebar on the right.
+    const max = Math.max(MIN_IDE_WIDTH + 120, window.innerWidth - 360);
+    const next = drag.startWidth - (e.clientX - drag.startX);
+    setIdeWidth(Math.min(max, Math.max(MIN_IDE_WIDTH, next)));
+  };
+
+  const onIdeResizeEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    ideDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
   };
 
   /** Close an editor tab, falling back to a neighbouring tab. */
@@ -1024,7 +1053,7 @@ ${AGENTIC_PROMPT}`,
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
         <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
-        <Terminal isOpen={onOpenTerminal} onClose={()=>setOpenTerminal(false)} />
+        <Terminal isOpen={onOpenTerminal} onClose={()=>setOpenTerminal(false)} cwd={workspaceRoot} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <ChatHistorySidebar
             isOpen={historySidebarOpen}
@@ -1075,7 +1104,7 @@ ${AGENTIC_PROMPT}`,
                 speed={3.5}
                 rayColor1="#EAB308"
                 rayColor2="#96c8ff"
-                intensity={3}
+                intensity={1}
                 spread={19}
                 origin="top-right"
                 tilt={0}
@@ -1318,12 +1347,34 @@ ${AGENTIC_PROMPT}`,
           </main>
           {/* Integrated IDE panel: file explorer + code editor beside the chat */}
           {ideOpen && (
-            <section className="flex min-w-0 flex-1 flex-col border-l border-zinc-800/80 bg-[#0b0b0e]">
+            <>
+            {/* Drag handle: grab this edge to resize the IDE panel horizontally */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="Drag to resize editor panel"
+              onPointerDown={onIdeResizeStart}
+              onPointerMove={onIdeResizeMove}
+              onPointerUp={onIdeResizeEnd}
+              onPointerCancel={onIdeResizeEnd}
+              className="group w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-sky-500/50 select-none touch-none"
+            />
+            <section
+              style={{ width: `${ideWidth}px` }}
+              className="flex min-w-0 shrink-0 flex-col border-l border-zinc-800/80 bg-[#0b0b0e]"
+            >
               <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-[#111114] px-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
-                    Workspace
-                  </span>
+                {/* VS Code-style menu bar: File / View dropdowns */}
+                <IdeMenuBar
+                  hasWorkspace={!!workspaceRoot}
+                  terminalOpen={onOpenTerminal}
+                  onOpenFolder={() => void pickWorkspaceFolder()}
+                  onOpenFiles={() => void pickWorkspaceFiles()}
+                  onCloseAllTabs={closeAllEditorTabs}
+                  onToggleTerminal={() => setOpenTerminal((v) => !v)}
+                  onClosePanel={() => setIdeOpen(false)}
+                />
+                <div className="flex shrink-0 items-center gap-1.5">
                   {workspaceRoot && (
                     <span
                       className="max-w-[220px] truncate rounded bg-white/[0.05] px-1.5 py-0.5 text-[10.5px] text-zinc-500"
@@ -1332,20 +1383,6 @@ ${AGENTIC_PROMPT}`,
                       {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
                     </span>
                   )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <button
-                    onClick={() => void pickWorkspaceFolder()}
-                    className="rounded-md border border-zinc-800 bg-white/[0.03] px-2.5 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-700 hover:bg-white/[0.07]"
-                  >
-                    Open Folder
-                  </button>
-                  <button
-                    onClick={() => void pickWorkspaceFiles()}
-                    className="rounded-md border border-zinc-800 bg-white/[0.03] px-2.5 py-1 text-[11.5px] text-zinc-300 transition hover:border-zinc-700 hover:bg-white/[0.07]"
-                  >
-                    Open File
-                  </button>
                   <button
                     onClick={() => setIdeOpen(false)}
                     aria-label="Close editor panel"
@@ -1403,6 +1440,7 @@ ${AGENTIC_PROMPT}`,
                 </div>
               )}
             </section>
+            </>
           )}
           <aside
             className={`shrink-0 overflow-hidden border-l border-zinc-800/60 bg-[#0c0c0f] transition-[width] duration-200 ease-out ${
