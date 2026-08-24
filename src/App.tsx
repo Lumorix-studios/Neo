@@ -56,6 +56,8 @@ import FileExplorer from "./components/FileExplorer";
 import CodeEditor from "./components/CodeEditor";
 import IdeMenuBar from "./components/IdeMenuBar";
 import type { EditorTab } from "./components/CodeEditor";
+import GitPanel from "./components/GitPanel";
+import { IoGitCommit } from "react-icons/io5";
 
 type JsonDict = Record<string, unknown>;
 
@@ -260,6 +262,10 @@ export default function App() {
 
   // --- IDE / Code editor state ---
   const [ideOpen, setIdeOpen] = useState(false);
+  // Popup menu on the rail folder button (Open Folder… / Open Files…).
+  const [railMenuOpen, setRailMenuOpen] = useState(false);
+  // Source-control side panel toggled from the rail's Git button.
+  const [gitPanelOpen, setGitPanelOpen] = useState(false);
   // Resizable width of the IDE panel (px), adjusted by dragging its left edge.
   const [ideWidth, setIdeWidth] = useState(520);
   const ideDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -297,6 +303,10 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
         e.preventDefault();
         setIdeOpen((v) => !v);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        setGitPanelOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", handleKey);
@@ -509,6 +519,8 @@ export default function App() {
         setEditorTabs([]);
         setActiveEditorPath(null);
         setExplorerRefreshKey((k) => k + 1);
+        // Make sure the picked folder is immediately visible in the editor.
+        setIdeOpen(true);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -522,6 +534,8 @@ export default function App() {
       const files = await open({ multiple: true, directory: false });
       if (!files) return;
       const list = Array.isArray(files) ? files : [files];
+      // Show the editor panel so the picked files are visible right away.
+      setIdeOpen(true);
       for (const f of list) {
         await openFileInEditor(f);
       }
@@ -627,13 +641,7 @@ export default function App() {
   const editorTabsRef = useRef<EditorTab[]>([]);
   editorTabsRef.current = editorTabs;
 
-  /**
-   * Re-read one open tab's file from disk and adopt external changes.
-   * Clean tabs follow the file on disk, so edits made by the AI's tools
-   * (or any other process) appear in the editor live. Tabs with unsaved
-   * user edits are left untouched. Tabs whose file disappeared are closed
-   * unless they hold unsaved work.
-   */
+  
   const syncTabWithDisk = async (path: string) => {
     let disk: string | null = null;
     try {
@@ -792,9 +800,6 @@ ${promptSuffix}` : ""}`,
     const reader = bodyStream.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
-    // Round-local accumulation. Text from earlier rounds is already committed
-    // to streamedContentRef; folding it back in here would duplicate it on
-    // screen and in the transcript once tool rounds start looping.
     let round = "";
     let base = streamedContentRef.current;
     const nativeAcc: NativeToolAcc[] = [];
@@ -829,10 +834,7 @@ ${promptSuffix}` : ""}`,
             const delta = s.extractDelta(json);
             if (delta) {
               round += delta;
-              // Show only non-tool text as it streams. stripToolCalls also
-              // removes incomplete trailing markup (tags AND partial bare
-              // JSON), and stabilizeStreamingMarkdown closes dangling code
-              // fences so the markdown layout never collapses mid-stream.
+              
               const shown = stabilizeStreamingMarkdown(stripToolCalls(base + round));
               streamedContentRef.current = shown;
               setLastAssistantContent(shown);
@@ -846,10 +848,6 @@ ${promptSuffix}` : ""}`,
       reader.releaseLock();
     }
 
-    // Only fall back to a non-streaming request when this round produced
-    // neither visible text nor native tool calls. Providers that stream
-    // tool calls without emitting text deltas would otherwise be queried a
-    // second time here, duplicating every tool call.
     if (!round && nativeAcc.length === 0 && !signal.aborted) {
       try {
         const nonStreamBody = {
@@ -1042,9 +1040,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               }
             : {}),
         });
-        // Merge native function-calls with text-based (<tool_call>) calls,
-        // dropping unknown tool names and exact duplicates — models sometimes
-        // emit the same call in both forms, which would execute it twice.
+       
         const calls: { call: ToolCall; native: boolean; key: string }[] = [];
         const seenKeys = new Set<string>();
         for (const { call, native } of [
@@ -1066,11 +1062,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           break;
         }
 
-        // Execute tools. Read-only tools run concurrently (the biggest speedup
-        // when a model batches several reads); mutating tools run one at a
-        // time so approvals stay sequential and writes apply in order.
-        // Results are routed back using each protocol:
-        // native calls -> role:"tool" messages, text calls -> <tool_result>.
+        
         const activityIds = new Map<string, string>();
         const planned: AgenticActivityType[] = calls.map(({ call }) => {
           const id = activityId();
@@ -1388,24 +1380,52 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Activity bar — VS Code-style icon rail */}
           <nav className="flex w-11 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[#131313] py-2">
-            <div className="flex w-full flex-col items-center gap-1">
-              <RailButton active={ideOpen} title="Explorer (Ctrl+Shift+E)" onClick={() => setIdeOpen((v) => !v)}>
+            <div className="relative flex w-full flex-col items-center gap-1">
+              <RailButton active={ideOpen} title="Open editor / workspace (Ctrl+Shift+E)" onClick={() => setRailMenuOpen((v) => !v)}>
                 <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
                   <path d="M1.5 7h13" opacity="0.5" />
                 </svg>
               </RailButton>
-              <RailButton active={historySidebarOpen} title="Chats (Ctrl+Shift+H)" onClick={() => setHistorySidebarOpen((v) => !v)}>
-                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 10.5a1.5 1.5 0 01-1.5 1.5H5l-3 3V3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7z" />
-                </svg>
+              {/* Popup for the native file dialog: pick a workspace folder or loose files. */}
+              {railMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setRailMenuOpen(false)} />
+                  <div className="absolute left-full top-0 z-50 ml-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRailMenuOpen(false);
+                        void pickWorkspaceFolder();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
+                      </svg>
+                      Open Folder…
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRailMenuOpen(false);
+                        void pickWorkspaceFiles();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 1.75h5L12.5 5v8.75a1 1 0 01-1 1h-7.5a1 1 0 01-1-1V2.75a1 1 0 011-1z" />
+                        <path d="M9 1.75V5h3.5" opacity="0.6" />
+                      </svg>
+                      Open Files…
+                    </button>
+                  </div>
+                </>
+              )}
+              <RailButton active={gitPanelOpen} title="Git tools (Ctrl+Shift+G)" onClick={() => setGitPanelOpen((v) => !v)}>
+                <IoGitCommit size={15}/>
               </RailButton>
-              <RailButton active={sidebarOpen} title="Settings (Ctrl+B)" onClick={() => setSidebarOpen((v) => !v)}>
-                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="8" cy="8" r="2" />
-                  <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" />
-                </svg>
-              </RailButton>
+
             </div>
             <div className="w-full">
               <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
@@ -1416,6 +1436,33 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               </RailButton>
             </div>
           </nav>
+          {/* Source-control panel (git status / commit / pull / push). */}
+          {gitPanelOpen && workspaceRoot && (
+            <GitPanel
+              root={workspaceRoot}
+              onClose={() => setGitPanelOpen(false)}
+              onOpenFile={(p) =>
+                void openFileInEditor(
+                  `${workspaceRoot.replace(/[\\/]+$/, "")}/${p}`
+                )
+              }
+            />
+          )}
+          {gitPanelOpen && !workspaceRoot && (
+            <aside className="flex h-full w-64 shrink-0 flex-col items-center justify-center gap-3 border-r border-white/[0.07] bg-[#131313] px-4 text-center">
+              <p className="text-[12px] font-medium text-[#d4d4d4]">No workspace open</p>
+              <p className="text-[11px] leading-5 text-[#6b6b6b]">
+                Open a folder to use git tools.
+              </p>
+              <button
+                type="button"
+                onClick={() => void pickWorkspaceFolder()}
+                className="rounded-md bg-[#ececec] px-3 py-1.5 text-[12px] font-medium text-[#111111] transition hover:bg-white"
+              >
+                Open Folder
+              </button>
+            </aside>
+          )}
           <ChatHistorySidebar
             isOpen={historySidebarOpen}
             onClose={() => setHistorySidebarOpen(false)}
@@ -1804,6 +1851,25 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               category: "View",
               shortcut: "Ctrl+Shift+E",
               action: () => setIdeOpen((v) => !v),
+            },
+            {
+              id: "toggle-git-panel",
+              label: "Toggle Git Panel",
+              category: "View",
+              shortcut: "Ctrl+Shift+G",
+              action: () => setGitPanelOpen((v) => !v),
+            },
+            {
+              id: "open-workspace-folder",
+              label: "Open Folder…",
+              category: "File",
+              action: () => void pickWorkspaceFolder(),
+            },
+            {
+              id: "open-files",
+              label: "Open Files…",
+              category: "File",
+              action: () => void pickWorkspaceFiles(),
             },
           ]}
         />

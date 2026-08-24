@@ -5,6 +5,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "xterm/css/xterm.css";
+import { IoTerminal } from "react-icons/io5";
+import { GrTerminal } from "react-icons/gr";
 
 interface TerminalProps {
   isOpen: boolean;
@@ -63,7 +65,7 @@ export default function Terminal({ isOpen, onClose, cwd }: TerminalProps) {
     } catch {
       /* container not measurable yet */
     }
-    term.writeln("Terminal ready.");
+    term.writeln("Terminal initialized");
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
@@ -111,10 +113,6 @@ export default function Terminal({ isOpen, onClose, cwd }: TerminalProps) {
       xtermRef.current?.focus();
     }
   }, [isOpen, shown]);
-
-  // Keep the shell's working directory in sync with the workspace folder.
-  // The PTY hosts a long-lived interactive shell, so we issue a `cd` command
-  // whenever the terminal opens or the workspace changes while it's open.
   const syncedCwdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isOpen || !cwd || !xtermRef.current) return;
@@ -166,15 +164,40 @@ export default function Terminal({ isOpen, onClose, cwd }: TerminalProps) {
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
-        className="group flex h-2 w-full cursor-row-resize items-center justify-center bg-[#161616] border-t border-white/[0.07] select-none touch-none"
+        className="group flex h-2 w-full cursor-row-resize items-center justify-center bg-[#131313] select-none touch-none"
       >
         <span className="h-1 w-10 rounded-full bg-white/15 transition-colors group-hover:bg-white/35" />
       </div>
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#161616]">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#131313]">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">Terminal</span>
-          <span className="text-[10.5px] text-[#555555]">powershell</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]"><IoTerminal size = {19}/></span>
+          <span className = "text-[10.5px] text-[#55555]">
+            <button className =" flex h-6 w-13 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text=[#ececec]">
+              Problems
+              </button>
+              </span>
+          <span className = "text-[10.5px] text-[#55555]">
+            <button 
+            aria-label = "coming-soon"
+            className = " flex h-6 w-13 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text=[#ececec]">
+              Output
+              </button>
+              </span>
+          <span className = "text-[10.5px] text-[#55555]">
+            <button 
+             aria-label = "coming-soon"
+            className = " flex h-6 w-13 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text=[#ececec]">
+            Ports
+              </button>
+              </span>
+          <span className="text-[10.5px] text-[#555555]"></span>
         </div>
+            <button 
+            className = " flex h-6 w-13 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text=[#ececec] "
+            aria-label = "coming-soon"
+            >
+            <GrTerminal size = {14}/>
+              </button>
         <button
           onClick={onClose}
           className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
