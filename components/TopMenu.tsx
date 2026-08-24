@@ -1,5 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useErrorHandler } from "../src/errorContext";
 
 interface TopMenuProps {
@@ -9,14 +9,16 @@ interface TopMenuProps {
   onOpenChatSidebar: () => void;
   onOpenChatHistory: () => void;
   onOpenIde: () => void;
-  onOpenTerminal: ()=> void;
+  onOpenTerminal: () => void;
+  /** Optional right-aligned slot (model pill, actions) rendered in the title bar. */
+  right?: ReactNode;
 }
 
 interface MenuDef {
   label: string;
   items: { label: string; action: () => void; shortcut?: string; disabled?: boolean }[];
-  
 }
+
 export default function TopMenu({
   onOpenInfoPanel,
   onOpenPrivacyPolicy,
@@ -25,62 +27,47 @@ export default function TopMenu({
   onOpenChatHistory,
   onOpenIde,
   onOpenTerminal,
+  right,
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { reportError } = useErrorHandler();
-  const onclickDoc =
-    async () => {
-      try {
-        await openUrl("https://github.com/Lumorix-studios/Neo");
-      } catch (error) {
-        reportError(error);
-      }
-    }
 
-  {/*Its self explanatory lol */ }
+  const openDocs = async () => {
+    try {
+      await openUrl("https://github.com/Lumorix-studios/Neo");
+    } catch (error) {
+      reportError(error);
+    }
+  };
+
   const menus: MenuDef[] = [
     {
-      label: "ProjectNeo",
-      items:[
-        {
-          label: "Documentation", action: onclickDoc
-        },
-    ],
-    },
-    // {
-    //   label: "Chat",
-    //   items: [
-    //     { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
-    //   ],
-    // },
-    {
-      label: "IDE",
+      label: "File",
       items: [
-        { label: "Open", action: onOpenIde, shortcut: "Ctrl+Shift+E" },
-      ],
-    },
-    {label : "View",
-      items : [
-        {label : "Open Terminal", action : onOpenTerminal, shortcut: "Ctrl+`"},
-      ]
-    },
-    {label: "Settings",
-      items: [
-        {label : "Api Config", action : onOpenChatSidebar},
-        { label: "Information", action: onOpenInfoPanel },
-        { label: "Privacy policies", action: onOpenPrivacyPolicy},
-        { label: "Chat", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" }
+        { label: "New Chat", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
+        { label: "Open Editor", action: onOpenIde, shortcut: "Ctrl+Shift+E" },
+        { label: "Open Terminal", action: onOpenTerminal, shortcut: "Ctrl+`" },
       ],
     },
     {
-      label: "feedback",
+      label: "View",
       items: [
-        { label : "Rate us", action: onOpenTab2 }
+        { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
+        { label: "Settings", action: onOpenChatSidebar, shortcut: "Ctrl+B" },
       ],
-  },
+    },
+    {
+      label: "Help",
+      items: [
+        { label: "Documentation", action: openDocs },
+        { label: "About & Contact", action: onOpenInfoPanel },
+        { label: "Privacy Policy", action: onOpenPrivacyPolicy },
+        { label: "Rate Neo", action: onOpenTab2 },
+      ],
+    },
   ];
-  
+
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -94,48 +81,69 @@ export default function TopMenu({
   return (
     <nav
       ref={menuRef}
-      className="h-8 bg-zinc-900 border-b border-zinc-800 flex items-center px-2 shrink-0 z-50 relative"
+      className="relative z-50 flex h-9 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[#131313] pl-3 pr-2"
       data-tauri-drag-region
     >
-      <div className="relative flex items-center gap-1 z-10">
-        {menus.map((menu) => (
-          <div key={menu.label} className="relative">
-            <button
-              onClick={() => setOpenMenu(openMenu === menu.label ? null : menu.label)}
-              className={`
-                px-3 py-1 text-[13px] rounded transition-colors
-                ${openMenu === menu.label ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"}
-              `}
-            >
-              {menu.label}
-            </button>
+      {/* Left: brand + menus */}
+      <div className="flex items-center gap-1">
+        <div
+          className="mr-1 flex items-center gap-1.5 select-none"
+          data-tauri-drag-region
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <path
+              d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z"
+              stroke="#ececec"
+              strokeWidth="1.2"
+              strokeLinejoin="round"
+            />
+            <path d="M8 1v7m0 0l6-3.5M8 8L2 4.5" stroke="#ececec" strokeWidth="1.2" strokeLinejoin="round" opacity="0.55" />
+          </svg>
+          <span className="text-[12px] font-semibold tracking-tight text-[#ececec]">
+            Neo
+          </span>
+        </div>
 
-            {openMenu === menu.label && (
-              <div className="absolute top-full left-0 mt-px w-52 bg-zinc-900 border border-zinc-700/80 rounded-lg shadow-xl overflow-hidden z-50">
-                {menu.items.map((item, i) => (
-                  <button
-                    key={i}
-                    disabled={item.disabled}
-                    onClick={() => { item.action(); setOpenMenu(null); }}
-                    className="
-                      w-full flex items-center justify-between
-                      px-3 py-1.5 text-[13px]
-                      hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed
-                      text-left text-zinc-300 hover:text-zinc-100
-                      transition-colors
-                    "
-                  >
-                    <span>{item.label}</span>
-                    {item.shortcut && (
-                      <span className="text-[11px] text-zinc-600 ml-4">{item.shortcut}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+        <div className="flex items-center gap-0.5">
+          {menus.map((menu) => (
+            <div key={menu.label} className="relative">
+              <button
+                onClick={() => setOpenMenu(openMenu === menu.label ? null : menu.label)}
+                onMouseEnter={() => openMenu && setOpenMenu(menu.label)}
+                className={`rounded px-2 py-[3px] text-[12px] transition-colors ${
+                  openMenu === menu.label
+                    ? "bg-white/[0.08] text-[#ececec]"
+                    : "text-[#a3a3a3] hover:bg-white/[0.05] hover:text-[#ececec]"
+                }`}
+              >
+                {menu.label}
+              </button>
+
+              {openMenu === menu.label && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border border-white/[0.09] bg-[#1a1a1a] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+                  {menu.items.map((item, i) => (
+                    <button
+                      key={i}
+                      disabled={item.disabled}
+                      onClick={() => {
+                        item.action();
+                        setOpenMenu(null);
+                      }}
+                      className="flex w-full items-center justify-between rounded-md px-2.5 py-[6px] text-left text-[12px] text-[#c9c9c9] transition-colors hover:bg-white/[0.06] hover:text-[#ececec] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <span>{item.label}</span>
+                      {item.shortcut && <span className="kbd ml-4">{item.shortcut}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Right: optional slot */}
+      {right && <div className="flex items-center gap-2">{right}</div>}
     </nav>
   );
 }

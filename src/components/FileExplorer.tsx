@@ -224,7 +224,7 @@ function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 16 16"
-      className={`h-3 w-3 shrink-0 text-zinc-500 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+      className={`h-3 w-3 shrink-0 text-[#6b6b6b] transition-transform duration-150 ${open ? "rotate-90" : ""}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.6"
@@ -240,7 +240,7 @@ function FolderIcon({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 16 16"
-      className={`h-4 w-4 shrink-0 transition-colors duration-150 ${open ? "text-sky-400" : "text-zinc-500 group-hover:text-zinc-400"}`}
+      className={`h-4 w-4 shrink-0 transition-colors duration-150 ${open ? "text-zinc-300" : "text-zinc-500 group-hover:text-zinc-400"}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.2"
@@ -338,69 +338,70 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
     });
   };
 
-  const renderList = (path: string, depth: number): ReactNode => {
+  /**
+   * Render the tree as a flat list of rows with depth-based indentation
+   * (VS Code style) instead of nested containers.
+   */
+  const renderTree = (path: string, depth: number): ReactNode[] => {
     const raw = path === root ? nodes[root]?.entries ?? [] : nodes[path]?.entries ?? [];
     const list = sortEntries(raw).filter(matches);
 
-    if (path === root && list.length === 0) {
-      return (
-        <div className="flex flex-col items-center gap-1 px-4 py-8 text-center">
-          <svg viewBox="0 0 16 16" className="h-6 w-6 text-zinc-700" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
-          </svg>
-          <p className="text-[11px] leading-5 text-zinc-600">
-            {query ? `No files match “${query}”` : "This folder is empty."}
-          </p>
-        </div>
-      );
-    }
-
-    return list.map((e) => {
+    return list.flatMap((e) => {
       const isOpen = !!nodes[e.path]?.open;
       const active = activePath === e.path;
-      return (
-        <div key={e.path}>
-          <button
-            type="button"
-            onClick={() => toggle(e)}
-            className={`group relative mx-1 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md py-[4.5px] pr-2 text-left text-[12px] transition-colors duration-100 ${
-              active
-                ? "bg-sky-500/[0.12] text-zinc-100"
-                : e.is_dir
-                  ? "text-zinc-300 hover:bg-white/[0.05]"
-                  : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
-            }`}
-            style={{ paddingLeft: 6 }}
-            title={e.path}
-          >
-            {active && (
-              <span className="absolute -left-1 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r-full bg-sky-400" />
-            )}
-            <span className="flex w-3 shrink-0 items-center justify-center">
-              {e.is_dir && <ChevronIcon open={isOpen} />}
-            </span>
-            {e.is_dir ? <FolderIcon open={isOpen} /> : <FileIcon name={e.name} />}
-            <span className={`truncate ${active ? "font-medium" : ""}`}>{e.name}</span>
-          </button>
-          {/* Children sit inside an indented container with a subtle guide line */}
-          {e.is_dir && isOpen && (
-            <div className="relative ml-[17px] border-l border-white/[0.07] pl-0">
-              {renderList(e.path, depth + 1)}
-            </div>
+      const row = (
+        <button
+          key={e.path}
+          type="button"
+          onClick={() => toggle(e)}
+          className={`group relative flex h-6 w-full items-center gap-1.5 rounded-[4px] pr-2 text-left text-[12px] leading-none transition-colors duration-100 ${
+            active
+              ? "bg-white/[0.08] text-[#ececec]"
+              : e.is_dir
+                ? "text-[#c9c9c9] hover:bg-white/[0.05]"
+                : "text-[#a3a3a3] hover:bg-white/[0.05] hover:text-[#d4d4d4]"
+          }`}
+          style={{ paddingLeft: 8 + depth * 14 }}
+          title={e.path}
+        >
+          {active && (
+            <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-[#4c8dff]" />
           )}
-        </div>
+          <span className="flex w-3.5 shrink-0 items-center justify-center">
+            {e.is_dir && <ChevronIcon open={isOpen} />}
+          </span>
+          {e.is_dir ? <FolderIcon open={isOpen} /> : <FileIcon name={e.name} />}
+          <span className={`truncate ${active ? "font-medium" : ""}`}>{e.name}</span>
+        </button>
       );
+
+      // Children render directly below the parent (flat list, indented).
+      const kids = e.is_dir && isOpen ? renderTree(e.path, depth + 1) : [];
+      return [row, ...kids];
     });
   };
 
+  /** Count every visible (loaded + filtered) entry, for the footer. */
+  const countVisible = (path: string): number => {
+    const raw = path === root ? nodes[root]?.entries ?? [] : nodes[path]?.entries ?? [];
+    const list = sortEntries(raw).filter(matches);
+    return list.reduce(
+      (acc, e) =>
+        acc + (e.is_dir && nodes[e.path]?.open ? countVisible(e.path) : 0) + 1,
+      0
+    );
+  };
+
   const name = root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? root;
+  const tree = renderTree(root, 0);
+  const itemCount = countVisible(root);
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-zinc-800/80 bg-[#0d0d11]">
+    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.07] bg-[#131313]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-zinc-800/80">
+      <div className="shrink-0 border-b border-white/[0.07]">
         <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#6b6b6b]">
             Explorer
           </span>
           <div className="flex items-center gap-0.5">
@@ -408,7 +409,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
               type="button"
               onClick={collapseAll}
               title="Collapse folders"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h10M5.5 3.5L3 6l2.5 2.5M13 10H3M10.5 7.5L13 10l-2.5 2.5" />
@@ -418,7 +419,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
               type="button"
               onClick={() => void loadDir(root)}
               title="Refresh"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.6h-2.6" />
@@ -429,10 +430,10 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
 
         {/* Workspace name */}
         <div className="flex items-center gap-1.5 px-3 pb-2">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-sky-400/80" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-[#a3a3a3]" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
           </svg>
-          <span className="truncate text-[12px] font-medium text-zinc-200" title={root}>
+          <span className="truncate text-[12px] font-medium text-[#d4d4d4]" title={root}>
             {name}
           </span>
         </div>
@@ -441,7 +442,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
         <div className="relative px-2.5 pb-2.5">
           <svg
             viewBox="0 0 16 16"
-            className="pointer-events-none absolute left-[18px] top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-600"
+            className="pointer-events-none absolute left-[18px] top-1/2 h-3 w-3 -translate-y-1/2 text-[#555555]"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.5"
@@ -455,14 +456,14 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
             onChange={(ev) => setQuery(ev.target.value)}
             placeholder="Filter files…"
             spellCheck={false}
-            className="w-full rounded-lg border border-zinc-800/80 bg-black/30 py-1.5 pl-7 pr-2.5 text-[11.5px] text-zinc-200 placeholder-zinc-600 outline-none transition focus:border-sky-500/50 focus:bg-black/40 focus:ring-2 focus:ring-sky-500/10"
+            className="w-full rounded-md border border-white/[0.08] bg-black/30 py-1.5 pl-7 pr-2.5 text-[11.5px] text-[#d4d4d4] placeholder-[#555555] outline-none transition focus:border-white/[0.18]"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery("")}
               title="Clear filter"
-              className="absolute right-[18px] top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-zinc-500 transition hover:text-zinc-200"
+              className="absolute right-[18px] top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-[#6b6b6b] transition hover:text-[#d4d4d4]"
             >
               <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
                 <path d="M4 4l8 8M12 4l-8 8" />
@@ -473,7 +474,26 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
       </div>
 
       {/* ── Tree ───────────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto py-1.5">{renderList(root, 0)}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
+        {tree.length === 0 ? (
+          <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
+            <svg viewBox="0 0 16 16" className="h-6 w-6 text-[#4a4a4a]" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
+            </svg>
+            <p className="text-[11px] leading-5 text-[#6b6b6b]">
+              {query ? `No files match "${query}"` : "This folder is empty."}
+            </p>
+          </div>
+        ) : (
+          tree
+        )}
+      </div>
+
+      {/* ── Footer ─────────────────────────────────────────────────────── */}
+      <div className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.07] px-3 text-[10px] text-[#555555]">
+        <span>{itemCount} item{itemCount === 1 ? "" : "s"}</span>
+        {query && <span className="truncate">filtered</span>}
+      </div>
     </aside>
   );
 }

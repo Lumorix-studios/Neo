@@ -9,14 +9,11 @@ import ChatHistorySidebar from "../components/ChatHistorySidebar.tsx";
 import InfoPanel from "../components/InfoPanel";
 import PrivacyPolicy from "../components/PrivacyPolicy.tsx";
 import CommandPalette from "../components/CommandPalette";
-import ClickSpark from "../components/ClickSpark";
 import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
-import SideRays from "../components/SideRays.tsx";
 import Markdown from "./components/Markdown";
 import Terminal from "../components/terminal";
 import "./editor.css";
-import { IoCube, IoSend } from "react-icons/io5";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import {
@@ -37,24 +34,28 @@ import {
   formatToolResult,
   ingestNativeChunk,
   isDestructive,
+  isToolName,
   nativeAccToCalls,
   parseToolCalls,
+  stabilizeStreamingMarkdown,
   stripToolCalls,
   type NativeToolAcc,
   type ToolCall,
 } from "./agentic";
 import type { AgenticActivity as AgenticActivityType } from "./agentic";
+import type { FsEntry } from "./agentic";
+import {
+  loadMcpServers,
+  listMcpTools,
+  callMcpTool,
+  type McpServerConfig,
+} from "./mcp";
+import { computeLineDiff } from "./diff";
+import { resolveFsPath } from "./agentic";
 import FileExplorer from "./components/FileExplorer";
 import CodeEditor from "./components/CodeEditor";
 import IdeMenuBar from "./components/IdeMenuBar";
 import type { EditorTab } from "./components/CodeEditor";
-import {
-  ThumbsUpIcon,
-  ThumbsDownIcon,
-  InfoIcon,
-  DotsThreeVerticalIcon,
-  PauseIcon,
-} from "@phosphor-icons/react/dist/ssr";
 
 type JsonDict = Record<string, unknown>;
 
@@ -137,8 +138,90 @@ function deriveTitle(messages: Message[]): string {
   return text.length > 50 ? text.slice(0, 50) + "…" : text;
 }
 
+/** Icon button for the VS Code-style activity bar rail. */
+function RailButton({
+  active,
+  title,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={`relative flex h-9 w-full items-center justify-center rounded-md transition-colors ${
+        active ? "text-[#ececec]" : "text-[#6b6b6b] hover:text-[#d4d4d4]"
+      }`}
+    >
+      {active && (
+        <span className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-full bg-[#ececec]" />
+      )}
+      {children}
+    </button>
+  );
+}
+
+/** Known context-window sizes by model-family substring (first match wins). */
+const CONTEXT_LIMITS: Array<[string, number]> = [
+  ["gpt-4o", 128000],
+  ["gpt-4.1", 1000000],
+  ["gpt-5", 400000],
+  ["o1", 200000],
+  ["o3", 200000],
+  ["claude", 200000],
+  ["gemini-2.5-pro", 1048576],
+  ["gemini-2.5-flash", 1048576],
+  ["gemini", 32768],
+  ["deepseek", 65536],
+  ["qwen", 32768],
+  ["mistral", 32768],
+  ["grok", 131072],
+  ["llama", 8192],
+];
+
+function contextLimitFor(model: string): number {
+  const m = model.toLowerCase();
+  for (const [key, limit] of CONTEXT_LIMITS) {
+    if (m.includes(key)) return limit;
+  }
+  return 128000;
+}
+
+function formatTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
+}
+
+/** Small ghost icon-button used in the assistant message action row. */
+function MessageAction({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition-colors hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function App() {
-  const [menuOpen, setMenuOpen] = useState<number | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [onOpenTerminal, setOpenTerminal] = useState(false);
@@ -186,6 +269,15 @@ export default function App() {
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
 
   const spec: ProviderSpec = getProviderSpec(settings);
+
+  // --- Model overview: estimated token usage vs. the model's context window ---
+  const ctxLimit = contextLimitFor(settings.model);
+  const estTokens = (() => {
+    let chars = settings.systemPrompt.length + 800; // headroom for agent prompt
+    for (const m of messages) chars += m.content.length;
+    return Math.ceil(chars / 4);
+  })();
+  const ctxPct = Math.min(100, Math.round((estTokens / ctxLimit) * 100));
 
   useEffect(() => {
     mountedRef.current = true;
@@ -409,8 +501,11 @@ export default function App() {
     try {
       const dir = await open({ directory: true, multiple: false });
       if (typeof dir === "string" && dir) {
+        // Opening a folder always REPLACES the current workspace: every open
+        // editor tab is closed and the explorer starts from a clean state.
+        // The `key` on <FileExplorer> forces a full remount so no stale tree
+        // state from the previous folder can survive.
         setWorkspaceRoot(dir);
-        // A different workspace means a fresh editor context.
         setEditorTabs([]);
         setActiveEditorPath(null);
         setExplorerRefreshKey((k) => k + 1);
@@ -603,7 +698,8 @@ export default function App() {
   const streamRound = async (
     history: Message[],
     agentic: boolean,
-    signal: AbortSignal
+    signal: AbortSignal,
+    promptSuffix = ""
   ): Promise<StreamRoundResult> => {
     const s = getProviderSpec(settings);
     const endpoint = s.buildUrl(settings);
@@ -617,7 +713,9 @@ export default function App() {
           ...settings,
           systemPrompt: `${settings.systemPrompt}
 
-${AGENTIC_PROMPT}`,
+${AGENTIC_PROMPT}${promptSuffix ? `
+
+${promptSuffix}` : ""}`,
         }
       : settings;
    
@@ -694,7 +792,11 @@ ${AGENTIC_PROMPT}`,
     const reader = bodyStream.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
-    let full = streamedContentRef.current; // preserve any prior-round visible text
+    // Round-local accumulation. Text from earlier rounds is already committed
+    // to streamedContentRef; folding it back in here would duplicate it on
+    // screen and in the transcript once tool rounds start looping.
+    let round = "";
+    let base = streamedContentRef.current;
     const nativeAcc: NativeToolAcc[] = [];
 
     try {
@@ -726,10 +828,14 @@ ${AGENTIC_PROMPT}`,
             ingestNativeChunk(json, nativeAcc);
             const delta = s.extractDelta(json);
             if (delta) {
-              full += delta;
-              streamedContentRef.current = full;
-              // Show only non-tool text to the user as it streams.
-              setLastAssistantContent(stripToolCalls(full));
+              round += delta;
+              // Show only non-tool text as it streams. stripToolCalls also
+              // removes incomplete trailing markup (tags AND partial bare
+              // JSON), and stabilizeStreamingMarkdown closes dangling code
+              // fences so the markdown layout never collapses mid-stream.
+              const shown = stabilizeStreamingMarkdown(stripToolCalls(base + round));
+              streamedContentRef.current = shown;
+              setLastAssistantContent(shown);
             }
           } catch {
             continue;
@@ -740,7 +846,11 @@ ${AGENTIC_PROMPT}`,
       reader.releaseLock();
     }
 
-    if (!full && !signal.aborted) {
+    // Only fall back to a non-streaming request when this round produced
+    // neither visible text nor native tool calls. Providers that stream
+    // tool calls without emitting text deltas would otherwise be queried a
+    // second time here, duplicating every tool call.
+    if (!round && nativeAcc.length === 0 && !signal.aborted) {
       try {
         const nonStreamBody = {
           ...(s.buildBody(effectiveSettings, history, { enableTools: agentic }) as Record<string, unknown>),
@@ -759,7 +869,7 @@ ${AGENTIC_PROMPT}`,
         if (fallbackRes.ok) {
           const data = (await fallbackRes.json().catch(() => null)) as JsonDict | null;
           if (data) {
-            full = s.extractContent(data);
+            round = s.extractContent(data);
             ingestNativeChunk(data, nativeAcc);
           }
         }
@@ -768,7 +878,7 @@ ${AGENTIC_PROMPT}`,
       }
     }
 
-    return { text: full, nativeCalls: nativeAccToCalls(nativeAcc) };
+    return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
   };
 
   /** Heuristic: does the user's message look like a file/folder operation? */
@@ -861,6 +971,45 @@ ${AGENTIC_PROMPT}`,
     // Decide whether to enable agentic (file-tool) mode for this request.
     const agentic = looksLikeFileRequest(trimmed);
 
+    // Build the agent's environment suffix: a one-shot workspace view so it
+    // starts oriented, plus any MCP tools exposed by enabled servers.
+    let promptSuffix = "";
+    if (agentic && workspaceRoot) {
+      try {
+        const entries = await invoke<FsEntry[]>("fs_list_dir", { path: workspaceRoot });
+        const listing = entries.map((e) => (e.is_dir ? `${e.name}/` : e.name)).join(", ");
+        promptSuffix += `Workspace root: ${workspaceRoot}
+Top-level entries: ${listing}`;
+      } catch {
+        /* ignore — the agent can list it itself */
+      }
+    }
+
+    const mcpTools = new Map<string, { server: McpServerConfig; tool: string }>();
+    if (agentic) {
+      const servers = loadMcpServers().filter((s) => s.enabled);
+      if (servers.length > 0) {
+        await Promise.all(
+          servers.map(async (s) => {
+            try {
+              const tools = await listMcpTools(s);
+              for (const t of tools) {
+                mcpTools.set(`mcp_${s.name}_${t.name}`, { server: s, tool: t.name });
+              }
+            } catch {
+              /* server offline — skip silently */
+            }
+          })
+        );
+      }
+      if (mcpTools.size > 0) {
+        promptSuffix += `
+
+MCP tools available (call via {"name": "<full name>", "arguments": {...}}):
+${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
+      }
+    }
+
     setIsLoading(true);
     streamedContentRef.current = "";
 
@@ -868,14 +1017,16 @@ ${AGENTIC_PROMPT}`,
     streamControllerRef.current = abortCtrl;
 
     try {
-      let finalText = "";
+      let ranTools = 0;
       let toolRounds = 0;
+      let sawRawOutput = false;
 
       while (!abortCtrl.signal.aborted) {
-        const round = await streamRound(agentHistory, agentic, abortCtrl.signal);
+        const round = await streamRound(agentHistory, agentic, abortCtrl.signal, promptSuffix);
         if (abortCtrl.signal.aborted) break;
         toolRounds++;
         const raw = round.text;
+        if (raw.trim().length > 0 || round.nativeCalls.length > 0) sawRawOutput = true;
 
         
         agentHistory.push({
@@ -891,14 +1042,21 @@ ${AGENTIC_PROMPT}`,
               }
             : {}),
         });
-        const visible = stripToolCalls(raw).trim();
-        if (visible) finalText = visible;
-
-        // Merge native function-calls with text-based (<tool_call>) calls.
-        const calls: { call: ToolCall; native: boolean }[] = [
+        // Merge native function-calls with text-based (<tool_call>) calls,
+        // dropping unknown tool names and exact duplicates — models sometimes
+        // emit the same call in both forms, which would execute it twice.
+        const calls: { call: ToolCall; native: boolean; key: string }[] = [];
+        const seenKeys = new Set<string>();
+        for (const { call, native } of [
           ...round.nativeCalls.map((c) => ({ call: c, native: true })),
           ...parseToolCalls(raw).map((c) => ({ call: c, native: false })),
-        ];
+        ]) {
+          if (!isToolName(call.name) && !call.name.startsWith("mcp_")) continue;
+          const key = `${call.name}:${JSON.stringify(call.arguments)}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+          calls.push({ call, native, key });
+        }
 
         // If the model produced no tool calls, we're done.
         if (calls.length === 0 || toolRounds >= MAX_TOOL_ROUNDS) {
@@ -908,86 +1066,150 @@ ${AGENTIC_PROMPT}`,
           break;
         }
 
-        // Execute tools; route results back using each protocol:
+        // Execute tools. Read-only tools run concurrently (the biggest speedup
+        // when a model batches several reads); mutating tools run one at a
+        // time so approvals stay sequential and writes apply in order.
+        // Results are routed back using each protocol:
         // native calls -> role:"tool" messages, text calls -> <tool_result>.
-        const nativeResults: Message[] = [];
-        const resultBlocks: string[] = [];
-        for (const { call, native } of calls) {
+        const activityIds = new Map<string, string>();
+        const planned: AgenticActivityType[] = calls.map(({ call }) => {
           const id = activityId();
-          const activity: AgenticActivityType = {
-            id,
-            tool: call.name,
-            args: call.arguments,
-            status: "pending",
-          };
-          setActivities((prev) => [...prev, activity]);
+          activityIds.set(`${call.name}:${JSON.stringify(call.arguments)}`, id);
+          return { id, tool: call.name, args: call.arguments, status: "pending" };
+        });
+        setActivities((prev) => [...prev, ...planned]);
 
-          // Destructive tools require explicit user approval.
-          if (isDestructive(call.name)) {
-            setActivities((prev) =>
-              prev.map((a) => (a.id === id ? { ...a, status: "pending" } : a))
-            );
-            setPendingApproval(activity);
-            const approved = await requestApproval(id);
-            setPendingApproval(null);
-            if (!approved) {
-              const denied: AgenticActivityType = {
-                ...activity,
-                status: "denied",
-              };
-              setActivities((prev) =>
-                prev.map((a) => (a.id === id ? denied : a))
-              );
-              const denial =
-                "User denied approval for this operation. Do not retry it; explain and propose alternatives.";
-              if (native) {
-                nativeResults.push({
-                  role: "tool",
-                  content: denial,
-                  toolCallId: call.id,
-                  toolName: call.name,
-                });
-              } else {
-                resultBlocks.push(formatToolResult({ ok: false, output: denial }));
+        const patchActivity = (id: string, patch: Partial<AgenticActivityType>) =>
+          setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+
+        const resultsByKey = new Map<string, { ok: boolean; output: string }>();
+
+        /** Execute one call — built-in filesystem/command tools or MCP tools. */
+        const runToolCall = async (call: ToolCall) => {
+          if (call.name.startsWith("mcp_")) {
+            const entry = mcpTools.get(call.name);
+            if (!entry) return { ok: false, output: `Unknown MCP tool: ${call.name}` };
+            return callMcpTool(entry.server, entry.tool, call.arguments);
+          }
+          return executeTool(call.name, call.arguments, workspaceRoot);
+        };
+
+        // --- Read-only batch (parallel). MCP tools always need approval. ---
+        const readOnly = calls.filter(
+          ({ call }) => !isDestructive(call.name) && !call.name.startsWith("mcp_")
+        );
+        if (readOnly.length > 0) {
+          readOnly.forEach(({ key }) => {
+            const id = activityIds.get(key);
+            if (id) patchActivity(id, { status: "running" });
+          });
+          await Promise.all(
+            readOnly.map(async ({ call, key }) => {
+              const result = await runToolCall(call);
+              resultsByKey.set(key, result);
+              ranTools++;
+              const id = activityIds.get(key);
+              if (id) {
+                patchActivity(
+                  id,
+                  result.ok
+                    ? { status: "done", output: result.output }
+                    : { status: "error", error: result.output }
+                );
               }
-              continue;
+            })
+          );
+        }
+
+        // --- Mutating batch (sequential, each behind user approval). ---
+        const mutating = calls.filter(
+          ({ call }) => isDestructive(call.name) || call.name.startsWith("mcp_")
+        );
+        /** Tools whose result can be shown as a line diff in the activity feed. */
+        const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
+        for (const { call, key } of mutating) {
+          const id = activityIds.get(key);
+          if (!id) continue;
+
+          // Snapshot the file before the change so we can render a diff.
+          let beforeContent: string | null = null;
+          let targetPath = "";
+          if (
+            FILE_MUTATORS.has(call.name) &&
+            typeof call.arguments.path === "string"
+          ) {
+            targetPath = call.arguments.path;
+            try {
+              beforeContent = await invoke<string>("fs_read_file", {
+                path: resolveFsPath(targetPath, workspaceRoot),
+              });
+            } catch {
+              beforeContent = null; // new file
             }
-            setActivities((prev) =>
-              prev.map((a) => (a.id === id ? { ...a, status: "approved" } : a))
-            );
           }
 
-          // Run the tool.
-          setActivities((prev) =>
-            prev.map((a) => (a.id === id ? { ...a, status: "running" } : a))
+          let approved = settings.autoApproveTools === true;
+          if (!approved) {
+            setPendingApproval({ id, tool: call.name, args: call.arguments, status: "pending" });
+            approved = await requestApproval(id);
+            setPendingApproval(null);
+          }
+          if (!approved) {
+            patchActivity(id, { status: "denied" });
+            resultsByKey.set(key, {
+              ok: false,
+              output:
+                "User denied approval for this operation. Do not retry it; explain and propose alternatives.",
+            });
+            continue;
+          }
+
+          patchActivity(id, { status: "running" });
+          const result = await runToolCall(call);
+          resultsByKey.set(key, result);
+          if (result.ok) ranTools++;
+          patchActivity(
+            id,
+            result.ok
+              ? { status: "done", output: result.output }
+              : { status: "error", error: result.output }
           );
-          const result = await executeTool(call.name, call.arguments);
-          setActivities((prev) =>
-            prev.map((a) =>
-              a.id === id
-                ? result.ok
-                  ? { ...a, status: "done", output: result.output }
-                  : { ...a, status: "error", error: result.output }
-                : a
-            )
-          );
-          // Reflect filesystem mutations in the editor + explorer immediately.
+          // Reflect filesystem mutations in the editor immediately, show a
+          // line-by-line diff in the activity feed, and open the changed file.
           if (result.ok) {
             syncAllOpenTabsRef.current();
-            if (isDestructive(call.name)) setExplorerRefreshKey((k) => k + 1);
+            if (FILE_MUTATORS.has(call.name) && targetPath) {
+              const absPath = resolveFsPath(targetPath, workspaceRoot);
+              let afterContent = "";
+              try {
+                afterContent = await invoke<string>("fs_read_file", { path: absPath });
+              } catch {
+                afterContent = "";
+              }
+              patchActivity(id, { diff: computeLineDiff(beforeContent ?? "", afterContent) });
+              void openFileInEditor(absPath);
+            }
           }
+        }
+        if (mutating.length > 0) setExplorerRefreshKey((k) => k + 1);
+
+        // Route results back in the original call order.
+        const nativeResults: Message[] = [];
+        const resultBlocks: string[] = [];
+        for (const { call, native, key } of calls) {
+          const result = resultsByKey.get(key);
+          if (!result) continue;
           // Truncate large outputs before they enter the model's context.
+          const output = truncateToolOutput(result.output);
           if (native) {
             nativeResults.push({
               role: "tool",
-              content: truncateToolOutput(result.output),
+              content: output,
               toolCallId: call.id,
               toolName: call.name,
             });
           } else {
-            resultBlocks.push(
-              formatToolResult({ ...result, output: truncateToolOutput(result.output) })
-            );
+            resultBlocks.push(formatToolResult({ ...result, output }));
           }
         }
 
@@ -1000,18 +1222,28 @@ ${AGENTIC_PROMPT}`,
         }
       }
 
-      // Commit the final visible answer.
-      if (finalText) {
-        setLastAssistantContent(finalText);
+      // Commit whatever visible text accumulated across all rounds.
+      const finalVisible = streamedContentRef.current.trim();
+      if (finalVisible) {
+        setLastAssistantContent(finalVisible);
+      } else if (ranTools > 0) {
+        // Tools ran but the model never narrated — show a concise summary
+        // instead of a misleading "empty response" error.
+        setLastAssistantContent(
+          `Done — ${ranTools} file operation${ranTools === 1 ? "" : "s"} completed.`
+        );
+      } else if (sawRawOutput) {
+        // The model said something, but it was all tool markup we could not
+        // map to a known tool. Surface that instead of a generic error.
+        setError(
+          "The model responded, but its tool calls could not be recognized. Try a different model, or rephrase so it answers in plain text."
+        );
+        removeEmptyAssistant();
       } else {
-        const collected = streamedContentRef.current;
-        const cleaned = stripToolCalls(collected).trim();
-        if (cleaned) {
-          setLastAssistantContent(cleaned);
-        } else {
-          setError("The model returned an empty response.");
-          removeEmptyAssistant();
-        }
+        setError(
+          "The model returned an empty response. Check the model name and endpoint in Settings (Ctrl+B)."
+        );
+        removeEmptyAssistant();
       }
     } catch (err) {
       if (abortCtrl.signal.aborted) {
@@ -1037,10 +1269,7 @@ ${AGENTIC_PROMPT}`,
   };
 
   return (
-    <ClickSpark sparkColor="#ffffff" sparkSize={0} sparkRadius={15} sparkCount={8} duration={400}>
-      {" "}
-      {/*Credit to https:Reactbits.dev for the components i use in the app */}
-      <div className="flex h-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#0e0e0e] text-[#ececec] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <TopMenu
           onOpenInfoPanel={() => setInfoPanelOpen(true)}
           onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
@@ -1048,13 +1277,145 @@ ${AGENTIC_PROMPT}`,
           onOpenChatSidebar={() => setSidebarOpen(true)}
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
           onOpenIde={() => setIdeOpen(true)}
-          onOpenTerminal={ () => setOpenTerminal(true) }
+          onOpenTerminal={() => setOpenTerminal(true)}
+          right={
+            <>
+              {/* Provider / model pill */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setModelOpen((v) => !v)}
+                  title="Switch AI provider"
+                  className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-[3px] text-[11px] text-[#a3a3a3] transition-colors hover:border-white/[0.14] hover:text-[#ececec]"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      settings.apiKey || !spec.needsAuth ? "bg-emerald-500" : "bg-zinc-600"
+                    }`}
+                  />
+                  <span className="max-w-[160px] truncate">{settings.model || spec.label}</span>
+                  {!settings.apiKey && spec.needsAuth && (
+                    <span className="text-[#6b6b6b]">(not configured)</span>
+                  )}
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 6l4 4 4-4" />
+                  </svg>
+                </button>
+                {modelOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-white/[0.09] bg-[#1a1a1a] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+                    <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-[#6b6b6b]">
+                      AI Provider
+                    </div>
+                    {PROVIDER_OPTIONS.map((p) => (
+                      <button
+                        key={p.id}
+                        className={`flex w-full items-center justify-between rounded-md px-2.5 py-[6px] text-left text-[12px] transition-colors hover:bg-white/[0.06] ${
+                          settings.provider === p.id ? "text-[#ececec]" : "text-[#a3a3a3]"
+                        }`}
+                        onClick={() => {
+                          const next = providerById(p.id);
+                          const updated = {
+                            ...settings,
+                            provider: p.id,
+                            baseUrl: next.defaultBaseUrl,
+                            model: next.defaultModel,
+                          };
+                          setSettings(updated);
+                          void saveSettings(updated);
+                          // Persist to the active session too.
+                          if (activeSessionId) {
+                            setSessions((prev) =>
+                              prev.map((s) =>
+                                s.id === activeSessionId ? { ...s, settings: updated } : s
+                              )
+                            );
+                          }
+                          setModelOpen(false);
+                        }}
+                      >
+                        <span>{p.label}</span>
+                        {settings.provider === p.id && (
+                          <span className="text-[10px] text-emerald-400">●</span>
+                        )}
+                      </button>
+                    ))}
+
+                    {/* Model overview */}
+                    <div className="mt-1 border-t border-white/[0.07] px-2 pb-1 pt-2">
+                      <div className="flex items-center justify-between text-[10px] text-[#6b6b6b]">
+                        <span>Context window</span>
+                        <span className="tabular-nums">
+                          ~{formatTokens(estTokens)} / {formatTokens(ctxLimit)} tok
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.08]">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            ctxPct > 85 ? "bg-red-400" : ctxPct > 60 ? "bg-amber-400" : "bg-[#4c8dff]"
+                          }`}
+                          style={{ width: `${Math.max(2, ctxPct)}%` }}
+                        />
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[#555555]">
+                        <span>
+                          {messages.length} message{messages.length === 1 ? "" : "s"}
+                        </span>
+                        <span>{spec.label}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* New chat */}
+              <button
+                type="button"
+                onClick={newChat}
+                title="New chat"
+                aria-label="New chat"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                  <path d="M8 3v10M3 8h10" />
+                </svg>
+              </button>
+            </>
+          }
         />
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
         <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
         <Terminal isOpen={onOpenTerminal} onClose={()=>setOpenTerminal(false)} cwd={workspaceRoot} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
+          {/* Activity bar — VS Code-style icon rail */}
+          <nav className="flex w-11 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[#131313] py-2">
+            <div className="flex w-full flex-col items-center gap-1">
+              <RailButton active={ideOpen} title="Explorer (Ctrl+Shift+E)" onClick={() => setIdeOpen((v) => !v)}>
+                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
+                  <path d="M1.5 7h13" opacity="0.5" />
+                </svg>
+              </RailButton>
+              <RailButton active={historySidebarOpen} title="Chats (Ctrl+Shift+H)" onClick={() => setHistorySidebarOpen((v) => !v)}>
+                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 10.5a1.5 1.5 0 01-1.5 1.5H5l-3 3V3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7z" />
+                </svg>
+              </RailButton>
+              <RailButton active={sidebarOpen} title="Settings (Ctrl+B)" onClick={() => setSidebarOpen((v) => !v)}>
+                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="8" cy="8" r="2" />
+                  <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" />
+                </svg>
+              </RailButton>
+            </div>
+            <div className="w-full">
+              <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
+                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" />
+                  <path d="M4.5 6l2 1.7-2 1.7M8 9.8h3.5" />
+                </svg>
+              </RailButton>
+            </div>
+          </nav>
           <ChatHistorySidebar
             isOpen={historySidebarOpen}
             onClose={() => setHistorySidebarOpen(false)}
@@ -1064,150 +1425,112 @@ ${AGENTIC_PROMPT}`,
             onNewChat={newChat}
             onDeleteSession={deleteSession}
           />
-          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-40 bg-gradient-to-b from-zinc-900/30 to-transparent" />
-            <div className="relative z-10 flex h-14 shrink-0 items-center justify-between  px-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg  bg-zinc-900">
-                  <span className="text-xs text-zinc-300">
-                    <IoCube size={18} />
-                  </span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-300">
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        settings.apiKey ? "bg-emerald-500" : "bg-zinc-600"
-                      }`}
-                    />
-                    {spec.label}
-                    {settings.model && (
-                      <span>- {settings.model}</span>
-                    )}
-                    {!settings.apiKey && spec.needsAuth && (
-                      <span className="text-zinc-500">(not configured)</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={newChat}
-                className=" bg-zinc-900 rounded-lg px-3 py-1.5 text-xs text-zinc-300 transition max-sm:h-11 max-sm:w-11"
-              >
-                New
-              </button>
-            </div>
-            <div className="absolute inset-0 z-0">
-              {/*Can be edited to your liking if youre checking the source code out */}
-              {/*Credit to https:Reactbits.dev for the components i use in the app */}
-              <SideRays
-                speed={3.5}
-                rayColor1="#EAB308"
-                rayColor2="#96c8ff"
-                intensity={1}
-                spread={19}
-                origin="top-right"
-                tilt={0}
-                saturation={1.5}
-                blend={0.75}
-                falloff={1.6}
-                opacity={1}
-              />
-            </div>
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0e0e0e]">
+            <div className="fade-top" aria-hidden />
             <div
               ref={scrollRef}
               onScroll={handleScroll}
-              className="relative z-10 min-h-0 flex-1 overflow-y-auto"
+              className="min-h-0 flex-1 overflow-y-auto"
             >
               {messages.length === 0 ? (
-                <div className="flex min-h-full items-center justify-center px-6">
-                  <div className="w-full max-w-2xl pb-20">
-                    <div className="text-center">
-                      <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">
-                        What can I help you with?
-                      </h1>
-                      <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-500">
-                        Ask questions, explore ideas, write, learn, or work through a problem.
-                      </p>
+                <div className="relative flex min-h-full items-center justify-center px-6">
+                  {/* Soft radial glow behind the hero */}
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-[36rem] max-w-full -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.06]"
+                    style={{ background: "radial-gradient(closest-side, #4c8dff, transparent)" }}
+                  />
+                  <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
+                    <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.09] bg-white/[0.03]">
+                      <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#ececec" strokeWidth="1.1" strokeLinejoin="round">
+                        <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
+                        <path d="M8 1v7m0 0l6-3.5M8 8L2 4.5" opacity="0.5" />
+                      </svg>
+                    </div>
+                    <h1 className="text-[28px] font-semibold tracking-tight text-[#ececec]">
+                      What can I help you with?
+                    </h1>
+                    <p className="mx-auto mt-3 max-w-md text-[13px] leading-6 text-[#6b6b6b]">
+                      Ask questions, explore ideas, or work through code — Neo can read and edit files in your workspace.
+                    </p>
+                    <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIdeOpen(true);
+                          void pickWorkspaceFolder();
+                        }}
+                        className="rounded-md border border-white/[0.09] bg-white/[0.02] px-3 py-1.5 text-[12px] text-[#d4d4d4] transition hover:border-white/[0.16] hover:bg-white/[0.05]"
+                      >
+                        Open folder…
+                      </button>
+                      {["Summarize my project", "Find and fix bugs"].map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          onClick={() => setMessage(prompt)}
+                          className="rounded-md border border-white/[0.09] bg-white/[0.02] px-3 py-1.5 text-[12px] text-[#d4d4d4] transition hover:border-white/[0.16] hover:bg-white/[0.05]"
+                        >
+                          {prompt}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="mx-auto w-full max-w-3xl px-6 py-10">
-                  <div className="space-y-10">
+                <div className="mx-auto w-full max-w-3xl px-6 py-8">
+                  <div className="space-y-7">
                     {messages.map((msg, index) => (
-                      <div key={index}>
+                      <div key={index} className="msg-in">
                         {msg.role === "user" ? (
                           <div className="flex justify-end">
-                            <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-zinc-800/90 px-4 py-3 text-sm leading-6 text-zinc-100 shadow-sm">
+                            <div className="max-w-[80%] whitespace-pre-wrap rounded-xl border border-white/[0.07] bg-white/[0.04] px-3.5 py-2.5 text-[13px] leading-6 text-[#ececec]">
                               {msg.content}
                             </div>
                           </div>
+                        ) : isLoading &&
+                          index === messages.length - 1 &&
+                          msg.content.trim().length === 0 ? (
+                          <div className="flex items-center gap-1.5 py-2">
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-[#6b6b6b] [animation-delay:0ms]" />
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-[#6b6b6b] [animation-delay:150ms]" />
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-[#6b6b6b] [animation-delay:300ms]" />
+                          </div>
                         ) : (
-                          <div className="flex gap-3">
-
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-xs text-zinc-300">
-                                
-                                <IoCube size={14} />
-                              </div>
-                              {/*<span>{settings.model || spec.label}</span> */}
-                            {isLoading && index === messages.length - 1 && msg.content.trim().length === 0 ? (
-                              <div className="flex items-center gap-1.5 pt-2">
-                                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:0ms]" />
-                                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:150ms]" />
-                                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:300ms]" />
-                              </div>
-                            ) : (
-                              <div className="min-w-0 max-w-[80%] flex-1 pt-1 text-sm leading-7 text-zinc-300">
-                                    <Markdown content={msg.content} />
-                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
-                                      <button
-                                        
-                                        onClick={() =>
-                                          sendFeedback("good")
-                                        }>
-                                        <ThumbsUpIcon size={17} />
-                                      </button>
-                                    </span>
-                                    <span className = " hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
-                                      <button
-                                        onClick={() =>
-                                          sendFeedback("bad")}>
-                                        <ThumbsDownIcon size={17} />
-                                      </button>
-                                    </span>
-                                    <span className="m-2  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
-                                      <button 
-                                        onClick ={()=>sendFeedback("report")}>
-                                        <InfoIcon size={17} />
-                                      </button>
-                                    </span>
-                                    <span className="relative  hover:bg-zinc-800 rounded-2xl max-sm:h-11 max-sm:w-11">
-                                      <button 
-                                        onClick={() => 
-                                        setMenuOpen(menuOpen === index ? null: index)}>
-                                        <DotsThreeVerticalIcon size={19} />
-                                      </button>
-                                      {/*Opens a dropdown selector for the 3 dots. more efficient ngl. i didnt wanna add 4 other buttons plus the 3 dots is universally known to display a list of items */}
-                                      {menuOpen === index  && (
-                                        <div className="absolute right-0 top-full z-50 mt-2 w-40 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
-                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11"
-                                            onClick={() => setSidebarOpen(true)}>
-                                            Settings
-                                          </button>
-                                          <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11">
-                                            Copy
-                                          </button>
-                                          {/* <button className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-zinc-800 max-sm:h-11 max-sm:w-11"
-                                            onClick ={()=>alert("Thank you for reporting")}
-                                          > */}
-                                            {/* Report
-                                          </button> */}
-                                        </div>
-                                      )}
-                                    </span>
-                              </div>
-                            )}
+                          <div className="group/msg min-w-0">
+                            <div className="text-[13.5px] leading-7 text-[#d4d4d4]">
+                              <Markdown content={msg.content} />
+                              {isLoading && index === messages.length - 1 && (
+                                <span className="stream-caret" aria-hidden />
+                              )}
+                            </div>
+                            <div className="mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100">
+                              <MessageAction
+                                label="Copy"
+                                onClick={() => void navigator.clipboard.writeText(msg.content)}
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                                </svg>
+                              </MessageAction>
+                              <MessageAction label="Good response" onClick={() => sendFeedback("good")}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+                                </svg>
+                              </MessageAction>
+                              <MessageAction label="Bad response" onClick={() => sendFeedback("bad")}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" />
+                                </svg>
+                              </MessageAction>
+                              <MessageAction label="Report an issue" onClick={() => sendFeedback("report")}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                  <circle cx="12" cy="12" r="10" />
+                                  <path d="M12 16v-4M12 8h.01" />
+                                </svg>
+                              </MessageAction>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1224,12 +1547,12 @@ ${AGENTIC_PROMPT}`,
             />
             {error && (
               <div className="relative z-20 mx-auto w-full max-w-3xl px-5 pt-2">
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-[13px] text-red-300">
+                <div className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3.5 py-2 text-[12.5px] leading-5 text-red-300">
                   {error}
                 </div>
               </div>
             )}
-            <div className="relative z-20 shrink-0 px-5 pb-4 pt-3">
+            <div className="relative z-20 shrink-0 px-5 pb-3 pt-2">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1237,7 +1560,7 @@ ${AGENTIC_PROMPT}`,
                 }}
                 className="mx-auto w-full max-w-3xl"
               >
-                <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 shadow-2xl shadow-black/30 backdrop-blur-xl transition-all duration-200 focus-within:border-zinc-700 focus-within:bg-zinc-900">
+                <div className="relative overflow-hidden rounded-xl border border-white/[0.09] bg-[#161616] shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-200 focus-within:border-white/[0.22] focus-within:shadow-[0_0_0_3px_rgba(76,141,255,0.09),0_8px_32px_rgba(0,0,0,0.4)]">
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
@@ -1249,98 +1572,52 @@ ${AGENTIC_PROMPT}`,
                     }}
                     disabled={isLoading}
                     placeholder={
-                      settings.apiKey
-                        ? "Send a message"
-                        : "Configure your API key in settings to start chatting"
+                      settings.apiKey || !spec.needsAuth
+                        ? "Send a message…"
+                        : "Configure your API key in Settings to start chatting"
                     }
                     rows={1}
-                    className="max-h-48 min-h-[58px] w-full resize-none bg-transparent px-4 pb-12 pt-4 pr-14 text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-600 disabled:opacity-60"
+                    spellCheck={false}
+                    className="max-h-48 min-h-[54px] w-full resize-none bg-transparent px-3.5 pb-11 pt-3 pr-12 text-[13px] leading-6 text-[#ececec] outline-none placeholder:text-[#555555] disabled:opacity-60"
                   />
-                  <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={()=>setIdeOpen(true)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-100"
-                        title="Upload files/folders"
-                      >
-                        {"+"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setModelOpen(prev=>!prev)}
-                        className="rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-600 transition hover:bg-zinc-800 hover:text-zinc-300"
-                      >
-                        {settings.model || spec.label} ▾
-                        {modelOpen && (
-                          <div className="absolute left-0 bottom-full z-50 mb-2 w-56 rounded-xl border border-white/[0.08] bg-zinc-950/90 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-                            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-zinc-500">
-                              Switch AI provider
-                            </div>
-                            {PROVIDER_OPTIONS.map((p) => (
-                              <button
-                                key={p.id}
-                                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition hover:bg-zinc-800 ${
-                                  settings.provider === p.id
-                                    ? "text-zinc-100"
-                                    : "text-zinc-400"
-                                }`}
-                                onClick={() => {
-                                  const next = providerById(p.id);
-                                  const updated = {
-                                    ...settings,
-                                    provider: p.id,
-                                    baseUrl: next.defaultBaseUrl,
-                                    model: next.defaultModel,
-                                  };
-                                  setSettings(updated);
-                                  void saveSettings(updated);
-                                  // Persist to the active session too.
-                                  if (activeSessionId) {
-                                    setSessions((prev) =>
-                                      prev.map((s) =>
-                                        s.id === activeSessionId
-                                          ? { ...s, settings: updated }
-                                          : s
-                                      )
-                                    );
-                                  }
-                                  setModelOpen(false);
-                                }}
-                              >
-                                <span>{p.label}</span>
-                                {settings.provider === p.id && (
-                                  <span className="text-[10px] text-emerald-400">●</span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </button>
-                    </div>
+                  <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setIdeOpen(true)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                      title="Open editor panel"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                        <path d="M8 3v10M3 8h10" />
+                      </svg>
+                    </button>
                     {isLoading ? (
                       <button
                         type="button"
                         onClick={stopChat}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/90 text-sm font-medium text-white transition-all hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-20 max-sm:h-11 max-sm:w-11"
+                        className="flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.08] text-[#ececec] transition hover:bg-white/[0.14]"
                         title="Stop streaming"
                       >
-                        <PauseIcon size={23} />
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="6" y="6" width="12" height="12" rx="2" />
+                        </svg>
                       </button>
                     ) : (
                       <button
                         type="submit"
                         disabled={!message.trim() || isLoading}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-sm font-medium text-zinc-900 transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-20 max-sm:h-11 max-sm:w-11"
+                        className="flex h-7 w-7 items-center justify-center rounded-md bg-[#ececec] text-[#111111] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
+                        title="Send message"
                       >
-                        <IoSend/>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 19V5M5 12l7-7 7 7" />
+                        </svg>
                       </button>
                     )}
                   </div>
                 </div>
-                <div className="mt-2 text-center text-[10px] text-zinc-700">
-                  AI can make mistakes. Check important information.
+                <div className="mt-1.5 text-center text-[10px] text-[#4a4a4a]">
+                  AI can make mistakes. Verify important information.
                 </div>
               </form>
             </div>
@@ -1357,13 +1634,13 @@ ${AGENTIC_PROMPT}`,
               onPointerMove={onIdeResizeMove}
               onPointerUp={onIdeResizeEnd}
               onPointerCancel={onIdeResizeEnd}
-              className="group w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-sky-500/50 select-none touch-none"
+              className="group w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-[#4c8dff]/40 select-none touch-none"
             />
             <section
               style={{ width: `${ideWidth}px` }}
-              className="flex min-w-0 shrink-0 flex-col border-l border-zinc-800/80 bg-[#0b0b0e]"
+              className="flex min-w-0 shrink-0 flex-col border-l border-white/[0.07] bg-[#131313]"
             >
-              <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-[#111114] px-3">
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[#161616] px-3">
                 {/* VS Code-style menu bar: File / View dropdowns */}
                 <IdeMenuBar
                   hasWorkspace={!!workspaceRoot}
@@ -1386,9 +1663,11 @@ ${AGENTIC_PROMPT}`,
                   <button
                     onClick={() => setIdeOpen(false)}
                     aria-label="Close editor panel"
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-[13px] text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-100"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
                   >
-                    ✕
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                      <path d="M4 4l8 8M12 4l-8 8" />
+                    </svg>
                   </button>
                 </div>
               </div>
@@ -1396,6 +1675,7 @@ ${AGENTIC_PROMPT}`,
                 <div className="flex min-h-0 flex-1">
                   {workspaceRoot && (
                     <FileExplorer
+                      key={workspaceRoot}
                       root={workspaceRoot}
                       activePath={activeEditorPath}
                       refreshKey={explorerRefreshKey}
@@ -1414,25 +1694,25 @@ ${AGENTIC_PROMPT}`,
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/60 font-mono text-lg text-zinc-600">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] font-mono text-base text-[#6b6b6b]">
                     {"</>"}
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-zinc-400">Open a workspace</p>
-                    <p className="mt-1 text-xs leading-5 text-zinc-600">
+                    <p className="text-[13px] font-medium text-[#d4d4d4]">Open a workspace</p>
+                    <p className="mt-1 text-[11.5px] leading-5 text-[#6b6b6b]">
                       Browse files, edit code, and watch the AI's changes land live.
                     </p>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => void pickWorkspaceFolder()}
-                      className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white shadow-[0_0_16px_rgba(14,165,233,0.3)] transition hover:bg-sky-400"
+                      className="rounded-md bg-[#ececec] px-3.5 py-1.5 text-[12.5px] font-medium text-[#111111] transition hover:bg-white"
                     >
                       Open Folder
                     </button>
                     <button
                       onClick={() => void pickWorkspaceFiles()}
-                      className="rounded-lg border border-zinc-700 bg-white/[0.03] px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.07]"
+                      className="rounded-md border border-white/[0.09] bg-white/[0.02] px-3.5 py-1.5 text-[12.5px] font-medium text-[#d4d4d4] transition hover:bg-white/[0.05]"
                     >
                       Open File
                     </button>
@@ -1443,7 +1723,7 @@ ${AGENTIC_PROMPT}`,
             </>
           )}
           <aside
-            className={`shrink-0 overflow-hidden border-l border-zinc-800/60 bg-[#0c0c0f] transition-[width] duration-200 ease-out ${
+            className={`shrink-0 overflow-hidden border-l border-white/[0.07] bg-[#131313] transition-[width] duration-200 ease-out ${
               sidebarOpen ? "w-80 max-sm:w-full" : "w-0"
             }`}
           >
@@ -1462,6 +1742,11 @@ ${AGENTIC_PROMPT}`,
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
           historySidebarOpen={historySidebarOpen}
           onToggleHistorySidebar={() => setHistorySidebarOpen((v) => !v)}
+          ideOpen={ideOpen}
+          onToggleIde={() => setIdeOpen((v) => !v)}
+          terminalOpen={onOpenTerminal}
+          onToggleTerminal={() => setOpenTerminal((v) => !v)}
+          workspaceName={workspaceRoot?.split(/[\\/]/).filter(Boolean).pop() ?? null}
         />
         <CommandPalette
           isOpen={commandPaletteOpen}
@@ -1469,9 +1754,8 @@ ${AGENTIC_PROMPT}`,
           commands={[
             {
               id: "toggle-sidebar",
-              label: "Toggle Sidebar",
+              label: "Toggle Settings Panel",
               category: "View",
-              icon: "📑",
               shortcut: "Ctrl+B",
               action: () => setSidebarOpen((v) => !v),
             },
@@ -1479,50 +1763,50 @@ ${AGENTIC_PROMPT}`,
               id: "toggle-history",
               label: "Toggle Chat History",
               category: "View",
-              icon: "💬",
               shortcut: "Ctrl+Shift+H",
               action: () => setHistorySidebarOpen((v) => !v),
             },
             {
               id: "open-information",
-              label: "Open Information",
-              category: "Settings",
-              icon: "ℹ️",
+              label: "About & Contact",
+              category: "Help",
               action: () => setInfoPanelOpen(true),
             },
             {
               id: "open-privacy",
-              label: "Open Privacy Policies",
-              category: "Settings",
-              icon: "🔒",
+              label: "Privacy Policy",
+              category: "Help",
               action: () => setPrivacyPolicyOpen(true),
             },
             {
               id: "new-chat",
               label: "New Chat",
               category: "Chat",
-              icon: "✏️",
               action: newChat,
             },
             {
               id: "stop-stream",
               label: "Stop Streaming",
               category: "Chat",
-              icon: "⏹",
               shortcut: "Esc",
               action: isLoading ? stopChat : () => {},
             },
             {
-              id: "open-ide",
-              label: "Open Code Editor",
+              id: "open-terminal",
+              label: "Toggle Terminal",
               category: "View",
-              icon: "📝",
+              shortcut: "Ctrl+`",
+              action: () => setOpenTerminal((v) => !v),
+            },
+            {
+              id: "toggle-ide",
+              label: "Toggle Code Editor",
+              category: "View",
               shortcut: "Ctrl+Shift+E",
-              action: () => setIdeOpen(true),
+              action: () => setIdeOpen((v) => !v),
             },
           ]}
         />
       </div>
-    </ClickSpark>
   );
 }

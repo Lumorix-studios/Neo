@@ -161,137 +161,127 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#10110f] text-[#f1f1eb]">
-      <header className="flex h-12 items-center gap-2 border-b border-white/[0.08] px-3">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md text-amber-50">
-          <span className="text-[13px] font-bold">
-            <IoCube size={18} />
-          </span>
+    <div className="flex h-full w-full flex-col bg-[#131313] text-[#ececec]">
+      <header className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+          Local Models
+        </span>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            aria-label="Refresh"
+            title="Refresh status"
+            onClick={() => void refreshStatus()}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+          >
+            <IoRefresh size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label="Close"
+            title="Close"
+            onClick={onClose}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+          >
+            <IoClose size={15} />
+          </button>
         </div>
-        <span className="text-[12px] font-semibold tracking-tight">Local Models</span>
-        <div className="flex-1" />
-        <button
-          type="button"
-          aria-label="Refresh"
-          title="Refresh status"
-          onClick={() => void refreshStatus()}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-[#777873] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
-        >
-          <IoRefresh size={15} />
-        </button>
-        <button
-          type="button"
-          aria-label="Close"
-          title="Close"
-          onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-[#777873] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
-        >
-          <IoClose size={16} />
-        </button>
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-4 px-4 py-4">
           {/* Server Status */}
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-            <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#777873]">
-              <span className="text-[#a1a1aa]">
-                <IoServer size={14} />
-              </span>
+          <section>
+            <h3 className="mb-2.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+              <IoServer size={13} />
               Server Status
-            </div>
+            </h3>
 
             {!installed ? (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5">
-                  <IoAlertCircle size={16} className="mt-0.5 shrink-0 text-amber-400" />
-                  <div className="text-[12px] leading-5 text-amber-200">
-                    <p className="font-medium">Ollama is not installed</p>
-                    <p className="mt-1 text-[11px] text-amber-200/70">
-                      Install Ollama from{" "}
-                      <a
-                        href="https://ollama.com"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline hover:text-amber-100"
-                      >
-                        ollama.com
-                      </a>{" "}
-                      to run local AI models on your device.
-                    </p>
-                  </div>
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.08] px-3 py-2.5">
+                <IoAlertCircle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+                <div className="text-[11.5px] leading-5 text-amber-200/90">
+                  <p className="m-0 font-medium">Ollama is not installed</p>
+                  <p className="m-0 mt-1 text-[11px] text-amber-200/60">
+                    Install Ollama from{" "}
+                    <a
+                      href="https://ollama.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-amber-100"
+                    >
+                      ollama.com
+                    </a>{" "}
+                    to run local AI models on your device.
+                  </p>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`h-2 w-2 rounded-full ${
+                    className={`h-1.5 w-1.5 rounded-full ${
                       running ? "bg-emerald-500" : "bg-zinc-600"
                     }`}
                   />
-                  <span className="text-[13px] font-medium">
+                  <span className="text-[12.5px] font-medium">
                     {running ? "Server running" : "Server stopped"}
                   </span>
-                  <span className="text-[11px] text-[#777873]">localhost:11434</span>
+                  <span className="text-[10.5px] text-[#6b6b6b]">localhost:11434</span>
                 </div>
 
-                <div className="flex gap-2">
-                  {!running ? (
-                    <button
-                      type="button"
-                      onClick={handleStart}
-                      disabled={starting}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#c9f2d6] px-3 py-2 text-[12px] font-semibold text-[#152219] transition hover:opacity-85 disabled:opacity-50"
-                    >
-                      <IoPlay size={13} />
-                      {starting ? "Starting..." : "Start Server"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleStop}
-                      disabled={stopping}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] font-semibold text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
-                    >
-                      <IoStop size={13} />
-                      {stopping ? "Stopping..." : "Stop Server"}
-                    </button>
-                  )}
-                </div>
+                {!running ? (
+                  <button
+                    type="button"
+                    onClick={handleStart}
+                    disabled={starting}
+                    className="flex items-center justify-center gap-1.5 rounded-md bg-[#ececec] px-3 py-2 text-[12px] font-semibold text-[#111111] transition hover:bg-white disabled:opacity-50"
+                  >
+                    <IoPlay size={13} />
+                    {starting ? "Starting…" : "Start Server"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    disabled={stopping}
+                    className="flex items-center justify-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/[0.08] px-3 py-2 text-[12px] font-semibold text-red-300 transition hover:bg-red-500/[0.14] disabled:opacity-50"
+                  >
+                    <IoStop size={13} />
+                    {stopping ? "Stopping…" : "Stop Server"}
+                  </button>
+                )}
               </div>
             )}
-          </div>
+          </section>
 
           {/* Error / Success messages */}
           {error && (
-            <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-[12px] leading-5 text-red-300">
+            <div className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2.5 text-[11.5px] leading-5 text-red-300">
               {error}
             </div>
           )}
           {success && (
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5 text-[12px] leading-5 text-emerald-300">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.08] px-3 py-2.5 text-[11.5px] leading-5 text-emerald-300">
               {success}
             </div>
           )}
 
           {/* Installed Models */}
           {running && (
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#777873]">
-                  <span className="text-[#a1a1aa]">
-                    <IoCube size={14} />
-                  </span>
+            <section>
+              <div className="mb-2.5 flex items-center justify-between">
+                <h3 className="m-0 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+                  <IoCube size={13} />
                   Installed Models
-                  <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-[#a1a1aa]">
+                  <span className="rounded-sm bg-white/[0.06] px-1.5 py-0.5 text-[9.5px] text-[#a3a3a3]">
                     {models.length}
                   </span>
-                </div>
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowPullInput((v) => !v)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[#a1a1aa] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
                 >
                   <IoDownload size={12} />
                   Pull Model
@@ -309,15 +299,16 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                         if (e.key === "Enter") void handlePull(pullName);
                       }}
                       placeholder="e.g. llama3.2"
-                      className="flex-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-[#f1f1eb] outline-none transition placeholder:text-[#55564f] focus:border-white/[0.18] focus:bg-white/[0.05]"
+                      spellCheck={false}
+                      className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 text-[12px] text-[#ececec] outline-none transition placeholder:text-[#555555] focus:border-white/[0.18]"
                     />
                     <button
                       type="button"
                       onClick={() => void handlePull(pullName)}
                       disabled={!pullName.trim() || pulling !== null}
-                      className="rounded-lg bg-[#c9f2d6] px-3 py-2 text-[12px] font-semibold text-[#152219] transition hover:opacity-85 disabled:opacity-50"
+                      className="shrink-0 rounded-md bg-[#ececec] px-3 py-2 text-[12px] font-semibold text-[#111111] transition hover:bg-white disabled:opacity-50"
                     >
-                      {pulling ? "Pulling..." : "Pull"}
+                      {pulling ? "Pulling…" : "Pull"}
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -326,7 +317,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                         key={m}
                         type="button"
                         onClick={() => setPullName(m)}
-                        className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] text-[#a1a1aa] transition hover:border-white/[0.2] hover:text-[#f1f1eb]"
+                        className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] text-[#a3a3a3] transition hover:border-white/[0.18] hover:text-[#ececec]"
                       >
                         {m}
                       </button>
@@ -336,17 +327,17 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
               )}
 
               {models.length === 0 ? (
-                <p className="py-4 text-center text-[12px] text-[#55564f]">
+                <p className="py-4 text-center text-[11.5px] text-[#555555]">
                   No models installed yet. Pull one to get started.
                 </p>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                   {models.map((model) => (
                     <div
                       key={model.name}
                       className={`group flex items-center gap-2 rounded-lg border px-3 py-2 transition ${
                         selectedModel === model.name
-                          ? "border-[#c9f2d6]/40 bg-[#c9f2d6]/[0.06]"
+                          ? "border-white/[0.16] bg-white/[0.05]"
                           : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]"
                       }`}
                     >
@@ -357,7 +348,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                       >
                         <span
                           className={`shrink-0 ${
-                            selectedModel === model.name ? "text-[#c9f2d6]" : "text-[#777873]"
+                            selectedModel === model.name ? "text-[#4c8dff]" : "text-[#6b6b6b]"
                           }`}
                         >
                           {selectedModel === model.name ? (
@@ -367,10 +358,10 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                           )}
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate text-[12px] font-medium text-[#f1f1eb]">
+                          <span className="block truncate text-[12px] font-medium text-[#ececec]">
                             {model.name}
                           </span>
-                          <span className="block text-[10px] text-[#777873]">
+                          <span className="block text-[10px] text-[#6b6b6b]">
                             {model.details?.parameter_size ?? "Unknown size"} ·{" "}
                             {formatModelSize(model.size)}
                           </span>
@@ -381,7 +372,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                         onClick={() => void handleDelete(model.name)}
                         disabled={deleting === model.name}
                         title={`Delete ${model.name}`}
-                        className="shrink-0 rounded-md p-1.5 text-[#777873] opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 disabled:opacity-30"
+                        className="shrink-0 rounded-md p-1.5 text-[#6b6b6b] opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 disabled:opacity-30"
                       >
                         <IoTrash size={13} />
                       </button>
@@ -389,21 +380,21 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                   ))}
                 </div>
               )}
-            </div>
+            </section>
           )}
 
           {/* How it works */}
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#777873]">
+          <section>
+            <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
               How it works
-            </div>
-            <p className="text-[11px] leading-5 text-[#a1a1aa]">
+            </h3>
+            <p className="m-0 text-[11px] leading-5 text-[#a3a3a3]">
               Local models run entirely on your device using{" "}
-              <span className="text-[#f1f1eb]">Ollama</span>. No data leaves your
-              computer. Start the server, pull a model, then select it to chat
-              with it. The selected model will be used as your AI provider.
+              <span className="text-[#ececec]">Ollama</span>. No data leaves your computer.
+              Start the server, pull a model, then select it to chat with it. The selected
+              model will be used as your AI provider.
             </p>
-          </div>
+          </section>
         </div>
       </main>
     </div>

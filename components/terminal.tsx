@@ -45,11 +45,14 @@ export default function Terminal({ isOpen, onClose, cwd }: TerminalProps) {
 
     const term = new XTerm({
       cursorBlink: true,
-      fontFamily: "'Courier New', Courier, monospace",
-      fontSize: 14,
+      fontFamily:
+        "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace",
+      fontSize: 13,
       theme: {
-        background: "#1e1e1e", // Dark mode background canvas matching VS Code
-        foreground: "#ffffff",
+        background: "#131313", // matches the app panel surface
+        foreground: "#d4d4d4",
+        cursor: "#ececec",
+        selectionBackground: "rgba(76, 141, 255, 0.28)",
       },
     });
     const fitAddon = new FitAddon();
@@ -163,22 +166,22 @@ export default function Terminal({ isOpen, onClose, cwd }: TerminalProps) {
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
-        className="group flex h-2 w-full cursor-row-resize items-center justify-center bg-[#111111] border-t border-white/10 select-none touch-none"
+        className="group flex h-2 w-full cursor-row-resize items-center justify-center bg-[#161616] border-t border-white/[0.07] select-none touch-none"
       >
         <span className="h-1 w-10 rounded-full bg-white/15 transition-colors group-hover:bg-white/35" />
       </div>
-      <div className="flex items-center justify-between px-4 py-2 bg-[#111111] border-t border-white/10">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#161616]">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-[#f1f1eb]">Terminal</span>
-          <span className="text-[11px] text-[#777873]">powershell</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">Terminal</span>
+          <span className="text-[10.5px] text-[#555555]">powershell</span>
         </div>
         <button
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] text-[#777873] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
           aria-label="Close terminal"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
           </svg>
         </button>
       </div>
@@ -187,7 +190,7 @@ export default function Terminal({ isOpen, onClose, cwd }: TerminalProps) {
         style={{
           width: "100%",
           height: `${height}px`,
-          backgroundColor: "#1e1e1e",
+          backgroundColor: "#131313",
           padding: "8px",
         }}
       />

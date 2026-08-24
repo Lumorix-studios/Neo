@@ -1,17 +1,46 @@
 @import "tailwindcss";
+:root {
+  --bg-base: #0e0e0e;        /* app background */
+  --bg-panel: #131313;       /* sidebars, panels */
+  --bg-elevated: #1a1a1a;    /* cards, inputs, popovers */
+  --bg-active: #232323;      /* selected rows, pressed states */
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+
+  --text-primary: #ececec;
+  --text-secondary: #a3a3a3;
+  --text-muted: #6b6b6b;
+  --text-faint: #4a4a4a;
+
+  --accent: #4c8dff;
+  --accent-soft: rgba(76, 141, 255, 0.12);
+
+  --danger: #f87171;
+  --success: #34d399;
+  --warning: #fbbf24;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+}
 
 body {
   margin: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family:
+    ui-sans-serif, -apple-system, "Segoe UI", system-ui, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ---------------------------------------------------------------------------
- * Global slim scrollbars — applied to every scrollable surface so nothing
- * falls back to the chunky OS-default bars. Thumb is nearly invisible at
- * rest and only becomes visible while scrolling / hovering, VS Code style.
- * ------------------------------------------------------------------------- */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(113, 113, 122, 0.35) transparent;
+  scrollbar-color: rgba(120, 120, 120, 0.28) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -24,19 +53,105 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(113, 113, 122, 0.3);
+  background: rgba(120, 120, 120, 0.25);
   border-radius: 999px;
 }
 
 :hover::-webkit-scrollbar-thumb {
-  background: rgba(113, 113, 122, 0.45);
+  background: rgba(120, 120, 120, 0.4);
 }
 
 ::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:active {
-  background: rgba(161, 161, 170, 0.6);
+  background: rgba(150, 150, 150, 0.55);
 }
 
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+
+::selection {
+  background: rgba(76, 141, 255, 0.28);
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+
+
+/* Hairline divider used between stacked panels */
+.hairline-t { border-top: 1px solid var(--border); }
+.hairline-b { border-bottom: 1px solid var(--border); }
+.hairline-l { border-left: 1px solid var(--border); }
+.hairline-r { border-right: 1px solid var(--border); }
+
+/* Keyboard shortcut chip */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion primitives — quiet, fast, professional.
+ * ------------------------------------------------------------------------- */
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.msg-in {
+  animation: msg-in 0.22s ease-out both;
+}
+
+@keyframes caret-blink {
+  0%, 55% {
+    opacity: 1;
+  }
+  56%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Blinking block caret shown at the end of a streaming answer. */
+.stream-caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  border-radius: 1.5px;
+  background: var(--text-primary);
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+/* Soft top fade used above scrollable content areas. */
+.fade-top {
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 24px;
+  z-index: 10;
+  background: linear-gradient(to bottom, var(--bg-base), transparent);
 }

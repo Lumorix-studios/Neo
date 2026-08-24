@@ -165,9 +165,9 @@ export default function CodeEditor({
   const visibleCrumbs = crumbs.length > 4 ? ["…", ...crumbs.slice(-3)] : crumbs;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0d0d10]">
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#131313]">
       {/* ── Tab strip */}
-      <div className="flex h-9 shrink-0 items-stretch  bg-[#111114]">
+      <div className="flex h-9 shrink-0 items-stretch border-b border-white/[0.07] bg-[#161616]">
         <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.length === 0 && (
             <div className="flex items-center px-3 text-[11.5px] text-zinc-600">
@@ -179,14 +179,14 @@ export default function CodeEditor({
             return (
               <div
                 key={t.path}
-                className={`group relative flex shrink-0 items-center border-r border-zinc-800/60 transition-colors ${
+                className={`group relative flex shrink-0 items-center border-r border-white/[0.06] transition-colors ${
                   selected
-                    ? "bg-[#0d0d10] text-zinc-100"
+                    ? "bg-[#131313] text-zinc-100"
                     : "bg-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
                 }`}
               >
                 {selected && (
-                  <span className="absolute inset-x-0 top-0 h-[2px] bg-sky-500" />
+                  <span className="absolute inset-x-0 top-0 h-[2px] bg-[#4c8dff]" />
                 )}
                 <button
                   type="button"
@@ -239,11 +239,11 @@ export default function CodeEditor({
             type="button"
             disabled={!active?.dirty}
             onClick={() => active && onSave(active.path)}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
-              active?.dirty
-                ? "bg-sky-500 text-white shadow-[0_0_14px_rgba(14,165,233,0.35)] hover:bg-sky-400"
-                : "cursor-default bg-white/[0.04] text-zinc-600"
-            }`}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+                active?.dirty
+                  ? "bg-[#ececec] text-[#111111] hover:bg-white"
+                  : "cursor-default bg-white/[0.04] text-[#555555]"
+              }`}
             title="Save (Ctrl+S)"
           >
             Save
@@ -274,7 +274,7 @@ export default function CodeEditor({
           <div className="flex min-h-0 flex-1">
             {/* Line-number gutter */}
             <div
-              className="relative shrink-0 select-none overflow-hidden bg-[#0d0d10] text-right font-mono text-[12.5px]"
+              className="relative shrink-0 select-none overflow-hidden bg-[#131313] text-right font-mono text-[12.5px]"
               style={{ width: gutterDigits * 7.6 + 28 }}
               aria-hidden
             >
@@ -326,14 +326,14 @@ export default function CodeEditor({
                 autoCapitalize="off"
                 autoCorrect="off"
                 wrap="off"
-                className="absolute inset-0 resize-none overflow-auto whitespace-pre bg-transparent pb-20 pl-4 pr-10 text-transparent caret-sky-300 outline-none selection:bg-sky-500/25"
+                className="absolute inset-0 resize-none overflow-auto whitespace-pre bg-transparent pb-20 pl-4 pr-10 text-transparent caret-[#4c8dff] outline-none selection:bg-[#4c8dff]/25"
                 style={{ paddingTop: PAD_TOP, lineHeight: `${LINE_HEIGHT}px` }}
               />
             </div>
           </div>
 
           {/* ── Status bar  */}
-          <div className="flex h-6 shrink-0 items-center justify-between  bg-[#111114] px-3 text-[10.5px] text-zinc-500">
+          <div className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.07] bg-[#161616] px-3 text-[10.5px] text-zinc-500">
             <div className="flex items-center gap-3">
               <span>
                 Ln {cursor.line}, Col {cursor.col}
@@ -359,12 +359,12 @@ export default function CodeEditor({
       ) : (
         /* ── Empty state */
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/60 font-mono text-lg text-zinc-600">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] font-mono text-base text-[#6b6b6b]">
             {"</>"}
           </div>
           <div>
-            <p className="text-sm font-medium text-zinc-400">No file open</p>
-            <p className="mt-1 text-xs leading-5 text-zinc-600">
+            <p className="text-[13px] font-medium text-[#d4d4d4]">No file open</p>
+            <p className="mt-1 text-[11.5px] leading-5 text-[#6b6b6b]">
               Pick a file from the explorer, or ask the AI to create one —
               <br />
               changes it makes will stream straight into this editor.

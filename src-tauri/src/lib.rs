@@ -330,24 +330,43 @@ fn fs_list_dir(path: String) -> Result<Vec<FsEntry>, String> {
 }
 
 
+const SEARCH_RESULT_LIMIT: usize = 200;
+
 #[tauri::command]
 fn fs_search_files(path: String, pattern: String, content: Option<bool>) -> Result<Vec<String>, String> {
     fn walk(dir: &Path, pattern: &str, in_content: bool, out: &mut Vec<String>) -> Result<(), String> {
+        if out.len() >= SEARCH_RESULT_LIMIT {
+            return Ok(());
+        }
         let rd = fs::read_dir(dir).map_err(|e| format!("Failed to read {}: {e}", dir.display()))?;
+        let pat = pattern.to_lowercase();
         for entry in rd.flatten() {
+            if out.len() >= SEARCH_RESULT_LIMIT {
+                return Ok(());
+            }
             let p = entry.path();
             if p.is_dir() {
                 walk(&p, pattern, in_content, out)?;
+            } else if in_content {
+                // Content search: report every matching line as `path:line: text`
+                // so the model can jump straight to the right spot.
+                if let Ok(text) = fs::read_to_string(&p) {
+                    for (i, line) in text.lines().enumerate() {
+                        if line.to_lowercase().contains(&pat) {
+                            out.push(format!(
+                                "{}:{}: {}",
+                                p.to_string_lossy(),
+                                i + 1,
+                                line.trim()
+                            ));
+                            if out.len() >= SEARCH_RESULT_LIMIT {
+                                break;
+                            }
+                        }
+                    }
+                }
             } else {
-                let pat = pattern.to_lowercase();
-                let hit = if in_content {
-                    fs::read_to_string(&p)
-                        .map(|c| c.to_lowercase().contains(&pat))
-                        .unwrap_or(false)
-                } else {
-                    p.to_string_lossy().to_lowercase().contains(&pat)
-                };
-                if hit {
+                if p.to_string_lossy().to_lowercase().contains(&pat) {
                     out.push(p.to_string_lossy().into_owned());
                 }
             }
@@ -356,7 +375,97 @@ fn fs_search_files(path: String, pattern: String, content: Option<bool>) -> Resu
     }
     let mut out = Vec::new();
     walk(Path::new(&path), &pattern, content.unwrap_or(false), &mut out)?;
+    if out.len() >= SEARCH_RESULT_LIMIT {
+        out.push(format!("… results truncated at {SEARCH_RESULT_LIMIT} matches"));
+    }
     Ok(out)
+}
+
+/// Run a shell command in an optional working directory and capture its output.
+/// Used by the agent's `run_command` tool (builds, tests, git, etc.).
+#[tauri::command]
+fn run_command(
+    command: String,
+    cwd: Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    use std::time::{Duration, Instant};
+
+    let shell = if cfg!(target_os = "windows") {
+        "powershell.exe"
+    } else {
+        "sh"
+    };
+
+    let mut cmd = Command::new(shell);
+    if cfg!(target_os = "windows") {
+        cmd.arg("-NoProfile").arg("-Command");
+    } else {
+        cmd.arg("-c");
+    }
+    cmd.arg(&command);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn command: {e}"))?;
+
+    let stdout_handle = child.stdout.take();
+    let stderr_handle = child.stderr.take();
+    let t_out = thread::spawn(move || {
+        let mut buf = String::new();
+        if let Some(mut h) = stdout_handle {
+            let _ = h.read_to_string(&mut buf);
+        }
+        buf
+    });
+    let t_err = thread::spawn(move || {
+        let mut buf = String::new();
+        if let Some(mut h) = stderr_handle {
+            let _ = h.read_to_string(&mut buf);
+        }
+        buf
+    });
+
+    let timeout = Duration::from_secs(timeout_secs.unwrap_or(60).clamp(1, 300));
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break Some(st),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(format!("Failed to wait for command: {e}")),
+        }
+    };
+
+    let stdout = t_out.join().unwrap_or_default();
+    let stderr = t_err.join().unwrap_or_default();
+
+    // Cap captured output so huge logs cannot blow up the model's context.
+    const CAP: usize = 32 * 1024;
+    let cap = |s: String| -> String {
+        if s.len() <= CAP {
+            s
+        } else {
+            format!("{}…[truncated]", &s[..CAP])
+        }
+    };
+
+    Ok(serde_json::json!({
+        "exitCode": status.and_then(|st| st.code()),
+        "timedOut": status.is_none(),
+        "stdout": cap(stdout),
+        "stderr": cap(stderr),
+    }))
 }
 
 /// Rename or move a file or folder.
@@ -478,6 +587,7 @@ pub fn run() {
             fs_list_dir,
             fs_search_files,
             fs_rename,
+            run_command,
             write_to_pty
         ])
         .setup(|app| {

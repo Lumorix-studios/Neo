@@ -142,20 +142,20 @@ export default function IdeMenuBar({
           {title}
         </button>
         {open && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-xl border border-white/[0.08] bg-[#16161b]/95 p-1 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+          <div className="absolute left-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border border-white/[0.09] bg-[#1a1a1a] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
             {items.map((item) => (
               <button
                 key={item.label}
                 type="button"
                 disabled={item.disabled}
                 onClick={item.onSelect}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-[6px] text-left text-[12px] transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-md px-2 py-[6px] text-left text-[12px] transition-colors ${
                   item.disabled
-                    ? "cursor-default text-zinc-600"
-                    : "text-zinc-300 hover:bg-sky-500/[0.14] hover:text-zinc-100"
+                    ? "cursor-default text-[#555555]"
+                    : "text-[#c9c9c9] hover:bg-white/[0.06] hover:text-[#ececec]"
                 }`}
               >
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.checked ? "text-sky-400" : "text-zinc-500"}`}>
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.checked ? "text-[#4c8dff]" : "text-[#6b6b6b]"}`}>
                   {item.checked ? CheckGlyph : item.icon}
                 </span>
                 <span className="flex-1 truncate">{item.label}</span>

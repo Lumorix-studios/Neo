@@ -13,11 +13,13 @@ export type ToolName =
   | "create_dir"
   | "list_dir"
   | "search_files"
-  | "rename";
+  | "rename"
+  | "run_command";
 
 export interface ToolCall {
   id?: string;
-  name: ToolName;
+  /** Known tool name, or a dynamic name such as `mcp_<server>_<tool>`. */
+  name: string;
   arguments: Record<string, unknown>;
 }
 
@@ -28,11 +30,14 @@ export interface ToolResult {
 
 export interface AgenticActivity {
   id: string;
-  tool: ToolName;
+  /** Known tool name or a dynamic `mcp_<server>_<tool>` name. */
+  tool: string;
   args: Record<string, unknown>;
   status: "pending" | "running" | "approved" | "denied" | "done" | "error";
   output?: string;
   error?: string;
+  /** Line diff (old → new) attached after a successful file mutation. */
+  diff?: Array<{ type: "add" | "del" | "ctx"; text: string }>;
 }
 
 export interface FsEntry {
@@ -43,7 +48,7 @@ export interface FsEntry {
   modified: number | null;
 }
 
-/** Tools that mutate the filesystem and therefore need user approval. */
+/** Tools that mutate the filesystem / execute code and need user approval. */
 const DESTRUCTIVE: ToolName[] = [
   "write_file",
   "append_file",
@@ -52,10 +57,11 @@ const DESTRUCTIVE: ToolName[] = [
   "delete_dir",
   "create_dir",
   "rename",
+  "run_command",
 ];
 
-export function isDestructive(name: ToolName): boolean {
-  return DESTRUCTIVE.includes(name);
+export function isDestructive(name: string): boolean {
+  return (DESTRUCTIVE as string[]).includes(name);
 }
 
 const TOOL_NAME_SET = new Set<string>([
@@ -70,6 +76,7 @@ const TOOL_NAME_SET = new Set<string>([
   "list_dir",
   "search_files",
   "rename",
+  "run_command",
 ]);
 
 export function isToolName(name: string): name is ToolName {
@@ -185,6 +192,19 @@ export const TOOL_JSON_SCHEMAS: Record<ToolName, { description: string; paramete
         new_path: { type: "string", description: "Destination path." },
       },
       required: ["path", "new_path"],
+    },
+  },
+  run_command: {
+    description:
+      "Run a shell command (builds, tests, git, package managers…) and capture stdout/stderr.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "The shell command to run." },
+        cwd: { type: "string", description: "Working directory. Defaults to the workspace root." },
+        timeout_secs: { type: "integer", description: "Timeout in seconds (1-300, default 60)." },
+      },
+      required: ["command"],
     },
   },
 };
@@ -315,7 +335,7 @@ function inTauri(): boolean {
 }
 
 /** Browser fallback for non-Tauri (dev in plain browser) — read-only ops only. */
-async function browserFallback(name: ToolName, args: Record<string, unknown>): Promise<ToolResult> {
+async function browserFallback(name: string, args: Record<string, unknown>): Promise<ToolResult> {
   switch (name) {
     case "list_dir": {
       // Can't list a real directory in the browser; return a helpful message.
@@ -344,7 +364,7 @@ async function browserFallback(name: ToolName, args: Record<string, unknown>): P
  * model as a `<tool_result>` block.
  */
 export async function executeTool(
-  name: ToolName,
+  name: string,
   args: Record<string, unknown>,
   workspaceRoot?: string | null
 ): Promise<ToolResult> {
@@ -361,8 +381,27 @@ export async function executeTool(
   }
   try {
     switch (name) {
-      case "read_file":
-        return { ok: true, output: await invoke<string>("fs_read_file", { path: String(args.path ?? "") }) };
+      case "read_file": {
+        const content = await invoke<string>("fs_read_file", { path: String(args.path ?? "") });
+        // Smart truncation: keep the model oriented by reporting the file's
+        // size and pointing at read_file_range instead of dumping everything.
+        const MAX_READ = 12000;
+        if (content.length <= MAX_READ) return { ok: true, output: content };
+        const NL_CH = String.fromCharCode(10);
+        const totalLines = content.split(NL_CH).length;
+        const head = Math.floor(MAX_READ * 0.7);
+        const tail = MAX_READ - head;
+        const headLine = content.slice(0, head).split(NL_CH).length;
+        const tailStartLine = content.slice(0, content.length - tail).split(NL_CH).length;
+        return {
+          ok: true,
+          output:
+            `[Truncated preview — file has ${totalLines} lines / ${content.length} chars.` +
+            ` Use read_file_range(start_line=${headLine + 1}, end_line=${tailStartLine - 1}) for the middle section.]` +
+            `${NL_CH}${content.slice(0, head)}${NL_CH}… [${content.length - head - tail} chars omitted] …${NL_CH}` +
+            content.slice(content.length - tail),
+        };
+      }
       case "read_file_range":
         return {
           ok: true,
@@ -429,6 +468,25 @@ export async function executeTool(
           newPath: String(args.new_path ?? ""),
         });
         return { ok: true, output: `Renamed ${String(args.path)} -> ${String(args.new_path)}.` };
+      case "run_command": {
+        const cwdArg = typeof args.cwd === "string" && args.cwd.trim() ? args.cwd.trim() : null;
+        const res = await invoke<Record<string, unknown>>("run_command", {
+          command: String(args.command ?? ""),
+          cwd: cwdArg ? resolveFsPath(cwdArg, workspaceRoot) : null,
+          timeoutSecs: typeof args.timeout_secs === "number" ? Math.round(args.timeout_secs) : null,
+        });
+        const timedOut = Boolean(res.timedOut);
+        const exitCode = res.exitCode as number | null;
+        const stdout = String(res.stdout ?? "").trim();
+        const stderr = String(res.stderr ?? "").trim();
+        const NL_CH2 = String.fromCharCode(10);
+        const parts: string[] = [];
+        if (timedOut) parts.push("Command timed out and was killed.");
+        else parts.push(`Exit code: ${exitCode}`);
+        if (stdout) parts.push(`stdout:${NL_CH2}${stdout}`);
+        if (stderr) parts.push(`stderr:${NL_CH2}${stderr}`);
+        return { ok: !timedOut && exitCode === 0, output: parts.join(`${NL_CH2}${NL_CH2}`) };
+      }
       default:
         return { ok: false, output: `Unknown tool: ${name}` };
     }
@@ -457,10 +515,29 @@ function tryParseJsonCall(blob: string, calls: ToolCall[]): boolean {
     const parsed = JSON.parse(blob) as {
       name?: string;
       tool?: string;
+      // OpenAI-style nested shape some models emit in text:
+      // { "type": "function", "function": { "name": ..., "arguments": {...} } }
+      function?: { name?: string; arguments?: unknown };
       arguments?: unknown;
       parameters?: unknown;
       args?: unknown;
     };
+
+    // Nested OpenAI-style shape first.
+    if (parsed.function && typeof parsed.function.name === "string") {
+      pushNamedCall(calls, parsed.function.name, parsed.function.arguments ?? {});
+      return true;
+    }
+
+    // Wrapper shape some models emit: {"tool_calls": [{name, arguments}, …]}
+    if (Array.isArray((parsed as Record<string, unknown>).tool_calls)) {
+      let ok = false;
+      for (const item of (parsed as Record<string, unknown>).tool_calls as unknown[]) {
+        if (tryParseJsonCall(JSON.stringify(item), calls)) ok = true;
+      }
+      if (ok) return true;
+    }
+
     const name = parsed.name ?? parsed.tool;
     if (typeof name === "string") {
       pushNamedCall(calls, name, parsed.arguments ?? parsed.parameters ?? parsed.args ?? {});
@@ -470,6 +547,119 @@ function tryParseJsonCall(blob: string, calls: ToolCall[]): boolean {
     /* not json */
   }
   return false;
+}
+
+/** Parse a blob that may be a single call or a JSON array of calls. */
+function tryParseJsonBlob(blob: string, calls: ToolCall[]): boolean {
+  const t = blob.trim();
+  if (t.startsWith("[")) {
+    try {
+      const arr = JSON.parse(t) as unknown[];
+      let ok = false;
+      for (const item of arr) {
+        if (tryParseJsonCall(JSON.stringify(item), calls)) ok = true;
+      }
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+  return tryParseJsonCall(t, calls);
+}
+
+/** True when a JSON blob has both a name-ish key and an args-ish key. */
+function looksLikeToolCallJson(blob: string): boolean {
+  return (
+    /"\s*(?:tool|name|function)"\s*:/.test(blob) &&
+    /"\s*(?:arguments|parameters|args|input)"\s*:/.test(blob)
+  );
+}
+
+/**
+ * Extract bare JSON tool calls printed as plain text with no tags or fences,
+ * e.g.  {"tool": "read_file", "arguments": {"path": "C:/x.py"}}
+ * Scans balanced `{…}` regions and parses the ones that look like calls.
+ */
+export function extractBareJsonCalls(text: string): ToolCall[] {
+  const calls: ToolCall[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const openCh = text[i];
+    if (openCh !== "{" && openCh !== "[") continue;
+    let depth = 0;
+    let end = -1;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (ch === "{" || ch === "[") depth++;
+      else if (ch === "}" || ch === "]") {
+        depth--;
+        if (depth === 0) {
+          end = j;
+          break;
+        }
+      }
+    }
+    if (end === -1) break;
+    const blob = text.slice(i, end + 1);
+    if (looksLikeToolCallJson(blob)) {
+      const before = calls.length;
+      tryParseJsonBlob(blob, calls);
+      if (calls.length > before) i = end; // skip past the consumed blob
+    }
+  }
+  return calls;
+}
+
+/**
+ * Hide an incomplete trailing bare-JSON tool call while streaming, e.g.
+ * `…{"tool": "read_fi` — otherwise partial JSON flashes in the chat and
+ * breaks the surrounding markdown until the blob completes.
+ */
+function stripTrailingPartialJson(text: string): string {
+  const m = /\{[^{}]*$/.exec(text);
+  if (!m) return text;
+  // Match partial keys too ("tool", "nam", "argumen"…) since the stream
+  // may be cut mid-key or mid-value.
+  if (/"(?:tool|name|function|argumen|paramete|inpu)/.test(m[0])) {
+    return text.slice(0, m.index);
+  }
+  return text;
+}
+
+/** Remove bare JSON tool-call blobs from visible output. */
+function stripBareJsonCalls(text: string): string {
+  // Cheap pre-check before running the O(n²) scanner.
+  if (!/"\s*(?:tool|name|function)"\s*:/.test(text)) return text;
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "{") {
+      let depth = 0;
+      let end = -1;
+      for (let j = i; j < text.length; j++) {
+        const ch = text[j];
+        if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            end = j;
+            break;
+          }
+        }
+      }
+      const blob = end !== -1 ? text.slice(i, end + 1) : "";
+      if (blob && looksLikeToolCallJson(blob)) {
+        const before: ToolCall[] = [];
+        tryParseJsonBlob(blob, before);
+        if (before.length > 0) {
+          i = end + 1;
+          continue; // drop the blob
+        }
+      }
+    }
+    out += text[i];
+    i++;
+  }
+  return out;
 }
 
 /**
@@ -485,7 +675,7 @@ export function parseToolCalls(text: string): ToolCall[] {
   while ((m = re.exec(text)) !== null) {
     xmlBlocks++;
     const inner = m[1].trim();
-    if (tryParseJsonCall(inner, calls)) {
+    if (tryParseJsonBlob(inner, calls)) {
       jsonOk++;
       continue;
     }
@@ -529,8 +719,11 @@ export function parseToolCalls(text: string): ToolCall[] {
 
   const fenceRe = /```(?:json|tool_call|tool)?\s*([\s\S]*?)```/gi;
   while ((m = fenceRe.exec(text)) !== null) {
-    tryParseJsonCall(m[1].trim(), calls);
+    tryParseJsonBlob(m[1].trim(), calls);
   }
+
+  // Bare JSON objects printed as plain text (no tags/fences at all).
+  calls.push(...extractBareJsonCalls(text));
 
   // #region agent log
   debugLog("B", "agentic.ts:parseToolCalls", "parseToolCalls result", {
@@ -545,13 +738,34 @@ export function parseToolCalls(text: string): ToolCall[] {
   return calls;
 }
 
-/** Strip tool-call markup from a response so the visible answer is clean. */
+/**
+ * Strip tool-call markup from a response so the visible answer is clean.
+ * Also removes *incomplete* trailing markup (e.g. `<tool_call>{"na`) so raw
+ * tool JSON never flashes on screen while a response is streaming.
+ */
 export function stripToolCalls(text: string): string {
-  return text
+  const stripped = text
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/<tool_call>[^<]*$/i, "")
     .replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, "")
+    .replace(/<function=[^<]*$/i, "")
     .replace(/<invoke[\s\S]*?<\/invoke>/gi, "")
-    .trim();
+    .replace(/<invoke[^<]*$/i, "");
+  return stripTrailingPartialJson(stripBareJsonCalls(stripped)).trim();
+}
+
+/**
+ * Make partially-streamed markdown render sanely: if a tool call was
+ * stripped from the middle of a fenced code block, the fence becomes
+ * unbalanced and the whole message renders as a code wall. Appending a
+ * closing fence while streaming keeps the layout stable until the real
+ * content completes.
+ */
+export function stabilizeStreamingMarkdown(text: string): string {
+  const fenceCount = (text.match(/```/g) ?? []).length;
+  if (fenceCount % 2 === 1) return `${text}
+\`\`\``;
+  return text;
 }
 
 /** Build a `<tool_result>` block to feed back to the model. */
@@ -573,6 +787,7 @@ export const TOOL_LABELS: Record<ToolName, string> = {
   list_dir: "List folder",
   search_files: "Search files",
   rename: "Rename / move",
+  run_command: "Run command",
 };
 
 /** Short description of each tool for the model's system prompt. */
@@ -588,6 +803,7 @@ export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   list_dir: 'list_dir(path) — list files and folders in a directory.',
   search_files: 'search_files(path, pattern, content=false) — recursively search for pattern in file paths (or file contents when content=true).',
   rename: 'rename(path, new_path) — rename or move a file/folder.',
+  run_command: 'run_command(command, cwd?, timeout_secs?) — run a shell command (npm test, cargo build, git status…) and capture its output.',
 };
 
 /** The protocol instructions injected into the system prompt. */
@@ -607,13 +823,15 @@ If you can only emit text, use exactly one JSON block:
 </tool_call>
 
 Rules:
-1. Call at most ONE tool per message. Wait for the tool result before the next call.
-2. After a tool result, continue working: read more, edit, search, etc., one tool at a time.
-3. When you have everything you need, reply with your final answer in plain text (no tool_call blocks).
-4. Destructive tools (write_file, append_file, replace_in_file, delete_file, delete_dir, create_dir, rename) require user approval — the app will ask the user before executing them. If the user denies, you will receive an error result; adapt accordingly.
+1. Batch independent read-only calls (read_file, read_file_range, list_dir, search_files) together in ONE message — the app executes them in parallel, which is much faster.
+2. Mutating tools (write_file, append_file, replace_in_file, delete_file, delete_dir, create_dir, rename, run_command) must be called ONE at a time; wait for each result before the next mutation.
+3. Keep commentary between tool calls minimal (one short sentence at most). When you have everything you need, reply with your final answer in plain text (no tool_call blocks).
+4. Destructive tools require user approval — the app will ask the user before executing them. If the user denies, you will receive an error result; adapt accordingly and do not retry the same call.
 5. Paths may be absolute or relative to the workspace root.
-6. Keep file contents you write complete and correct — do not truncate.
+6. Keep file contents you write complete and correct — never truncate or use placeholders.
 7. If a tool errors, read the error and try a different approach.
+8. After editing files, verify your work: use run_command to build/test/lint when a build system exists (e.g. "npm run build", "cargo check"). Read compile errors and fix them.
+9. search_files with content=true returns matches as path:line: text — use those line numbers with read_file_range to inspect precisely.
 `.trim();
 
 /** Generate a unique activity id. */

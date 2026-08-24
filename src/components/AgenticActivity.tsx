@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AgenticActivity as AgenticActivityType } from "../agentic";
 import { TOOL_LABELS } from "../agentic";
+import { diffStats } from "../../src/diff";
 
 interface AgenticActivityProps {
   items: AgenticActivityType[];
@@ -116,6 +117,17 @@ export default function AgenticActivity({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
+  // Auto-expand rows that carry a diff so edits are visible immediately.
+  useEffect(() => {
+    setExpandedRows((prev) => {
+      const next = [...prev];
+      for (const item of items) {
+        if (item.diff && item.diff.length > 0 && !next.includes(item.id)) next.push(item.id);
+      }
+      return next;
+    });
+  }, [items]);
+
   const visible = items.filter((item) => !isClosed(item.id));
   if (visible.length === 0 && !pending) return null;
 
@@ -128,7 +140,7 @@ export default function AgenticActivity({
               <div className="flex min-w-0 items-center gap-2">
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT.pending}`} />
                 <span className="text-[12px] font-medium text-zinc-200">
-                  {TOOL_LABELS[pending.tool]}
+                  {TOOL_LABELS[pending.tool as keyof typeof TOOL_LABELS] ?? pending.tool}
                 </span>
                 {typeof pending.args.path === "string" && (
                   <span className="truncate font-mono text-[11px] text-zinc-500">
@@ -175,13 +187,22 @@ export default function AgenticActivity({
               >
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[item.status]}`} />
                 <span className="text-[12px] font-medium text-zinc-300">
-                  {TOOL_LABELS[item.tool]}
+                  {TOOL_LABELS[item.tool as keyof typeof TOOL_LABELS] ?? item.tool}
                 </span>
                 {item.args.path != null && (
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-500">
                     {shortPath(String(item.args.path))}
                   </span>
                 )}
+                {item.diff && (() => {
+                  const { adds, dels } = diffStats(item.diff);
+                  return adds + dels > 0 ? (
+                    <span className="shrink-0 font-mono text-[10px] tabular-nums">
+                      <span className="text-emerald-400">+{adds}</span>{" "}
+                      <span className="text-red-400">−{dels}</span>
+                    </span>
+                  ) : null;
+                })()}
                 {hasDetail && <Chevron open={open} />}
                 <span
                   role="button"
@@ -195,6 +216,29 @@ export default function AgenticActivity({
                   ✕
                 </span>
               </button>
+              {open && item.diff && item.diff.length > 0 && (
+                <div className="mx-3 mb-2 overflow-hidden rounded-md border border-zinc-800/80 bg-black/40">
+                  <div className="max-h-64 overflow-auto font-mono text-[11px] leading-5">
+                    {item.diff.map((l, i) => (
+                      <div
+                        key={i}
+                        className={
+                          l.type === "add"
+                            ? "bg-emerald-500/[0.08] text-emerald-300"
+                            : l.type === "del"
+                              ? "bg-red-500/[0.08] text-red-300"
+                              : "text-zinc-600"
+                        }
+                      >
+                        <span className="select-none px-2 opacity-60">
+                          {l.type === "add" ? "+" : l.type === "del" ? "−" : " "}
+                        </span>
+                        <span className="whitespace-pre-wrap break-all">{l.text || " "}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {open && item.output && (
                 <pre className="mx-3 mb-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-zinc-800/80 bg-black/40 px-2.5 py-2 font-mono text-[11px] leading-5 text-zinc-400">
                   {item.output}

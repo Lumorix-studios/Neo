@@ -1,74 +1,78 @@
 import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useErrorHandler } from "../src/errorContext";
+
 interface Tab2Props {
   isOpen: boolean;
   onClose: () => void;
 }
-{/*Doesnt actually send feedbacks to us lol, well its kind a mail:to method instead of a third party way. had to work around it lol*/}
+
 export default function Tab2({ isOpen, onClose }: Tab2Props) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   void setRating;
   const { reportError } = useErrorHandler();
-  const onclickDoc =
-    async () => {
-      try {
-        await openUrl("mailto:madhusudhant207@gmail.com");
-      } catch (error) {
-        reportError(error);
-      }
-  }
+
+  const openFeedback = async () => {
+    try {
+      await openUrl("mailto:madhusudhant207@gmail.com");
+    } catch (error) {
+      reportError(error);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-6"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md bg-[#10110f] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#c9f2d6] text-[#152219]">
-              <span className="text-[15px] font-bold">★</span>
-            </div>
-            <div>
-              <h2 className="text-[15px] font-semibold text-[#f1f1eb] m-0">Rate us</h2>
-              <p className="text-[12px] text-[#777873] m-0">Lumorix Studios</p>
-            </div>
+      <div className="w-full max-w-md overflow-hidden rounded-xl border border-white/[0.09] bg-[#161616] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
+          <div>
+            <h2 className="m-0 text-[14px] font-semibold text-[#ececec]">Rate Neo</h2>
+            <p className="m-0 text-[11.5px] text-[#6b6b6b]">Lumorix Studios</p>
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] text-[#777873] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
+            aria-label="Close"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
           </button>
         </div>
 
+        {/* Body */}
         <div className="px-5 py-6">
-          <p className="text-[13px] text-[#a1a1aa] leading-relaxed m-0 mb-5">
+          <p className="m-0 mb-5 text-[12.5px] leading-relaxed text-[#a3a3a3]">
             Enjoying the app? Tap a star to rate your experience.
           </p>
 
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-1.5">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
-                // onClick={() => setRating(star)}
-                onClick={() => onclickDoc()}
+                onClick={() => {
+                  setRating(star);
+                  void openFeedback();
+                }}
                 onMouseEnter={() => setHover(star)}
                 onMouseLeave={() => setHover(0)}
+                aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
                 className="p-1 transition-transform hover:scale-110"
               >
                 <svg
-                  width="32"
-                  height="32"
+                  width="26"
+                  height="26"
                   viewBox="0 0 24 24"
-                  fill={(hover || rating) >= star ? "#c9f2d6" : "none"}
-                  stroke={(hover || rating) >= star ? "#c9f2d6" : "#777873"}
-                  strokeWidth="1.5"
+                  fill={(hover || rating) >= star ? "#ececec" : "none"}
+                  stroke={(hover || rating) >= star ? "#ececec" : "#555555"}
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
                 >
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                 </svg>
@@ -77,17 +81,18 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
           </div>
 
           {rating > 0 && (
-            <p className="text-center text-[12px] text-[#c9f2d6] mt-4 m-0">
+            <p className="m-0 mt-4 text-center text-[11.5px] text-[#6b6b6b]">
               Thanks for the {rating}-star rating!
             </p>
           )}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3 border-t border-white/[0.08]">
-          <span className="text-[11px] text-[#777873]">© 2026 Lumorix Studios</span>
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-white/[0.07] px-5 py-3">
+          <span className="text-[10.5px] text-[#6b6b6b]">© 2026 Lumorix Studios</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-[#c9f2d6] text-[#152219] text-[13px] font-semibold transition hover:opacity-85"
+            className="rounded-md bg-[#ececec] px-3.5 py-1.5 text-[12px] font-semibold text-[#111111] transition hover:bg-white"
           >
             Close
           </button>

@@ -41,6 +41,8 @@ export interface AISettings {
   baseUrl: string;
   systemPrompt: string;
   temperature: number;
+  /** When true, agent file edits & commands run without an approval dialog. */
+  autoApproveTools?: boolean;
 }
 
 /** Defaults for every field. Adding a new field here keeps old saved
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: AISettings = {
   baseUrl: "https://api.openai.com/v1",
   systemPrompt: "You are a helpful, professional assistant.",
   temperature: 0.7,
+  autoApproveTools: false,
 };
 
 const STORAGE_KEY = "neochat.settings.v1";
