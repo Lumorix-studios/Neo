@@ -1,0 +1,6 @@
+npm notice run projectneo@1.0.4 npx
+npm notice run tsc -b
+src/components/FileIcon.tsx(10,3): error TS2724: '"react-icons/si"' has no exported member named 'SiCsharp'. Did you mean 'SiSharp'?
+src/components/FileIcon.tsx(11,3): error TS2724: '"react-icons/si"' has no exported member named 'SiCss3'. Did you mean 'SiCss'?
+src/components/FileIcon.tsx(17,3): error TS2305: Module '"react-icons/si"' has no exported member 'SiJava'.
+src/components/GitPanel.tsx(21,3): error TS2305: Module '"react-icons/io5"' has no exported member 'IoUndo'.

@@ -1,0 +1,2 @@
+npm notice run projectneo@1.0.4 npx
+npm notice run eslint src/components/GitPanel.tsx src/components/CodeEditor.tsx src/components/FileIcon.tsx src/components/FileExplorer.tsx

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
-import { langOf, highlightCode, commentToken } from "./highlight";
-import { FileIcon, langColorOf } from "./FileIcon";
+import { langOf, langColorOf, highlightCode, commentToken } from "./highlight";
+import { FileIcon } from "./FileIcon";
 
 export interface EditorTab {
   path: string;
@@ -48,22 +48,22 @@ export default function CodeEditor({
 
   const activeContent = active?.content ?? "";
   const activeLang = active ? langOf(active.path) : "text";
-  const highlighted = useMemo(
-    () => highlightCode(activeContent, activeLang),
-    [activeContent, activeLang]
-  );
-  const lineCount = useMemo(() => activeContent.split("\n").length, [activeContent]);
+  // React Compiler auto-memoizes these; plain derivation keeps lint happy.
+  const highlighted = highlightCode(activeContent, activeLang);
+  const lineCount = activeContent.split("\n").length;
   const gutterDigits = Math.max(2, String(lineCount).length);
 
   // Reset scroll + cursor bookkeeping whenever the user switches tabs.
   useEffect(() => {
-    setScrollTop(0);
-    setCursor({ line: 1, col: 1, sel: 0 });
-    const el = taRef.current;
-    if (el) {
-      el.scrollTop = 0;
-      el.scrollLeft = 0;
-    }
+    void Promise.resolve().then(() => {
+      setScrollTop(0);
+      setCursor({ line: 1, col: 1, sel: 0 });
+      const el = taRef.current;
+      if (el) {
+        el.scrollTop = 0;
+        el.scrollLeft = 0;
+      }
+    });
   }, [activePath]);
 
   const syncCursor = () => {

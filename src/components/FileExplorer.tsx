@@ -126,17 +126,14 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
     });
 
   /** True when an entry (or any loaded descendant) matches the filter. */
-  const matches = useCallback(
-    (entry: FsEntry): boolean => {
-      if (!query) return true;
-      const q = query.toLowerCase();
-      if (entry.name.toLowerCase().includes(q)) return true;
-      if (!entry.is_dir) return false;
-      const kids = nodes[entry.path]?.entries ?? [];
-      return kids.some(matches);
-    },
-    [query, nodes]
-  );
+  function matches(entry: FsEntry): boolean {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    if (entry.name.toLowerCase().includes(q)) return true;
+    if (!entry.is_dir) return false;
+    const kids = nodes[entry.path]?.entries ?? [];
+    return kids.some(matches);
+  }
 
   const collapseAll = () => {
     setNodes((prev) => {

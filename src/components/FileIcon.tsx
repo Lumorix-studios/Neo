@@ -34,42 +34,6 @@ import {
 } from "react-icons/si";
 import { FaJava } from "react-icons/fa";
 
-/** Accent colour for a path's language — used for tab underlines etc. */
-export function langColorOf(path: string): string {
-  const lower = path.toLowerCase();
-  const name = lower.split(/[\\/]/).pop() ?? lower;
-  const ext = name.includes(".") ? name.split(".").pop()! : "";
-  if (name === "package.json") return "#cb3837";
-  if (name.startsWith("vite.config")) return "#646cff";
-  if (name.startsWith("tailwind.config") || name === "tailwind.css") return "#38bdf8";
-  switch (ext) {
-    case "ts": case "mts": return "#3178c6";
-    case "tsx": case "jsx": return "#61dafb";
-    case "js": case "mjs": case "cjs": return "#f7df1e";
-    case "json": return "#cbcb41";
-    case "css": return "#663399";
-    case "scss": case "sass": return "#cc6699";
-    case "less": return "#2b5e88";
-    case "html": case "htm": return "#e34f26";
-    case "vue": return "#42b883";
-    case "py": case "pyw": return "#3776ab";
-    case "rs": return "#e43717";
-    case "go": return "#00add8";
-    case "java": return "#e76f00";
-    case "c": case "h": return "#a8b9cc";
-    case "cpp": case "cc": case "hpp": return "#00599c";
-    case "cs": return "#239120";
-    case "rb": return "#cc342d";
-    case "php": return "#777bb4";
-    case "swift": return "#f05138";
-    case "kt": case "kts": return "#7f52ff";
-    case "md": case "markdown": return "#519aba";
-    case "sh": case "bash": case "zsh": return "#89e051";
-    case "yml": case "yaml": return "#cb171e";
-    default: return "#8d8d93";
-  }
-}
-
 /** Folded-corner document fallback for unknown types. */
 function DocIcon({ tint }: { tint: string }) {
   return (
