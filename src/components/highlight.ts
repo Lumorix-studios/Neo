@@ -100,6 +100,15 @@ const KEYWORDS: Record<string, Set<string>> = {
 
 const HASH_COMMENTS = new Set(["python", "shell", "yaml", "toml", "ruby"]);
 
+/** Line-comment token for a language, or null when unsupported. */
+export function commentToken(lang: string): string | null {
+  if (HASH_COMMENTS.has(lang)) return "#";
+  if (["typescript", "javascript", "rust", "go", "java", "c", "cpp", "csharp",
+    "php", "swift", "kotlin"].includes(lang)) return "//";
+  if (lang === "sql") return "--";
+  return null;
+}
+
 // Entities are built via concatenation so the source never contains a bare
 // entity reference (which would be collapsed by tooling).
 const E_AMP = "&" + "amp;";

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
-import { langOf, highlightCode, LANG_BADGE } from "./highlight";
+import { langOf, highlightCode, commentToken } from "./highlight";
+import { FileIcon, langColorOf } from "./FileIcon";
 
 export interface EditorTab {
   path: string;
@@ -21,20 +22,6 @@ export interface CodeEditorProps {
 /** Metrics shared by the gutter, highlight layer and textarea so they stay pixel-aligned. */
 const LINE_HEIGHT = 20;
 const PAD_TOP = 10;
-
-/** Small colored language badge used on editor tabs and explorer rows. */
-export function LangBadge({ path }: { path: string }) {
-  const meta = LANG_BADGE[langOf(path)] ?? LANG_BADGE.text;
-  return (
-    <span
-      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] text-[8px] font-bold leading-none"
-      style={{ backgroundColor: meta.bg, color: meta.fg }}
-      title={langOf(path)}
-    >
-      {meta.label}
-    </span>
-  );
-}
 
 function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -57,7 +44,7 @@ export default function CodeEditor({
   const preRef = useRef<HTMLPreElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
-  const [cursor, setCursor] = useState({ line: 1, col: 1 });
+  const [cursor, setCursor] = useState({ line: 1, col: 1, sel: 0 });
 
   const activeContent = active?.content ?? "";
   const activeLang = active ? langOf(active.path) : "text";
@@ -71,7 +58,7 @@ export default function CodeEditor({
   // Reset scroll + cursor bookkeeping whenever the user switches tabs.
   useEffect(() => {
     setScrollTop(0);
-    setCursor({ line: 1, col: 1 });
+    setCursor({ line: 1, col: 1, sel: 0 });
     const el = taRef.current;
     if (el) {
       el.scrollTop = 0;
@@ -84,7 +71,11 @@ export default function CodeEditor({
     if (!el) return;
     const before = el.value.slice(0, el.selectionStart);
     const lines = before.split("\n");
-    setCursor({ line: lines.length, col: lines[lines.length - 1].length + 1 });
+    setCursor({
+      line: lines.length,
+      col: lines[lines.length - 1].length + 1,
+      sel: el.selectionEnd - el.selectionStart,
+    });
   };
 
   
@@ -119,6 +110,75 @@ export default function CodeEditor({
     }
 
     const el = e.currentTarget;
+
+    // Ctrl+/: toggle line comments on the selected lines.
+    if ((e.ctrlKey || e.metaKey) && e.key === "/") {
+      const token = commentToken(activeLang);
+      if (!token) return;
+      e.preventDefault();
+      const s = el.selectionStart;
+      const en = el.selectionEnd;
+      const firstLine = el.value.lastIndexOf("\n", s - 1) + 1;
+      let lastLine = el.value.indexOf("\n", en);
+      if (lastLine === -1) lastLine = el.value.length;
+      const block = el.value.slice(firstLine, lastLine);
+      const lines = block.split("\n");
+      const allCommented = lines
+        .filter((l) => l.trim())
+        .every((l) => l.trimStart().startsWith(token));
+      const next = lines
+        .map((line) => {
+          if (!line.trim()) return line;
+          if (allCommented) {
+            const idx = line.indexOf(token);
+            return line.slice(0, idx) + line.slice(idx + token.length).replace(/^ /, "");
+          }
+          const indent = (/^[ \t]*/.exec(line) ?? [""])[0];
+          return `${indent}${token} ${line.slice(indent.length)}`;
+        })
+        .join("\n");
+      replaceRange(next, firstLine, lastLine);
+      return;
+    }
+
+    // Auto-close brackets & quotes; type-over when the closer is already there.
+    const CLOSERS = ")]}\"'`";
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+      const PAIRS: Record<string, string> = {
+        "(": ")", "[": "]", "{": "}", '"': '"', "'": "'", "`": "`",
+      };
+      const open = PAIRS[e.key];
+      const s = el.selectionStart;
+      const en = el.selectionEnd;
+      if (open) {
+        // Type-over a closing quote instead of inserting another one.
+        if (s === en && open === e.key && el.value[s] === e.key) {
+          e.preventDefault();
+          el.setSelectionRange(s + 1, s + 1);
+          syncCursor();
+          return;
+        }
+        e.preventDefault();
+        replaceRange(e.key + open, s, en);
+        return;
+      }
+      if (CLOSERS.includes(e.key) && s === en && el.value[s] === e.key) {
+        e.preventDefault();
+        el.setSelectionRange(s + 1, s + 1);
+        syncCursor();
+        return;
+      }
+      // Backspace between an empty pair deletes both halves.
+      if (e.key === "Backspace" && s === en && s > 0) {
+        const before = el.value[s - 1];
+        const after = el.value[s];
+        if (PAIRS[before] && PAIRS[before] === after) {
+          e.preventDefault();
+          replaceRange("", s - 1, s + 1);
+          return;
+        }
+      }
+    }
 
     // Tab / Shift+Tab: indent & outdent like a real editor.
     if (e.key === "Tab") {
@@ -181,23 +241,25 @@ export default function CodeEditor({
                 key={t.path}
                 className={`group relative flex shrink-0 items-center border-r border-white/[0.06] transition-colors ${
                   selected
-                    ? "bg-[#131313] text-zinc-100"
+                    ? "bg-[#1a1a1a] text-zinc-100"
                     : "bg-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
                 }`}
               >
-                {selected && (
-                  <span className="absolute inset-x-0 top-0 h-[2px] bg-[#4c8dff]" />
-                )}
+                {/* Language-coloured top accent on the active tab */}
+                <span
+                  className="absolute inset-x-0 top-0 h-[2px] transition-opacity"
+                  style={{ backgroundColor: langColorOf(t.path), opacity: selected ? 1 : 0 }}
+                />
                 <button
                   type="button"
                   onClick={() => onSelect(t.path)}
-                  className="flex max-w-[190px] items-center gap-2 py-0 pl-3 pr-1 text-[12px]"
+                  className={`flex max-w-[190px] items-center gap-2 py-0 pl-3 pr-1 text-[12px] ${
+                    t.dirty && !selected ? "italic" : ""
+                  }`}
                   title={t.path}
                 >
-                  <LangBadge path={t.path} />
-                  <span className={`truncate ${t.dirty ? "italic" : ""}`}>
-                    {fileName(t.path)}
-                  </span>
+                  <FileIcon name={t.path} />
+                  <span className="truncate">{fileName(t.path)}</span>
                 </button>
                 <button
                   type="button"
@@ -208,14 +270,14 @@ export default function CodeEditor({
                   {t.dirty ? (
                     <>
                       <span className="h-[7px] w-[7px] rounded-full bg-zinc-400 group-hover:hidden" />
-                      <span className="hidden text-[14px] leading-none text-zinc-400 group-hover:block hover:text-zinc-100">
-                        ×
-                      </span>
+                      <svg viewBox="0 0 16 16" className="hidden h-3 w-3 group-hover:block" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                        <path d="M4 4l8 8M12 4l-8 8" />
+                      </svg>
                     </>
                   ) : (
-                    <span className="text-[14px] leading-none text-transparent group-hover:text-zinc-500 hover:text-zinc-100">
-                      ×
-                    </span>
+                    <svg viewBox="0 0 16 16" className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-70" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                      <path d="M4 4l8 8M12 4l-8 8" />
+                    </svg>
                   )}
                 </button>
               </div>
@@ -254,18 +316,24 @@ export default function CodeEditor({
       {active ? (
         <>
           {/* ── Breadcrumbs ─────────────────────────────────────── */}
-          <div className="flex h-7 shrink-0 items-center gap-1 overflow-hidden  px-3 text-[11px] text-zinc-600">
+          <div className="flex h-7 shrink-0 items-center gap-1.5 overflow-hidden border-b border-white/[0.04] px-3 text-[11px] text-zinc-600">
+            <FileIcon name={active.path} />
             {visibleCrumbs.map((seg, i) => (
-              <span key={`${seg}-${i}`} className="flex items-center gap-1 whitespace-nowrap">
-                {i > 0 && <span className="text-zinc-700">›</span>}
+              <span key={`${seg}-${i}`} className="flex items-center gap-1.5 whitespace-nowrap">
+                {i > 0 && (
+                  <svg viewBox="0 0 16 16" className="h-2.5 w-2.5 text-zinc-700" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 3.5L10.5 8 6 12.5" />
+                  </svg>
+                )}
                 <span className={i === visibleCrumbs.length - 1 ? "text-zinc-400" : ""}>
                   {seg}
                 </span>
               </span>
             ))}
             {active.dirty && (
-              <span className="ml-2 shrink-0 rounded bg-amber-500/15 px-1.5 py-px text-[10px] font-medium text-amber-400">
-                unsaved changes
+              <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-amber-500/10 px-2 py-px text-[10px] font-medium text-amber-400">
+                <span className="h-1 w-1 rounded-full bg-current" />
+                unsaved
               </span>
             )}
           </div>
@@ -338,8 +406,8 @@ export default function CodeEditor({
               <span>
                 Ln {cursor.line}, Col {cursor.col}
               </span>
+              {cursor.sel > 0 && <span className="text-zinc-400">{cursor.sel} selected</span>}
               <span>{lineCount} lines</span>
-              <span>{activeContent.length} chars</span>
             </div>
             <div className="flex items-center gap-3">
               <span
@@ -352,15 +420,24 @@ export default function CodeEditor({
               </span>
               <span>Spaces: 2</span>
               <span>UTF-8</span>
-              <span className="capitalize">{activeLang}</span>
+              <span className="flex items-center gap-1 capitalize">
+                <FileIcon name={active.path} />
+                {activeLang}
+              </span>
             </div>
           </div>
         </>
       ) : (
         /* ── Empty state */
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] font-mono text-base text-[#6b6b6b]">
-            {"</>"}
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-4 overflow-hidden px-6 text-center">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-1/3 h-56 w-80 max-w-full -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#4c8dff]/[0.06] blur-3xl"
+          />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-transparent shadow-inner">
+            <svg viewBox="0 0 24 24" className="h-6 w-6 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13.5 4l-3 16" />
+            </svg>
           </div>
           <div>
             <p className="text-[13px] font-medium text-[#d4d4d4]">No file open</p>
@@ -369,6 +446,11 @@ export default function CodeEditor({
               <br />
               changes it makes will stream straight into this editor.
             </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10.5px] text-zinc-600">
+            <span><kbd className="rounded border border-white/10 bg-white/[0.04] px-1 py-px">Ctrl+S</kbd> save</span>
+            <span><kbd className="rounded border border-white/10 bg-white/[0.04] px-1 py-px">Ctrl+/</kbd> comment</span>
+            <span><kbd className="rounded border border-white/10 bg-white/[0.04] px-1 py-px">Tab</kbd> indent</span>
           </div>
         </div>
       )}

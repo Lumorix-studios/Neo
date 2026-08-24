@@ -1,9 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+/**
+ * Source Control side panel (git status / stage / commit / pull / push).
+ * All git access shells out to the system `git` CLI via the existing
+ * `run_command` Tauri command — no extra backend needed.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  IoGitBranchSharp,
+  IoArrowDown,
+  IoArrowUp,
+  IoChevronDown,
+  IoChevronUp,
+  IoGitBranch,
   IoGitCommit,
-  IoGitNetworkSharp,
+  IoGitNetwork,
+  IoClose,
+  IoRefresh,
+  IoAdd,
+  IoRemove,
+  IoSync,
+  IoArrowUndo,
 } from "react-icons/io5";
 
 /** Shape returned by the Tauri `run_command` command. */
@@ -14,21 +29,30 @@ interface RunResult {
   stderr: string;
 }
 
-/** One changed file parsed from `git status --porcelain`. */
-interface StatusEntry {
-  /** Index (staged) status code, e.g. "M", "A", "?". */
-  x: string;
-  /** Worktree status code. */
-  y: string;
-  path: string;
-}
-
 interface GitPanelProps {
   /** Absolute path of the workspace folder git commands run in. */
   root: string;
   onClose: () => void;
   /** Open a clicked changed-file in an editor tab. */
   onOpenFile?: (path: string) => void;
+}
+
+/** One row of `git status --porcelain` output. */
+interface Change {
+  /** Index (staged) status letter: M / A / D / R / … or space. */
+  x: string;
+  /** Worktree status letter, "?" for untracked. */
+  y: string;
+  /** Current path relative to the repo root. */
+  path: string;
+  /** Original path for renames (`old -> new`). */
+  origPath?: string;
+}
+
+interface BranchInfo {
+  name: string | null;
+  ahead: number;
+  behind: number;
 }
 
 /** Run a git sub-command in the workspace and capture its output. */
@@ -40,152 +64,305 @@ async function git(root: string, args: string): Promise<RunResult> {
   });
 }
 
+/** Quote a path so it survives the PowerShell round-trip intact. */
+function quotePath(p: string): string {
+  return `"${p.replace(/["'`]/g, "")}"`;
+}
+
+/** Decode git's C-quoted paths ("pa\th") back to plain text. */
+function unquotePath(raw: string): string {
+  let p = raw.trim();
+  if (p.startsWith('"') && p.endsWith('"')) {
+    p = p.slice(1, -1);
+    p = p.replace(/\\(?:([\\"])|([0-7]{3}))/g, (_m, ch, oct) =>
+      ch ? ch : String.fromCharCode(parseInt(oct, 8))
+    );
+  }
+  return p;
+}
+
 const STATUS_LABELS: Record<string, string> = {
-  M: "Modified",
-  A: "Added",
-  D: "Deleted",
-  R: "Renamed",
-  C: "Copied",
-  U: "Unmerged",
-  "?": "Untracked",
+  M: "Modified", A: "Added", D: "Deleted", R: "Renamed",
+  C: "Copied", U: "Conflict", "?": "Untracked",
 };
 
-/** Human-readable badge text for one porcelain row. */
-function statusLabel(e: StatusEntry): string {
-  if (e.x === "?" && e.y === "?") return "Untracked";
-  const parts: string[] = [];
-  if (e.x !== " " && e.x !== "?") parts.push(`Staged ${STATUS_LABELS[e.x] ?? e.x}`);
-  if (e.y !== " ") parts.push(`${STATUS_LABELS[e.y] ?? e.y}`);
-  return parts.join(" · ") || "Changed";
+const STATUS_COLORS: Record<string, string> = {
+  M: "#e2b93d", A: "#58bd5a", D: "#e5534b", R: "#c39dde",
+  C: "#c39dde", U: "#e5534b", "?": "#6e7681", " ": "#6e7681",
+};
+
+/** Parse `git status --porcelain=v1 -b` output into structured data. */
+function parseStatus(output: string): { branch: BranchInfo; changes: Change[] } {
+  const lines = output.split(/\r?\n/).filter((l) => l.length > 0);
+  const branch: BranchInfo = { name: null, ahead: 0, behind: 0 };
+
+  let i = 0;
+  if (lines[0]?.startsWith("## ")) {
+    i = 1;
+    const head = lines[0].slice(3);
+    // "## main...origin/main [ahead 1, behind 2]" or "## HEAD (no branch)"
+    const main = head.split(/\.\.\.|\s+\[/)[0].trim();
+    branch.name = main.includes("(") ? null : main || null;
+    const am = /\bahead (\d+)/.exec(head);
+    const bm = /\bbehind (\d+)/.exec(head);
+    branch.ahead = am ? parseInt(am[1], 10) : 0;
+    branch.behind = bm ? parseInt(bm[1], 10) : 0;
+  }
+
+  const changes: Change[] = [];
+  for (; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.length < 4) continue;
+    const x = line[0];
+    const y = line[1];
+    let rest = unquotePath(line.slice(3));
+    let origPath: string | undefined;
+    const arrowIdx = rest.indexOf(" -> ");
+    if (arrowIdx !== -1) {
+      origPath = rest.slice(0, arrowIdx);
+      rest = rest.slice(arrowIdx + 4);
+    }
+    changes.push({ x, y, path: rest, origPath });
+  }
+  return { branch, changes };
+}
+
+/** Compact ghost icon button used across the panel chrome. */
+function IconButton({
+  title, onClick, disabled, children,
+}: {
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className="flex h-6 w-6 items-center justify-center rounded-md text-[#8a8a93] transition hover:bg-white/[0.07] hover:text-[#ececec] disabled:pointer-events-none disabled:opacity-35"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** One file row in a change list, with VS Code-style hover actions. */
+function ChangeRow({
+  change, staged, busy, onOpen, onStage, onUnstage, onDiscard,
+}: {
+  change: Change;
+  staged: boolean;
+  busy: boolean;
+  onOpen: () => void;
+  onStage?: () => void;
+  onUnstage?: () => void;
+  onDiscard?: () => void;
+}) {
+  const letter = (staged ? change.x : change.y !== " " ? change.y : change.x).trim() ||
+    (change.x === "?" ? "?" : "~");
+  const segments = change.path.split(/[\\/]/);
+  const name = segments.pop();
+  return (
+    <div
+      className={`group flex h-[26px] items-center gap-2 rounded-md pl-1 pr-1 transition-colors ${
+        busy ? "" : "hover:bg-white/[0.05]"
+      }`}
+    >
+      <span
+        className="w-7 shrink-0 text-center font-mono text-[11px] font-semibold"
+        style={{ color: STATUS_COLORS[(staged ? change.x : change.y).trim() || "?"] ?? "#6e7681" }}
+        title={STATUS_LABELS[letter] ?? letter}
+      >
+        {letter}
+      </span>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left"
+        title={`${change.origPath ? `${change.origPath} → ` : ""}${change.path}`}
+      >
+        <span className="truncate text-[12px] text-[#d4d4d4]">{name}</span>
+        {segments.length > 0 && (
+          <span className="shrink-0 truncate text-[10px] text-[#6b6b6b]">
+            {segments.join("/")}
+          </span>
+        )}
+      </button>
+      <div className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+        {onDiscard && !staged && (
+          <IconButton
+            title="Discard changes"
+            onClick={onDiscard}
+            disabled={busy}
+          >
+            <IoArrowUndo size={13} />
+          </IconButton>
+        )}
+        {onUnstage && (
+          <IconButton title="Unstage" onClick={onUnstage} disabled={busy}>
+            <IoRemove size={14} />
+          </IconButton>
+        )}
+        {onStage && (
+          <IconButton title="Stage" onClick={onStage} disabled={busy}>
+            <IoAdd size={14} />
+          </IconButton>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
- * Source-control side panel: shows the current branch, changed files and
- * quick actions (stage all, commit, pull, push). Everything shells out to
- * the system `git` CLI via the existing `run_command` Tauri command.
+ * The panel component. Keeps a live view of the repo: branch + sync state,
+ * staged vs unstaged changes, commit box and an output console.
  */
 export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
-  const [branch, setBranch] = useState<string | null>(null);
-  const [entries, setEntries] = useState<StatusEntry[]>([]);
+  const [branch, setBranch] = useState<BranchInfo>({ name: null, ahead: 0, behind: 0 });
+  const [changes, setChanges] = useState<Change[]>([]);
   const [notRepo, setNotRepo] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [commitMsg, setCommitMsg] = useState("");
+  const [fatal, setFatal] = useState<string | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [msg, setMsg] = useState("");
+  const [outOpen, setOutOpen] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const logEndRef = useRef<HTMLPreElement>(null);
 
   const appendLog = useCallback((text: string) => {
-    setLog((prev) => [...prev.slice(-30), text]); // keep last ~31 blocks
+    setLog((prev) => [...prev.slice(-40), text]);
   }, []);
 
-  /** Refresh branch + status. Safe to call repeatedly. */
+  /** Refresh branch + status; distinguishes "not a repo" from other errors. */
   const refresh = useCallback(async () => {
     setBusy(true);
     try {
-      const b = await git(root, "rev-parse --abbrev-ref HEAD");
-      if (b.exitCode !== 0) {
-        setNotRepo(true);
-        setBranch(null);
-        setEntries([]);
+      const res = await git(root, "status --porcelain=v1 -b");
+      if (res.exitCode !== 0) {
+        const err = (res.stderr || res.stdout || "").toLowerCase();
+        if (err.includes("not a git repository") || err.includes("not found") ||
+            err.includes("unknown option")) {
+          setNotRepo(true);
+        } else if (res.stderr.trim()) {
+          appendLog(`git status failed:\n${res.stderr.trim()}`);
+        }
+        setChanges([]);
         return;
       }
       setNotRepo(false);
-      setBranch(b.stdout.trim() || null);
-      const s = await git(root, "status --porcelain");
-      const rows = s.stdout
-        .split(/\r?\n/)
-        .map((line) => line.trimEnd())
-        .filter((line) => line.length > 3)
-        .map((line) => ({
-          x: line[0],
-          y: line[1],
-          // Porcelain v1: "XY<space>PATH"; rename rows contain "old -> new".
-          path: line.slice(3),
-        }));
-      setEntries(rows);
+      setFatal(null);
+      const parsed = parseStatus(res.stdout);
+      setBranch(parsed.branch);
+      setChanges(parsed.changes);
     } catch (e) {
-      appendLog(`git status failed: ${e instanceof Error ? e.message : String(e)}`);
+      // invoke rejects when the command could not be spawned at all.
+      setFatal(`Could not run git — is it installed and on PATH?\n${
+        e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
   }, [root, appendLog]);
 
   useEffect(() => {
-    // Defer through a microtask so the initial status load doesn't set state
-    // synchronously during the effect (avoids cascading renders).
     void Promise.resolve().then(() => refresh());
   }, [refresh]);
 
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ block: "end" });
+  }, [log]);
+
   /**
-   * Run one mutating git action, surface its output in the log and refresh.
-   * Commit messages are sanitized (no quote chars) so they survive PowerShell.
+   * Run one git action, log its output and refresh the lists.
+   * Returns whether the command exited successfully.
    */
-  const runAction = async (args: string, label: string) => {
+  const runGit = async (args: string, label: string): Promise<boolean> => {
     setBusy(true);
     try {
       const res = await git(root, args);
       const out = [res.stdout, res.stderr].filter((s) => s.trim()).join("\n").trim();
       appendLog(
-        `$ git ${label}\n${out || "(no output)"}\n$ exit code: ${res.exitCode ?? "timeout"}`
+        `$ git ${label}\n${out || "(no output)"}${res.timedOut ? "\n(timed out)" : ""}`
       );
+      if (res.exitCode !== 0 && out) setOutOpen(true);
+      return res.exitCode === 0;
     } catch (e) {
       appendLog(`$ git ${label}\n${e instanceof Error ? e.message : String(e)}`);
+      setOutOpen(true);
+      return false;
     } finally {
       setBusy(false);
-      void refresh();
+      await refresh();
     }
   };
 
-  const stageAllAndCommit = async () => {
-    const msg = commitMsg.trim().replace(/["'`]/g, "");
-    if (!msg) return;
-    await runAction("add -A", "add -A");
-    await runAction(`commit -m "${msg}"`, "commit");
-    setCommitMsg("");
+  const staged = changes.filter((c) => c.x !== " " && c.x !== "?");
+  const worktree = changes.filter((c) => !staged.includes(c));
+
+  const openPath = (p: string) =>
+    onOpenFile?.(`${root.replace(/[\\/]+$/, "")}/${p}`);
+
+  const stage = (p: string) => void runGit(`add -- ${quotePath(p)}`, `add ${p}`);
+  const stageAll = () => void runGit("add -A", "add -A");
+  const unstage = (p: string) =>
+    void runGit(`reset -q HEAD -- ${quotePath(p)}`, `reset ${p}`);
+  const discard = (c: Change) => {
+    if (!window.confirm(`Discard changes in ${c.path}? This cannot be undone.`)) return;
+    void runGit(
+      c.y === "?" ? `clean -q -f -- ${quotePath(c.path)}` : `checkout -q -- ${quotePath(c.path)}`,
+      `discard ${c.path}`
+    );
   };
+  const commit = async () => {
+    const clean = msg.trim().replace(/["'`]/g, "");
+    if (!clean || staged.length === 0) return;
+    const ok = await runGit(`commit -m "${clean}"`, "commit");
+    if (ok) setMsg("");
+  };
+  const pushPull = (args: string, label: string) => void runGit(args, label);
+
+  const canCommit = staged.length > 0 && msg.trim().length > 0 && !busy;
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[#131313]">
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
-        <div className="flex items-center gap-1.5 text-[12px] font-medium text-[#ececec]">
-          <IoGitNetworkSharp size={13} />
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a3a3a3]">
+          <IoGitNetwork size={13} />
           Source Control
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={busy}
-            title="Refresh"
-            aria-label="Refresh git status"
-            className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec] disabled:opacity-40"
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13.5 8a5.5 5.5 0 11-1.6-3.9M13.5 2.5v2.6h-2.6" />
+        <div className="flex items-center gap-0.5">
+          {busy && (
+            <svg viewBox="0 0 16 16" className="mr-1 h-3 w-3 animate-spin text-[#6b6b6b]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M8 1.5a6.5 6.5 0 106.5 6.5" />
             </svg>
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close source control"
-            aria-label="Close source control"
-            className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
-          >
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
+          )}
+          <IconButton title="Refresh status" onClick={() => void refresh()} disabled={busy}>
+            <IoRefresh size={13} />
+          </IconButton>
+          <IconButton title="Close source control" onClick={onClose}>
+            <IoClose size={14} />
+          </IconButton>
         </div>
       </div>
 
-      {notRepo ? (
+      {fatal ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+          <p className="text-[12px] font-medium text-[#e5534b]">Git unavailable</p>
+          <p className="whitespace-pre-wrap text-[11px] leading-5 text-[#6b6b6b]">{fatal}</p>
+        </div>
+      ) : notRepo ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+          <IoGitBranch size={22} className="text-[#3f3f46]" />
           <p className="text-[12px] font-medium text-[#d4d4d4]">Not a git repository</p>
           <p className="text-[11px] leading-5 text-[#6b6b6b]">
             Initialise one to start tracking changes in this workspace.
           </p>
           <button
             type="button"
-            onClick={() => void runAction("init", "init")}
+            onClick={() => void runGit("init", "init")}
             disabled={busy}
             className="rounded-md bg-[#ececec] px-3 py-1.5 text-[12px] font-medium text-[#111111] transition hover:bg-white disabled:opacity-40"
           >
@@ -194,87 +371,136 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
         </div>
       ) : (
         <>
-          {/* Branch */}
-          <div className="flex shrink-0 items-center gap-1.5 border-b border-white/[0.05] px-3 py-2 text-[11.5px] text-[#a3a3a3]">
-            <IoGitBranchSharp size={12} className="shrink-0" />
-            <span className="truncate">{branch ?? "HEAD (detached)"}</span>
-          </div>
-
-          {/* Changed files */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-2">
-            <p className="px-1.5 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-[#6b6b6b]">
-              Changes{entries.length > 0 ? ` (${entries.length})` : ""}
-            </p>
-            {entries.length === 0 ? (
-              <p className="px-1.5 py-2 text-[11.5px] text-[#6b6b6b]">
-                Working tree clean — no changes.
-              </p>
-            ) : (
-              entries.map((e) => (
-                <button
-                  key={`${e.x}${e.y}:${e.path}`}
-                  type="button"
-                  onClick={() => onOpenFile?.(e.path)}
-                  title={`${statusLabel(e)} — ${e.path}${onOpenFile ? " (click to open)" : ""}`}
-                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition hover:bg-white/[0.05]"
-                >
-                  <span className="w-7 shrink-0 rounded bg-white/[0.06] px-1 text-center font-mono text-[10px] text-[#d4d4d4]">
-                    {(e.x !== " " ? e.x : e.y).trim() || "~"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[11.5px] text-[#d4d4d4]">
-                    {e.path.split(/[\\/]/).pop()}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-[#6b6b6b]">{statusLabel(e)}</span>
-                </button>
-              ))
-            )}
-          </div>
-
-          {/* Commit box */}
-          <div className="shrink-0 border-t border-white/[0.07] p-2.5">
-            <input
-              value={commitMsg}
-              onChange={(ev) => setCommitMsg(ev.target.value)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" && commitMsg.trim() && !busy) {
-                  void stageAllAndCommit();
-                }
-              }}
-              placeholder={`Message (commit on ${branch ?? "HEAD"})`}
-              className="mb-2 w-full rounded-md border border-white/[0.08] bg-[#0e0e0e] px-2.5 py-1.5 text-[12px] text-[#ececec] outline-none placeholder:text-[#6b6b6b] focus:border-white/[0.2]"
-            />
-            <button
-              type="button"
-              onClick={() => void stageAllAndCommit()}
-              disabled={busy || !commitMsg.trim()}
-              className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-[#ececec] py-1.5 text-[12px] font-medium text-[#111111] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <IoGitCommit size={14} />
-              {busy ? "Working…" : "Stage All & Commit"}
-            </button>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => void runAction("pull", "pull")}
-                disabled={busy}
-                className="flex-1 rounded-md border border-white/[0.09] bg-white/[0.02] py-1.5 text-[12px] font-medium text-[#d4d4d4] transition hover:bg-white/[0.05] disabled:opacity-40"
-              >
-                Pull
-              </button>
-              <button
-                type="button"
-                onClick={() => void runAction("push", "push")}
-                disabled={busy}
-                className="flex-1 rounded-md border border-white/[0.09] bg-white/[0.02] py-1.5 text-[12px] font-medium text-[#d4d4d4] transition hover:bg-white/[0.05] disabled:opacity-40"
-              >
-                Push
-              </button>
+          {/* ── Branch / sync bar ─────────────────────────────────────── */}
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.05] px-2.5 py-1.5">
+            <div className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-[#c9c9c9]">
+              <IoGitBranch size={12} className="shrink-0 text-[#8a8a93]" />
+              <span className="truncate">{branch.name ?? "HEAD (detached)"}</span>
+              {branch.ahead > 0 && (
+                <span title={`${branch.ahead} commit(s) ahead`} className="flex items-center gap-0.5 rounded bg-white/[0.06] px-1 text-[10px] text-[#c9c9c9]">
+                  ↑{branch.ahead}
+                </span>
+              )}
+              {branch.behind > 0 && (
+                <span title={`${branch.behind} commit(s) behind`} className="flex items-center gap-0.5 rounded bg-white/[0.06] px-1 text-[10px] text-[#c9c9c9]">
+                  ↓{branch.behind}
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <IconButton title="Fetch" onClick={() => pushPull("fetch --all --quiet", "fetch")} disabled={busy}>
+                <IoSync size={12} />
+              </IconButton>
+              <IconButton title="Pull" onClick={() => pushPull("pull --quiet", "pull")} disabled={busy}>
+                <IoArrowDown size={13} />
+              </IconButton>
+              <IconButton title="Push" onClick={() => pushPull("push --quiet", "push")} disabled={busy}>
+                <IoArrowUp size={13} />
+              </IconButton>
             </div>
           </div>
 
-          {/* Output log */}
-          {log.length > 0 && (
-            <pre className="max-h-32 shrink-0 overflow-y-auto border-t border-white/[0.07] bg-[#0e0e0e] px-2.5 py-2 font-mono text-[10.5px] leading-4 whitespace-pre-wrap text-[#8a8a8a]">
+          {/* ── Commit box ────────────────────────────────────────────── */}
+          <div className="shrink-0 px-2.5 pb-2 pt-2.5">
+            <input
+              value={msg}
+              onChange={(ev) => setMsg(ev.target.value)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" && canCommit) void commit();
+              }}
+              placeholder={`Message (Ctrl+Enter to commit on ${branch.name ?? "HEAD"})`}
+              className="mb-2 w-full rounded-md border border-white/[0.08] bg-[#0e0e0e] px-2.5 py-1.5 text-[12px] text-[#ececec] outline-none placeholder:text-[#5a5a62] focus:border-[#4c8dff]/60"
+            />
+            <button
+              type="button"
+              onClick={() => void commit()}
+              disabled={!canCommit}
+              title={
+                staged.length === 0
+                  ? "Stage some changes first"
+                  : !msg.trim()
+                    ? "Enter a commit message"
+                    : `Commit ${staged.length} file(s)`
+              }
+              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#2563eb] py-1.5 text-[12px] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#3b76f5] disabled:cursor-not-allowed disabled:bg-white/[0.05] disabled:text-[#5a5a62] disabled:shadow-none"
+            >
+              <IoGitCommit size={14} />
+              Commit{staged.length > 0 ? ` (${staged.length})` : ""}
+            </button>
+          </div>
+
+          {/* ── Change lists ──────────────────────────────────────────── */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 scrollbar-thin">
+            {staged.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between px-1.5 pb-0.5 pt-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
+                    Staged changes ({staged.length})
+                  </span>
+                </div>
+                {staged.map((c) => (
+                  <ChangeRow
+                    key={`s:${c.x}${c.y}:${c.path}`}
+                    change={c}
+                    staged
+                    busy={busy}
+                    onOpen={() => openPath(c.path)}
+                    onUnstage={() => unstage(c.path)}
+                  />
+                ))}
+              </section>
+            )}
+
+            <section>
+              <div className="flex items-center justify-between px-1.5 pb-0.5 pt-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
+                  Changes ({worktree.length})
+                </span>
+                {worktree.length > 0 && (
+                  <IconButton title="Stage all changes" onClick={stageAll} disabled={busy}>
+                    <IoAdd size={13} />
+                  </IconButton>
+                )}
+              </div>
+              {worktree.length === 0 ? (
+                <p className="px-1.5 py-1 text-[11px] text-[#6b6b6b]">
+                  {staged.length > 0
+                    ? "Everything else is staged."
+                    : "Working tree clean — no changes."}
+                </p>
+              ) : (
+                worktree.map((c) => (
+                  <ChangeRow
+                    key={`w:${c.x}${c.y}:${c.path}`}
+                    change={c}
+                    staged={false}
+                    busy={busy}
+                    onOpen={() => openPath(c.path)}
+                    onStage={() => stage(c.path)}
+                    onDiscard={() => discard(c)}
+                  />
+                ))
+              )}
+            </section>
+          </div>
+
+          {/* ── Footer: output console toggle ─────────────────────────── */}
+          <button
+            type="button"
+            onClick={() => setOutOpen((v) => !v)}
+            className="flex h-7 shrink-0 items-center gap-1.5 border-t border-white/[0.07] px-3 text-[10.5px] text-[#8a8a93] transition hover:bg-white/[0.04] hover:text-[#c9c9c9]"
+          >
+            {outOpen ? <IoChevronDown size={11} /> : <IoChevronUp size={11} />}
+            Output
+            {log.length > 0 && (
+              <span className="rounded bg-white/[0.06] px-1 text-[9.5px]">{log.length}</span>
+            )}
+          </button>
+          {outOpen && log.length > 0 && (
+            <pre
+              ref={logEndRef}
+              className="max-h-40 shrink-0 overflow-y-auto border-t border-white/[0.05] bg-[#0e0e0e] px-2.5 py-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-[#8a8a93] scrollbar-thin"
+            >
               {log.join("\n")}
             </pre>
           )}
@@ -284,5 +510,6 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
     </aside>
   );
 }
+
 
 
