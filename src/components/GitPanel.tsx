@@ -6,7 +6,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  IoArrowDown,
   IoArrowUp,
   IoChevronDown,
   IoChevronUp,
@@ -237,6 +236,7 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
   const [busy, setBusy] = useState(true);
   const [msg, setMsg] = useState("");
   const [outOpen, setOutOpen] = useState(false);
+  const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const logEndRef = useRef<HTMLPreElement>(null);
 
@@ -390,12 +390,21 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
     }
   };
   const fetchAll = () => void runGit("fetch --all", "fetch --all");
-  /** Commit and then push in one go. */
+  /** VS Code-style synchronize: pull remote changes, then push local ones. */
+  const syncChanges = async () => {
+    await pull();
+    await push();
+    appendLog("✓ synced");
+  };
   const commitAndPush = async () => {
     if (await commit()) await push();
   };
+  const commitAndSync = async () => {
+    if (await commit()) await syncChanges();
+  };
 
   const canCommit = staged.length > 0 && msg.trim().length > 0 && !busy;
+  const hasRemote = remotes.length > 0;
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[#131313]">
@@ -459,28 +468,37 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                 </span>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div className="flex shrink-0 items-center gap-1">
               <IconButton
-                title={remotes.length === 0 ? "No remote configured" : "Fetch from remotes"}
+                title={hasRemote ? "Fetch from remotes" : "No remote configured"}
                 onClick={fetchAll}
-                disabled={busy || remotes.length === 0}
+                disabled={busy || !hasRemote}
               >
                 <IoSync size={12} />
               </IconButton>
-              <IconButton
-                title={remotes.length === 0 ? "No remote configured" : "Pull"}
-                onClick={() => void pull()}
-                disabled={busy || remotes.length === 0}
+              {/* VS Code-style "Synchronize Changes": pull, then push. */}
+              <button
+                type="button"
+                onClick={() => void syncChanges()}
+                disabled={busy || !hasRemote}
+                title={
+                  hasRemote
+                    ? `Pull and push commits${branch.behind > 0 ? `, ${branch.behind} behind` : ""}${branch.ahead > 0 ? `, ${branch.ahead} ahead` : ""}`
+                    : "No remote configured"
+                }
+                className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium transition ${
+                  busy || !hasRemote
+                    ? "cursor-not-allowed text-[#5a5a62]"
+                    : branch.ahead + branch.behind > 0
+                      ? "bg-[#2563eb]/15 text-[#7ea6ff] hover:bg-[#2563eb]/25"
+                      : "bg-white/[0.05] text-[#8a8a93] hover:bg-white/[0.09] hover:text-[#c9c9c9]"
+                }`}
               >
-                <IoArrowDown size={13} />
-              </IconButton>
-              <IconButton
-                title={remotes.length === 0 ? "No remote configured — add one with: git remote add origin <url>" : "Push"}
-                onClick={() => void push()}
-                disabled={busy || (remotes.length === 0 && branch.ahead === 0)}
-              >
-                <IoArrowUp size={13} />
-              </IconButton>
+                <IoSync size={11} className={busy ? "animate-spin" : ""} />
+                {branch.behind > 0 && <span>↓{branch.behind}</span>}
+                {branch.ahead > 0 && <span>↑{branch.ahead}</span>}
+                <span>Sync</span>
+              </button>
             </div>
           </div>
           {remotes.length === 0 && (
@@ -519,16 +537,55 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                 <IoGitCommit size={14} />
                 Commit{staged.length > 0 ? ` (${staged.length})` : ""}
               </button>
-              <button
-                type="button"
-                onClick={() => void commitAndPush()}
-                disabled={!canCommit}
-                title="Commit and push to the remote"
-                aria-label="Commit and push"
-                className="flex w-9 items-center justify-center rounded-md border border-[#2563eb]/60 bg-transparent text-[#7ea6ff] transition hover:bg-[#2563eb]/15 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:text-[#5a5a62]"
-              >
-                <IoArrowUp size={14} />
-              </button>
+              {/* Split-button dropdown: more commit actions (VS Code style). */}
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setCommitMenuOpen((v) => !v)}
+                  disabled={!canCommit}
+                  title="More commit actions"
+                  aria-label="More commit actions"
+                  aria-expanded={commitMenuOpen}
+                  className="flex h-full w-6 items-center justify-center rounded-md border border-l-white/20 border-[#2563eb]/60 bg-transparent text-[#7ea6ff] transition hover:bg-[#2563eb]/15 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:text-[#5a5a62]"
+                >
+                  <IoChevronDown size={12} />
+                </button>
+                {commitMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setCommitMenuOpen(false)}
+                    />
+                    <div className="absolute bottom-full right-0 z-50 mb-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCommitMenuOpen(false);
+                          void commitAndPush();
+                        }}
+                        disabled={!canCommit}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06] disabled:text-[#5a5a62]"
+                      >
+                        <IoArrowUp size={13} />
+                        Commit &amp; Push
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCommitMenuOpen(false);
+                          void commitAndSync();
+                        }}
+                        disabled={!canCommit || !hasRemote}
+                        title={hasRemote ? undefined : "No remote configured"}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06] disabled:text-[#5a5a62]"
+                      >
+                        <IoSync size={13} />
+                        Commit &amp; Sync
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
