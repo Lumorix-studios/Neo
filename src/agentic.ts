@@ -848,6 +848,28 @@ export function parseToolCalls(text: string): ToolCall[] {
     }
   }
 
+  // Self-named XML tags emitted by some models:
+  //   <read_active_file/>   <list_dir>{"path": "."}</list_dir>
+  const xmlTagRe =
+    /<([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*)>([\s\S]*?)<\/\1>|<([a-zA-Z_][a-zA-Z0-9_]*)\s*\/>/g;
+  while ((m = xmlTagRe.exec(text)) !== null) {
+    const tagName = String(m[1] ?? m[3] ?? "").toLowerCase();
+    if (!isToolName(tagName) && !tagName.startsWith("mcp")) continue;
+    const inner = (m[2] ?? "").trim();
+    if (!inner) {
+      pushNamedCall(calls, tagName, {});
+      continue;
+    }
+    if (!tryParseJsonBlob(inner, calls)) {
+      // key="value" attribute-style arguments inside the tag
+      const argObj: Record<string, unknown> = {};
+      const kvRe = /([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*"([^"]*)"/g;
+      let km: RegExpExecArray | null;
+      while ((km = kvRe.exec(inner)) !== null) argObj[km[1]] = km[2];
+      pushNamedCall(calls, tagName, argObj);
+    }
+  }
+
   const fenceRe = /```(?:json|tool_call|tool)?\s*([\s\S]*?)```/gi;
   while ((m = fenceRe.exec(text)) !== null) {
     tryParseJsonBlob(m[1].trim(), calls);
@@ -869,6 +891,21 @@ export function parseToolCalls(text: string): ToolCall[] {
   return calls;
 }
 
+/** Remove self-named XML tool tags (<read_active_file/> etc.) that some
+ *  models emit instead of the documented <tool_call> protocol. Only strips
+ *  tags whose name matches a real tool, so ordinary markup survives. */
+function stripXmlToolTags(text: string): string {
+  if (!(/<([a-zA-Z_][a-zA-Z0-9_]*)\s*\/>/.test(text) || /<\/[a-zA-Z_][a-zA-Z0-9_]*>/.test(text)))
+    return text;
+  return text.replace(
+    /<([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*)>([\s\S]*?)<\/\1>|<([a-zA-Z_][a-zA-Z0-9_]*)\s*\/>/g,
+    (full, openName: string | undefined, _inner, selfName: string | undefined) => {
+      const name = String(openName ?? selfName ?? "").toLowerCase();
+      return isToolName(name) || name.startsWith("mcp") ? "" : full;
+    }
+  );
+}
+
 /**
  * Strip tool-call markup from a response so the visible answer is clean.
  * Also removes *incomplete* trailing markup (e.g. `<tool_call>{"na`) so raw
@@ -877,14 +914,14 @@ export function parseToolCalls(text: string): ToolCall[] {
 export function stripToolCalls(text: string): string {
   const stripped = text
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/<tool_call>[^<]*$/i, "")
     .replace(/<function_call>[\s\S]*?<\/function_call>/gi, "")
     .replace(/<function_call>\s*$/i, "")
-    .replace(/<tool_call>[^<]*$/i, "")
     .replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, "")
     .replace(/<function=[^<]*$/i, "")
     .replace(/<invoke[\s\S]*?<\/invoke>/gi, "")
     .replace(/<invoke[^<]*$/i, "");
-  return stripTrailingPartialJson(stripBareJsonCalls(stripped)).trim();
+  return stripTrailingPartialJson(stripBareJsonCalls(stripXmlToolTags(stripped))).trim();
 }
 
 /**

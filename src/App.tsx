@@ -1001,9 +1001,16 @@ ${promptSuffix}` : ""}`,
     if (agentic && workspaceRoot) {
       try {
         const entries = await invoke<FsEntry[]>("fs_list_dir", { path: workspaceRoot });
-        const listing = entries.map((e) => (e.is_dir ? `${e.name}/` : e.name)).join(", ");
-        promptSuffix += `Workspace root: ${workspaceRoot}
-Top-level entries: ${listing}`;
+        // Cap the listing — dumping hundreds of entries (e.g. a Downloads
+        // folder) drowns small models and sends them narrating random files
+        // instead of doing the task.
+        const names = entries.map((e) => (e.is_dir ? `${e.name}/` : e.name));
+        const shown = names.slice(0, 25);
+        const more = names.length - shown.length;
+        const listing =
+          shown.join(", ") +
+          (more > 0 ? ` … (+${more} more — use list_dir/search_files rather than guessing)` : "");
+        promptSuffix += `Workspace root: ${workspaceRoot}\nTop-level entries (${names.length} total): ${listing}`;
       } catch {
         /* ignore — the agent can list it itself */
       }
@@ -1028,7 +1035,7 @@ Top-level entries: ${listing}`;
             const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
             return i > 0 ? p.slice(0, i) : p;
           };
-          promptSuffix += `\nThe ACTIVE file the user is viewing: ${rel(activeTab.path)} (folder: ${dirOf(activeTab.path)}). Treat references to "this file" or "the current file" as this one. All relative paths resolve against this folder.`;
+          promptSuffix += `\nThe ACTIVE file the user is viewing: ${rel(activeTab.path)} (folder: ${dirOf(activeTab.path)}). Treat references to "this file" or "the current file" as this one. All relative paths resolve against this folder. Work ONLY on this file — do NOT browse, describe, or summarize other files/folders unless explicitly asked.`;
           const MAX_INLINE = 8000;
           const bodyText =
             activeTab.content.length <= MAX_INLINE
@@ -1126,7 +1133,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             calls.length === 0 &&
             toolRounds < MAX_TOOL_ROUNDS &&
             nudgeCount < 2 &&
-            /\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b/i.test(raw)
+            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>)/i.test(raw)
           ) {
             nudgeCount++;
             agentHistory.push({

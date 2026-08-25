@@ -162,11 +162,14 @@ fn list_local_models() -> Result<Vec<serde_json::Value>, String> {
     Ok(models)
 }
 
-/// Pull a model from the Ollama registry.
+/// Pull a model from the Ollama registry. Downloads can take many minutes
+/// for multi-GB models, so this uses a very long timeout and reports any
+/// registry error verbatim.
 #[tauri::command]
 fn pull_local_model(model_name: String) -> Result<bool, String> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60 * 60)) // 1 hour
+        .connect_timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
@@ -174,10 +177,18 @@ fn pull_local_model(model_name: String) -> Result<bool, String> {
         .post("http://127.0.0.1:11434/api/pull")
         .json(&serde_json::json!({ "name": model_name, "stream": false }))
         .send()
-        .map_err(|e| format!("Failed to pull model: {e}"))?;
+        .map_err(|e| format!("Failed to reach Ollama while pulling: {e}"))?;
 
-    if !resp.status().is_success() {
-        return Err(format!("Failed to pull model: HTTP {}", resp.status()));
+    let status = resp.status();
+    // Surface registry errors ("model not found", auth issues, disk full…)
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("Pull failed (HTTP {status}): {body}"));
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+        if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
+            return Err(format!("Pull failed: {err}"));
+        }
     }
 
     Ok(true)
