@@ -1,0 +1,6 @@
+   Compiling app v1.0.4 (C:\Users\madyx\AgenticCoder\src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.97s
+     Running `target\debug\examples\ollama_probe.exe`
+version endpoint status: 200 OK
+tags status: 200 OK
+parsed 0 models:

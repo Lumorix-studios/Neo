@@ -1,0 +1,33 @@
+npm notice run projectneo@1.0.4 npx
+npm notice run eslint src/components/FileExplorer.tsx src/App.tsx
+
+C:\Users\madyx\AgenticCoder\src\App.tsx
+  654:3  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\madyx\AgenticCoder\src\App.tsx:654:3
+  652 |   // Mirror of editorTabs for use inside intervals / async callbacks.
+  653 |   const editorTabsRef = useRef<EditorTab[]>([]);
+> 654 |   editorTabsRef.current = editorTabs;
+      |   ^^^^^^^^^^^^^^^^^^^^^ Cannot update ref during render
+  655 |
+  656 |   
+  657 |   const syncTabWithDisk = async (path: string) => {                                                                                                                                  react-hooks/refs
+  682:3  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+C:\Users\madyx\AgenticCoder\src\App.tsx:682:3
+  680 |   // Ref indirection so intervals and the tool loop always call the latest closure.
+  681 |   const syncAllOpenTabsRef = useRef<() => void>(() => {});
+> 682 |   syncAllOpenTabsRef.current = syncAllOpenTabs;
+      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot update ref during render
+  683 |
+  684 |   // Poll the filesystem while the IDE panel is open so external edits
+  685 |   // (AI tools, other editors, git operations) show up without reopening  react-hooks/refs
+  816:9  error  'base' is never reassigned. Use 'const' instead                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         prefer-const
+
+✖ 3 problems (3 errors, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+

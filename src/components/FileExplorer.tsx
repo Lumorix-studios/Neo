@@ -19,6 +19,8 @@ interface FileExplorerProps {
   activePath: string | null;
   refreshKey: number;
   onOpenFile: (path: string) => void;
+  /** Hide the whole explorer panel (VS Code-style sidebar collapse). */
+  onCollapse?: () => void;
 }
 
 interface NodeState {
@@ -71,9 +73,92 @@ function FolderIcon({ open }: { open: boolean }) {
  * Component
  * ======================================================================== */
 
-export default function FileExplorer({ root, activePath, refreshKey, onOpenFile }: FileExplorerProps) {
+export default function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse }: FileExplorerProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({});
   const [query, setQuery] = useState("");
+  // Inline "new file / new folder" entry input.
+  const [creating, setCreating] = useState<{ parent: string; kind: "file" | "folder" } | null>(null);
+  const [newName, setNewName] = useState("");
+  // Right-click context menu position + target.
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry } | null>(null);
+  // Header "+" dropdown toggle.
+  const [newMenu, setNewMenu] = useState(false);
+  // Inline rename state.
+  const [renaming, setRenaming] = useState<{ path: string; parent: string } | null>(null);
+  const [renameInput, setRenameInput] = useState("");
+  // Surfaced operation errors (create / rename / delete).
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  /** Absolute path to a child of `dir`. Nested "a/b/c.ts" paths are kept so
+   *  the backend's create_dir_all() makes intermediate folders automatically. */
+  const childOf = (dir: string, name: string) => {
+    const rel = name.trim().replace(/^[\\/]+/, "").replace(/\\/g, "/");
+    return `${dir.replace(/[\\/]+$/, "")}/${rel}`;
+  };
+
+  /** Refresh a directory's listing in the tree. */
+  const reloadDir = async (dir: string) => {
+    try {
+      const entries = await invoke<FsEntry[]>("fs_list_dir", { path: dir });
+      setNodes((prev) => ({
+        ...prev,
+        [dir]: { ...prev[dir], entries: entries.filter((e) => !SKIP.has(e.name)), open: true },
+      }));
+    } catch {
+      /* ignore transient listing errors */
+    }
+  };
+
+  /** Create a file or folder, then refresh the parent and open files. */
+  const createEntry = async () => {
+    if (!creating) return;
+    const name = newName.trim();
+    if (!name) {
+      // Cancelled — no error, just close the row.
+      setCreating(null);
+      setNewName("");
+      return;
+    }
+    const apiName = childOf(creating.parent, name);
+    try {
+      if (creating.kind === "folder") {
+        await invoke("fs_create_dir", { path: apiName });
+      } else {
+        await invoke("fs_write_file", { path: apiName, content: "" });
+      }
+      await reloadDir(creating.parent);
+      if (creating.kind === "file") onOpenFile(apiName);
+    } catch (e) {
+      // Surface creation failures without losing the typed name.
+      setCreateError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    setCreating(null);
+    setNewName("");
+    setCreateError(null);
+  };
+
+  /** Rename an existing entry. */
+  const commitRename = async () => {
+    if (!renaming) return;
+    const newName2 = renameInput.trim();
+    if (newName2) {
+      try {
+        await invoke("fs_rename", {
+          path: renaming.path,
+          new_path: childOf(renaming.parent, newName2),
+        });
+        await reloadDir(renaming.parent);
+      } catch (e) {
+        setCreateError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+    }
+    setRenaming(null);
+    setRenameInput("");
+    setCreateError(null);
+  };
+
 
   const loadDir = useCallback(async (path: string) => {
     try {
@@ -119,11 +204,57 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
     void loadDir(entry.path);
   };
 
+  /** Delete a file or folder (with confirmation), then refresh its parent. */
+  const deleteEntry = async (entry: FsEntry) => {
+    setMenu(null);
+    if (!window.confirm(`Delete "${entry.name}"? This cannot be undone.`)) return;
+    const dirSegs = entry.path.replace(/[\\/]+$/, "").split(/[\\/]/);
+    dirSegs.pop();
+    const parent = dirSegs.join("/");
+    try {
+      await invoke(entry.is_dir ? "fs_delete_dir" : "fs_delete_file", { path: entry.path });
+      await reloadDir(parent);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const sortEntries = (list: FsEntry[]) =>
     [...list].sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
+
+  /** Inline "new file / new folder" naming row rendered at a given depth. */
+  const renderCreateRow = (depth: number): ReactNode => (
+    <div
+      key="__new__"
+      className="mb-0.5 flex h-6 items-center gap-1.5"
+      style={{ paddingLeft: 8 + depth * 14 }}
+    >
+      {creating?.kind === "folder" ? (
+        <FolderIcon open={false} />
+      ) : (
+        <FileIcon name={newName.trim() || "file.txt"} />
+      )}
+      <input
+        autoFocus
+        value={newName}
+        onChange={(ev) => setNewName(ev.target.value)}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter") void createEntry();
+          if (ev.key === "Escape") {
+            setCreating(null);
+            setNewName("");
+          }
+        }}
+        onBlur={() => void createEntry()}
+        placeholder={creating?.kind === "folder" ? "folder name…" : "file name.ts…"}
+        spellCheck={false}
+        className="min-w-0 flex-1 rounded border border-[#4c8dff] bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none placeholder-[#555555]"
+      />
+    </div>
+  );
 
   /** True when an entry (or any loaded descendant) matches the filter. */
   function matches(entry: FsEntry): boolean {
@@ -154,35 +285,68 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
     return list.flatMap((e) => {
       const isOpen = !!nodes[e.path]?.open;
       const active = activePath === e.path;
+      const isRenaming = renaming?.path === e.path;
       const row = (
-        <button
+        <div
           key={e.path}
-          type="button"
-          onClick={() => toggle(e)}
-          className={`group relative flex h-6 w-full items-center gap-1.5 rounded-[4px] pr-2 text-left text-[12px] leading-none transition-colors duration-100 ${
-            active
-              ? "bg-white/[0.08] text-[#ececec]"
-              : e.is_dir
-                ? "text-[#c9c9c9] hover:bg-white/[0.05]"
-                : "text-[#a3a3a3] hover:bg-white/[0.05] hover:text-[#d4d4d4]"
-          }`}
-          style={{ paddingLeft: 8 + depth * 14 }}
-          title={e.path}
+          onContextMenu={(ev) => {
+            ev.preventDefault();
+            setMenu({ x: ev.clientX, y: ev.clientY, entry: e });
+          }}
+          className="group relative"
         >
-          {active && (
-            <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-[#4c8dff]" />
-          )}
-          <span className="flex w-3.5 shrink-0 items-center justify-center">
-            {e.is_dir && <ChevronIcon open={isOpen} />}
-          </span>
-          {e.is_dir ? <FolderIcon open={isOpen} /> : <FileIcon name={e.name} />}
-          <span className={`truncate ${active ? "font-medium" : ""}`}>{e.name}</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => toggle(e)}
+            className={`relative flex h-6 w-full items-center gap-1.5 rounded-[4px] pr-2 text-left text-[12px] leading-none transition-colors duration-100 ${
+              active
+                ? "bg-white/[0.08] text-[#ececec]"
+                : e.is_dir
+                  ? "text-[#c9c9c9] hover:bg-white/[0.05]"
+                  : "text-[#a3a3a3] hover:bg-white/[0.05] hover:text-[#d4d4d4]"
+            }`}
+            style={{ paddingLeft: 8 + depth * 14 }}
+            title={e.path}
+          >
+            {active && (
+              <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-[#4c8dff]" />
+            )}
+            <span className="flex w-3.5 shrink-0 items-center justify-center">
+              {e.is_dir && <ChevronIcon open={isOpen} />}
+            </span>
+            {e.is_dir ? <FolderIcon open={isOpen} /> : <FileIcon name={e.name} />}
+            {isRenaming ? (
+              <input
+                autoFocus
+                value={renameInput}
+                onChange={(ev) => setRenameInput(ev.target.value)}
+                onClick={(ev) => ev.stopPropagation()}
+                onKeyDown={(ev) => {
+                  ev.stopPropagation();
+                  if (ev.key === "Enter") void commitRename();
+                  if (ev.key === "Escape") {
+                    setRenaming(null);
+                    setRenameInput("");
+                  }
+                }}
+                onBlur={() => void commitRename()}
+                className="min-w-0 flex-1 rounded border border-[#4c8dff] bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none"
+              />
+            ) : (
+              <span className={`truncate ${active ? "font-medium" : ""}`}>
+                {e.name}
+              </span>
+            )}
+          </button>
+        </div>
       );
 
       // Children render directly below the parent (flat list, indented).
       const kids = e.is_dir && isOpen ? renderTree(e.path, depth + 1) : [];
-      return [row, ...kids];
+      const out = [row, ...kids];
+      // New-item input appears inside the folder you right-clicked.
+      if (e.is_dir && creating?.parent === e.path) out.push(renderCreateRow(depth + 1));
+      return out;
     });
   };
 
@@ -198,7 +362,11 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
   };
 
   const name = root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? root;
-  const tree = renderTree(root, 0);
+  // Header "+" creates at the workspace root — its input row sits at depth 0.
+  const tree =
+    creating?.parent === root
+      ? [...renderTree(root, 0), renderCreateRow(0)]
+      : renderTree(root, 0);
   const itemCount = countVisible(root);
 
   return (
@@ -210,6 +378,61 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
             Explorer
           </span>
           <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={onCollapse}
+              title="Collapse explorer panel"
+              aria-label="Collapse explorer panel"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 4L2.5 8 6 12M9.5 4L6 8l3.5 4" />
+              </svg>
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setNewMenu((v) => !v)}
+                title="New file or folder"
+                aria-label="New file or folder"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+              >
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                  <path d="M8 3v10M3 8h10" />
+                </svg>
+              </button>
+              {newMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setNewMenu(false)} />
+                  <div className="absolute left-full top-0 z-50 ml-1 w-40 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewMenu(false);
+                        setCreating({ parent: root, kind: "file" });
+                        setNewName("");
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                    >
+                      <FileIcon name="file.ts" />
+                      New File…
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewMenu(false);
+                        setCreating({ parent: root, kind: "folder" });
+                        setNewName("");
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                    >
+                      <FolderIcon open={false} />
+                      New Folder…
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <button
               type="button"
               onClick={collapseAll}
@@ -280,7 +503,12 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
 
       {/* ── Tree ───────────────────────────────────────────────────────── */}
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
-        {tree.length === 0 ? (
+        {createError && (
+          <p className="mx-0.5 mb-1.5 whitespace-pre-wrap rounded-md border border-[#e5534b]/30 bg-[#e5534b]/10 px-2 py-1 text-[10.5px] leading-4 text-[#e5534b]">
+            {createError}
+          </p>
+        )}
+        {tree.length === 0 && creating?.parent !== root ? (
           <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
             <svg viewBox="0 0 16 16" className="h-6 w-6 text-[#4a4a4a]" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
@@ -299,6 +527,81 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile 
         <span>{itemCount} item{itemCount === 1 ? "" : "s"}</span>
         {query && <span className="truncate">filtered</span>}
       </div>
+
+      {/* Right-click context menu */}
+      {menu && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setMenu(null)}
+            onContextMenu={(ev) => {
+              ev.preventDefault();
+              setMenu(null);
+            }}
+          />
+          <div
+            className="fixed z-50 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl"
+            style={{
+              left: Math.min(menu.x, window.innerWidth - 190),
+              top: Math.min(menu.y, window.innerHeight - 220),
+            }}
+          >
+            <p className="truncate px-3 py-1 text-[10px] uppercase tracking-wider text-[#6b6b6b]">
+              {menu.entry.name}
+            </p>
+            {menu.entry.is_dir && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(null);
+                    setCreating({ parent: menu.entry.path, kind: "file" });
+                    setNewName("");
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                >
+                  <FileIcon name="file.ts" /> New File…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(null);
+                    setCreating({ parent: menu.entry.path, kind: "folder" });
+                    setNewName("");
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                >
+                  <FolderIcon open={false} /> New Folder…
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setRenaming({ path: menu.entry.path, parent: menu.entry.path.replace(/[\\/]+[^\\/]*$/, "") });
+                setRenameInput(menu.entry.name);
+                setMenu(null);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11.5 1.75l2.75 2.75L5.5 13.25 2 14l.75-3.5z" />
+              </svg>
+              Rename…
+            </button>
+            <button
+              type="button"
+              onClick={() => void deleteEntry(menu.entry)}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#e5534b] transition hover:bg-[#e5534b]/10"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.75 9.5h6.5L12 4M6.5 7v4M9.5 7v4" />
+              </svg>
+              Delete
+            </button>
+          </div>
+        </>
+      )}
     </aside>
   );
 }

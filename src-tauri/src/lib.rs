@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::thread;
 use std::time::UNIX_EPOCH;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
@@ -83,7 +85,7 @@ fn check_ollama_running() -> bool {
         .build()
         .ok();
     if let Some(c) = client {
-        if let Ok(resp) = c.get("http://localhost:11434/api/version").send() {
+        if let Ok(resp) = c.get("http://127.0.0.1:11434/api/version").send() {
             return resp.status().is_success();
         }
     }
@@ -139,7 +141,7 @@ fn list_local_models() -> Result<Vec<serde_json::Value>, String> {
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
     let resp = client
-        .get("http://localhost:11434/api/tags")
+        .get("http://127.0.0.1:11434/api/tags")
         .send()
         .map_err(|e| format!("Failed to reach Ollama server: {e}"))?;
 
@@ -169,7 +171,7 @@ fn pull_local_model(model_name: String) -> Result<bool, String> {
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
     let resp = client
-        .post("http://localhost:11434/api/pull")
+        .post("http://127.0.0.1:11434/api/pull")
         .json(&serde_json::json!({ "name": model_name, "stream": false }))
         .send()
         .map_err(|e| format!("Failed to pull model: {e}"))?;
@@ -190,7 +192,7 @@ fn delete_local_model(model_name: String) -> Result<bool, String> {
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
     let resp = client
-        .delete("http://localhost:11434/api/delete")
+        .delete("http://127.0.0.1:11434/api/delete")
         .json(&serde_json::json!({ "name": model_name }))
         .send()
         .map_err(|e| format!("Failed to delete model: {e}"))?;
@@ -511,31 +513,38 @@ fn find_ollama_binary() -> Result<String, String> {
     Err("Ollama is not installed. Please install Ollama from https://ollama.com to use local models.".to_string())
 }
 
-/// Shared handle to the PTY writer so the frontend can send input to the shell.
-struct PtyState {
-    pty_write: Arc<parking_lot::Mutex<Box<dyn Write + Send>>>,
+/// One live terminal session: PTY master (for resize) + input writer + child.
+struct TermSession {
+    master: Box<dyn portable_pty::MasterPty + Send>,
+    writer: Box<dyn Write + Send>,
+    child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
-/// Write user keystrokes from the frontend terminal into the PTY.
+/// All open terminals, keyed by id. Ids are handed out monotonically.
+#[derive(Default)]
+struct TerminalState {
+    sessions: parking_lot::Mutex<HashMap<u32, TermSession>>,
+    next_id: AtomicU32,
+}
+
+/// Spawn a new shell in a fresh PTY and stream its output to the frontend.
 #[tauri::command]
-fn write_to_pty(state: tauri::State<'_, PtyState>, data: String) {
-    let mut guard = state.pty_write.lock();
-    let _ = guard.write_all(data.as_bytes());
-    let _ = guard.flush();
-}
+fn terminal_create(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, TerminalState>,
+    cwd: Option<String>,
+) -> Result<u32, String> {
+    let id = state.next_id.fetch_add(1, Ordering::SeqCst);
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Open a pseudo-terminal and spawn a shell inside it.
     let pty_system = NativePtySystem::default();
-    let pty_pair = pty_system
+    let pair = pty_system
         .openpty(PtySize {
             rows: 24,
             cols: 80,
             pixel_width: 0,
             pixel_height: 0,
         })
-        .expect("failed to open pty");
+        .map_err(|e| format!("Failed to open pty: {e}"))?;
 
     let shell_cmd = if cfg!(target_os = "windows") {
         "powershell.exe"
@@ -544,28 +553,111 @@ pub fn run() {
     } else {
         "/bin/bash"
     };
-    let cmd = CommandBuilder::new(shell_cmd);
-    // Keep the child handle alive for as long as the app runs.
-    let _shell_child = pty_pair
+    let mut cmd = CommandBuilder::new(shell_cmd);
+    cmd.env("TERM", "xterm-256color");
+    if let Some(dir) = cwd {
+        let p = PathBuf::from(&dir);
+        if p.is_dir() {
+            cmd.cwd(p);
+        }
+    }
+
+    let child = pair
         .slave
         .spawn_command(cmd)
-        .expect("failed to spawn shell");
-    drop(pty_pair.slave);
+        .map_err(|e| format!("Failed to spawn shell: {e}"))?;
+    drop(pair.slave);
 
-    let pty_read = pty_pair
+    let mut reader = pair
         .master
         .try_clone_reader()
-        .expect("failed to clone pty reader");
-    let pty_write = pty_pair.master.take_writer().expect("failed to take pty writer");
+        .map_err(|e| format!("Failed to clone pty reader: {e}"))?;
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|e| format!("Failed to take pty writer: {e}"))?;
 
+    state.sessions.lock().insert(
+        id,
+        TermSession {
+            master: pair.master,
+            writer,
+            child,
+        },
+    );
+
+    // Stream this terminal's output back, tagged with its id.
+    let handle = app.clone();
+    thread::spawn(move || {
+        let mut buffer = [0u8; 4096];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let text = String::from_utf8_lossy(&buffer[..n]).to_string();
+                    let _ = handle.emit("pty-data", serde_json::json!({ "id": id, "data": text }));
+                }
+                Err(_) => break,
+            }
+        }
+        // Process ended — clean the session up.
+        if let Some(state) = handle.try_state::<TerminalState>() {
+            state.sessions.lock().remove(&id);
+        }
+    });
+
+    Ok(id)
+}
+
+/// Write user keystrokes into a specific terminal's shell.
+#[tauri::command]
+fn terminal_write(state: tauri::State<'_, TerminalState>, id: u32, data: String) {
+    if let Some(session) = state.sessions.lock().get_mut(&id) {
+        let _ = session.writer.write_all(data.as_bytes());
+        let _ = session.writer.flush();
+    }
+}
+
+/// Resize a terminal's PTY grid (called after xterm fit).
+#[tauri::command]
+fn terminal_resize(
+    state: tauri::State<'_, TerminalState>,
+    id: u32,
+    rows: u16,
+    cols: u16,
+) -> Result<(), String> {
+    state
+        .sessions
+        .lock()
+        .get(&id)
+        .ok_or_else(|| format!("terminal {id} not found"))?
+        .master
+        .resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("Failed to resize terminal: {e}"))
+}
+
+/// Kill a terminal session (closes the reader thread via EOF).
+#[tauri::command]
+fn terminal_kill(state: tauri::State<'_, TerminalState>, id: u32) {
+    if let Some(mut session) = state.sessions.lock().remove(&id) {
+        let _ = session.child.kill();
+        // `master` drops here, closing the pty and ending the reader thread.
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .manage(ServerState(Mutex::new(None)))
-        .manage(PtyState {
-            pty_write: Arc::new(parking_lot::Mutex::new(pty_write)),
-        })
+        .manage(TerminalState::default())
         .invoke_handler(tauri::generate_handler![
             save_state,
             load_state,
@@ -588,26 +680,12 @@ pub fn run() {
             fs_search_files,
             fs_rename,
             run_command,
-            write_to_pty
+            terminal_create,
+            terminal_write,
+            terminal_resize,
+            terminal_kill
         ])
         .setup(|app| {
-            // Stream PTY output to the frontend via the `pty-data` event.
-            let handle = app.handle().clone();
-            thread::spawn(move || {
-                let mut reader = pty_read;
-                let mut buffer = [0u8; 4096];
-                loop {
-                    match reader.read(&mut buffer) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            let text = String::from_utf8_lossy(&buffer[..n]).to_string();
-                            let _ = handle.emit("pty-data", text);
-                        }
-                        Err(_) => break,
-                    }
-                }
-            });
-
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

@@ -12,7 +12,7 @@ import CommandPalette from "../components/CommandPalette";
 import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import Markdown from "./components/Markdown";
-import Terminal from "../components/terminal";
+import BottomPanel, { type PanelTab } from "./components/BottomPanel";
 import "./editor.css";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
@@ -227,6 +227,10 @@ export default function App() {
   const [modelOpen, setModelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [onOpenTerminal, setOpenTerminal] = useState(false);
+  // Which tab of the bottom dock is visible (terminal/problems/debug/…).
+  const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
+  // Jump-to-line request forwarded to the CodeEditor (problems panel etc.).
+  const [revealLine, setRevealLine] = useState<{ path: string; line: number } | null>(null);
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
@@ -273,6 +277,8 @@ export default function App() {
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
+  // VS Code-style: collapse the file-explorer sidebar for more editor room.
+  const [explorerCollapsed, setExplorerCollapsed] = useState(false);
 
   const spec: ProviderSpec = getProviderSpec(settings);
 
@@ -307,6 +313,10 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "g") {
         e.preventDefault();
         setGitPanelOpen((v) => !v);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "`") {
+        e.preventDefault();
+        setOpenTerminal((v) => !v);
       }
     };
     window.addEventListener("keydown", handleKey);
@@ -521,6 +531,7 @@ export default function App() {
         setExplorerRefreshKey((k) => k + 1);
         // Make sure the picked folder is immediately visible in the editor.
         setIdeOpen(true);
+        setExplorerCollapsed(false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -547,9 +558,10 @@ export default function App() {
   /** Max simultaneously open editor tabs (LRU-evicted beyond this). */
   const MAX_OPEN_TABS = 10;
 
-  /** Open a file from the explorer in an editor tab. */
-  const openFileInEditor = async (path: string) => {
+  /** Open a file from the explorer in an editor tab (optionally at a line). */
+  const openFileInEditor = async (path: string, line?: number) => {
     setActiveEditorPath(path);
+    if (line != null) setRevealLine({ path, line });
     if (editorTabs.some((t) => t.path === path)) return;
     try {
       const content = await invoke<string>("fs_read_file", { path });
@@ -1376,7 +1388,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
         <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
-        <Terminal isOpen={onOpenTerminal} onClose={()=>setOpenTerminal(false)} cwd={workspaceRoot} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Activity bar — VS Code-style icon rail */}
           <nav className="flex w-11 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[#131313] py-2">
@@ -1720,14 +1731,31 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               </div>
               {workspaceRoot || editorTabs.length > 0 ? (
                 <div className="flex min-h-0 flex-1">
-                  {workspaceRoot && (
+                  {workspaceRoot && !explorerCollapsed && (
                     <FileExplorer
                       key={workspaceRoot}
                       root={workspaceRoot}
                       activePath={activeEditorPath}
                       refreshKey={explorerRefreshKey}
                       onOpenFile={(p) => void openFileInEditor(p)}
+                      onCollapse={() => setExplorerCollapsed(true)}
                     />
+                  )}
+                  {/* Slim strip to bring the explorer back after collapsing. */}
+                  {workspaceRoot && explorerCollapsed && (
+                    <div className="flex w-7 shrink-0 flex-col items-center justify-start border-r border-white/[0.07] bg-[#131313] py-2">
+                      <button
+                        type="button"
+                        onClick={() => setExplorerCollapsed(false)}
+                        title="Show explorer"
+                        aria-label="Show explorer"
+                        className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                      >
+                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 4l3.5 4L5 12M9.5 4L13 8l-3.5 4" />
+                        </svg>
+                      </button>
+                    </div>
                   )}
                   <CodeEditor
                     tabs={editorTabs}
@@ -1737,6 +1765,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     onChange={updateEditorContent}
                     onSave={(p) => void saveEditorFile(p)}
                     onCloseAll={closeAllEditorTabs}
+                    reveal={revealLine}
                   />
                 </div>
               ) : (
@@ -1784,6 +1813,15 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             )}
           </aside>
         </div>
+        {/* VS Code-style bottom dock: Terminal / Problems / Debug / Output / Ports */}
+        <BottomPanel
+          open={onOpenTerminal}
+          tab={panelTab}
+          onTab={setPanelTab}
+          onClose={() => setOpenTerminal(false)}
+          root={workspaceRoot}
+          onOpenFile={(p, line) => void openFileInEditor(p, line)}
+        />
         <StatusBar
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}

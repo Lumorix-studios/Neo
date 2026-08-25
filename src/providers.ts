@@ -372,7 +372,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     label: "Ollama",
     note: "Self-hosted local model runner. No API key needed.",
     defaultBaseUrl: "http://localhost:11434",
-    defaultModel: "llama3",
+    defaultModel: "llama3.2:latest",
     needsAuth: false,
     authHeader: null,
     authScheme: "bearer",

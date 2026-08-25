@@ -17,6 +17,8 @@ export interface CodeEditorProps {
   onChange: (path: string, content: string) => void;
   onSave: (path: string) => void;
   onCloseAll?: () => void;
+  /** Scroll the active tab to this file+line (problems panel jumps). */
+  reveal?: { path: string; line: number } | null;
 }
 
 /** Metrics shared by the gutter, highlight layer and textarea so they stay pixel-aligned. */
@@ -39,6 +41,7 @@ export default function CodeEditor({
   onChange,
   onSave,
   onCloseAll,
+  reveal,
 }: CodeEditorProps) {
   const active = tabs.find((t) => t.path === activePath) ?? null;
   const preRef = useRef<HTMLPreElement>(null);
@@ -65,6 +68,18 @@ export default function CodeEditor({
       }
     });
   }, [activePath]);
+
+  // Jump to a requested file+line (problems panel / git panel clicks).
+  useEffect(() => {
+    if (!reveal || !activePath || reveal.path !== activePath) return;
+    const el = taRef.current;
+    if (!el) return;
+    const target = Math.max(0, (reveal.line - 4) * LINE_HEIGHT);
+    el.scrollTop = target;
+    setScrollTop(target);
+    setCursor({ line: reveal.line, col: 1, sel: 0 });
+    el.focus();
+  }, [reveal, activePath]);
 
   const syncCursor = () => {
     const el = taRef.current;

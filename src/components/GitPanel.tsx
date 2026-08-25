@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { logToBus } from "./logBus";
 import {
   IoArrowUp,
   IoChevronDown,
@@ -242,6 +243,8 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
 
   const appendLog = useCallback((text: string) => {
     setLog((prev) => [...prev.slice(-40), text]);
+    // Mirror into the Output panel stream.
+    logToBus("Git", text);
   }, []);
 
   /** Refresh branch + status; distinguishes "not a repo" from other errors. */
