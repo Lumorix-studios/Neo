@@ -14,7 +14,9 @@ export type ToolName =
   | "list_dir"
   | "search_files"
   | "rename"
-  | "run_command";
+  | "run_command"
+  | "get_open_files"
+  | "read_active_file";
 
 export interface ToolCall {
   id?: string;
@@ -77,6 +79,8 @@ const TOOL_NAME_SET = new Set<string>([
   "search_files",
   "rename",
   "run_command",
+  "get_open_files",
+  "read_active_file",
 ]);
 
 export function isToolName(name: string): name is ToolName {
@@ -105,6 +109,16 @@ interface JsonSchema {
 const pathProp = { type: "string", description: "File or folder path. Absolute, or relative to the workspace root." };
 
 export const TOOL_JSON_SCHEMAS: Record<ToolName, { description: string; parameters: JsonSchema }> = {
+  get_open_files: {
+    description:
+      "List the files currently open in the editor tabs and which one is active/focused.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  read_active_file: {
+    description:
+      "Read the current contents of the file that is active (focused) in the editor.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
   read_file: {
     description: "Read the full contents of a text file.",
     parameters: { type: "object", properties: { path: pathProp }, required: ["path"] },
@@ -246,6 +260,13 @@ function parseArgBlob(raw: string): Record<string, unknown> {
     const v = JSON.parse(t) as unknown;
     if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   } catch {
+    /* lenient retry below */
+  }
+  // Lenient retry for unescaped-backslash Windows paths etc.
+  try {
+    const v = JSON.parse(repairJsonBlob(t)) as unknown;
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  } catch {
     /* ignore */
   }
   return { _raw: t };
@@ -322,11 +343,21 @@ export function ingestNativeChunk(json: unknown, acc: NativeToolAcc[]): void {
   }
 }
 
-export function agenticSystemPrompt(workspaceRoot?: string | null): string {
+export function agenticSystemPrompt(
+  workspaceRoot?: string | null,
+  editor?: EditorContext
+): string {
   const ws = workspaceRoot
     ? `Workspace root: ${workspaceRoot}\nPrefer paths relative to this root. Absolute paths also work.\n`
     : "If the user has not opened a folder, ask for a path or use absolute paths.\n";
-  return `${AGENTIC_PROMPT}\n\n${ws}`;
+  let ed = "";
+  if (editor && editor.openPaths.length > 0) {
+    ed += `\nOpen editor tabs: ${editor.openPaths.join(", ")}`;
+    if (editor.activePath) {
+      ed += `\nThe ACTIVE file the user is viewing: ${editor.activePath}. If the task says "this file" or "the current file" without naming one, use it.`;
+    }
+  }
+  return `${AGENTIC_PROMPT}\n\n${ws}${ed}`;
 }
 
 function inTauri(): boolean {
@@ -359,6 +390,16 @@ async function browserFallback(name: string, args: Record<string, unknown>): Pro
   }
 }
 
+/** Snapshot of the user's editor state handed to editor-aware tools. */
+export interface EditorContext {
+  /** Paths of all currently open editor tabs. */
+  openPaths: string[];
+  /** Path of the focused/active tab, if any. */
+  activePath: string | null;
+  /** Returns the live (possibly unsaved) buffer contents for an open path. */
+  getTabContent?: (path: string) => string | null;
+}
+
 /**
  * Execute a single tool call. Returns a ToolResult that is fed back to the
  * model as a `<tool_result>` block.
@@ -366,8 +407,33 @@ async function browserFallback(name: string, args: Record<string, unknown>): Pro
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  workspaceRoot?: string | null
+  workspaceRoot?: string | null,
+  editor?: EditorContext
 ): Promise<ToolResult> {
+  // Editor-aware tools operate on open tabs; they take no paths, so run them
+  // before path resolution.
+  if (name === "get_open_files") {
+    const e = editor ?? { openPaths: [], activePath: null };
+    if (e.openPaths.length === 0)
+      return { ok: true, output: "No files are currently open in the editor." };
+    const lines = e.openPaths.map((p) =>
+      p === e.activePath ? `[ACTIVE] ${p}` : `        ${p}`
+    );
+    return { ok: true, output: `Open editor tabs:\n${lines.join("\n")}` };
+  }
+  if (name === "read_active_file") {
+    if (!editor?.activePath)
+      return { ok: false, output: "No file is currently active in the editor." };
+    const content = editor.getTabContent?.(editor.activePath);
+    if (content == null)
+      return { ok: false, output: "Could not read the active tab's contents." };
+    const MAX_READ = 12000;
+    const out =
+      content.length <= MAX_READ
+        ? content
+        : `${content.slice(0, MAX_READ)}\n... [truncated, ${content.length - MAX_READ} chars omitted]`;
+    return { ok: true, output: `${editor.activePath}:\n${out}` };
+  }
   const resolved: Record<string, unknown> = { ...args };
   if (typeof resolved.path === "string") {
     resolved.path = resolveFsPath(resolved.path, workspaceRoot);
@@ -440,7 +506,20 @@ export async function executeTool(
         await invoke("fs_create_dir", { path: String(args.path ?? "") });
         return { ok: true, output: `Created directory ${String(args.path)}.` };
       case "list_dir": {
-        const entries = await invoke<FsEntry[]>("fs_list_dir", { path: String(args.path ?? "") });
+        const runList = (dir: string) =>
+          invoke<FsEntry[]>("fs_list_dir", { path: dir });
+        const requested = String(args.path ?? "").trim();
+        let entries: FsEntry[];
+        try {
+          entries = await runList(requested || String(workspaceRoot ?? "."));
+        } catch (err) {
+          if (workspaceRoot && requested && resolveFsPath(requested, workspaceRoot) !== workspaceRoot) {
+            // Bad guessed directory — retry from the workspace root.
+            entries = await runList(workspaceRoot);
+          } else {
+            throw err;
+          }
+        }
         const lines = entries.map((e) => {
           const kind = e.is_dir ? "dir " : "file";
           const size = e.size != null ? ` (${e.size} bytes)` : "";
@@ -452,11 +531,25 @@ export async function executeTool(
         };
       }
       case "search_files": {
-        const hits = await invoke<string[]>("fs_search_files", {
-          path: String(args.path ?? ""),
-          pattern: String(args.pattern ?? ""),
-          content: Boolean(args.content ?? false),
-        });
+        const runSearch = (dir: string) =>
+          invoke<string[]>("fs_search_files", {
+            path: dir,
+            pattern: String(args.pattern ?? ""),
+            content: Boolean(args.content ?? false),
+          });
+        const requested = String(args.path ?? "").trim();
+        let hits: string[];
+        try {
+          hits = await runSearch(requested || String(workspaceRoot ?? "."));
+        } catch (err) {
+          if (workspaceRoot && requested) {
+            // The model guessed a directory that doesn't exist — retry from
+            // the workspace root so one bad guess doesn't kill the task.
+            hits = await runSearch(workspaceRoot);
+          } else {
+            throw err;
+          }
+        }
         return {
           ok: true,
           output: hits.length > 0 ? hits.join("\n") : "No matches found.",
@@ -510,6 +603,18 @@ function pushNamedCall(calls: ToolCall[], name: unknown, args: unknown): void {
   calls.push({ name: name as ToolName, arguments: coerceArgs(args) });
 }
 
+/**
+ * Repair common LLM JSON mistakes so tool calls survive:
+ *  - unescaped backslashes in Windows paths ("C:\Users\x") → properly escaped
+ *  - smart quotes → straight quotes
+ */
+function repairJsonBlob(raw: string): string {
+  return raw
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\\(?![\\/"bfnrtu])/g, "\\\\");
+}
+
 function tryParseJsonCall(blob: string, calls: ToolCall[]): boolean {
   try {
     const parsed = JSON.parse(blob) as {
@@ -544,7 +649,10 @@ function tryParseJsonCall(blob: string, calls: ToolCall[]): boolean {
       return true;
     }
   } catch {
-    /* not json */
+    // Lenient retry: models frequently emit Windows paths with unescaped
+    // backslashes ("C:\Users\x") which is invalid JSON. Repair and reparse.
+    const fixed = repairJsonBlob(blob);
+    if (fixed !== blob) return tryParseJsonCall(fixed, calls);
   }
   return false;
 }
@@ -717,6 +825,29 @@ export function parseToolCalls(text: string): ToolCall[] {
     }
   }
 
+  // <function_call> {"name": ..., "arguments": {...}} </function_call>
+  // (the format llama-family models frequently emit in plain text)
+  const fcRe = /<function_call>\s*([\s\S]*?)\s*<\/function_call>/gi;
+  while ((m = fcRe.exec(text)) !== null) {
+    const inner = m[1].trim();
+    if (!inner) continue;
+    if (tryParseJsonBlob(inner, calls)) continue;
+    // Name on its own line followed by an args JSON blob
+    const nm = inner.match(/^([a-zA-Z0-9_]+)\s*\n?([\s\S]*)$/);
+    if (nm && nm[2].trim()) {
+      const args: Record<string, unknown> = {};
+      try {
+        const v = JSON.parse(repairJsonBlob(nm[2].trim())) as unknown;
+        if (v && typeof v === "object" && !Array.isArray(v)) {
+          Object.assign(args, v as Record<string, unknown>);
+          pushNamedCall(calls, nm[1], args);
+        }
+      } catch {
+        /* unparseable — skip */
+      }
+    }
+  }
+
   const fenceRe = /```(?:json|tool_call|tool)?\s*([\s\S]*?)```/gi;
   while ((m = fenceRe.exec(text)) !== null) {
     tryParseJsonBlob(m[1].trim(), calls);
@@ -746,6 +877,8 @@ export function parseToolCalls(text: string): ToolCall[] {
 export function stripToolCalls(text: string): string {
   const stripped = text
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/<function_call>[\s\S]*?<\/function_call>/gi, "")
+    .replace(/<function_call>\s*$/i, "")
     .replace(/<tool_call>[^<]*$/i, "")
     .replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, "")
     .replace(/<function=[^<]*$/i, "")
@@ -776,6 +909,8 @@ export function formatToolResult(result: ToolResult): string {
 
 /** Human-readable label for each tool. */
 export const TOOL_LABELS: Record<ToolName, string> = {
+  get_open_files: "List open tabs",
+  read_active_file: "Read active file",
   read_file: "Read file",
   read_file_range: "Read file range",
   write_file: "Write file",
@@ -792,6 +927,8 @@ export const TOOL_LABELS: Record<ToolName, string> = {
 
 /** Short description of each tool for the model's system prompt. */
 export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
+  get_open_files: 'get_open_files() — list the files open in editor tabs and which is active.',
+  read_active_file: 'read_active_file() — read the contents of the currently active editor file.',
   read_file: 'read_file(path) — read the full contents of a text file.',
   read_file_range: 'read_file_range(path, start_line, end_line) — read a line range (end_line=0 means to EOF).',
   write_file: 'write_file(path, content) — create or overwrite a file (creates parent folders).',
@@ -832,6 +969,8 @@ Rules:
 7. If a tool errors, read the error and try a different approach.
 8. After editing files, verify your work: use run_command to build/test/lint when a build system exists (e.g. "npm run build", "cargo check"). Read compile errors and fix them.
 9. search_files with content=true returns matches as path:line: text — use those line numbers with read_file_range to inspect precisely.
+10. NEVER describe, simulate, or give examples of tool calls in your answer. Phrases like "Here is the JSON function call that would…" followed by an example DO NOTHING. To actually use a tool, reply with the <tool_call> block itself as your ENTIRE message and stop. Never put tool-call JSON inside markdown code fences.
+11. If you are unsure which file to work on, call get_open_files first. Do not guess paths — call list_dir to discover the real structure before reading.
 `.trim();
 
 /** Generate a unique activity id. */

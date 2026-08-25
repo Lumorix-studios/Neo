@@ -81,6 +81,37 @@ function toolArgsJson(tc: NativeToolCall): string {
   return JSON.stringify(tc.arguments ?? {});
 }
 
+/**
+ * Ollama-specific history mapper. Ollama's /api/chat differs from OpenAI in
+ * two ways that cause hard 400s if we reuse the OpenAI shapes:
+ *  - `tool_calls[].function.arguments` must be an OBJECT, not a JSON string.
+ *  - There is no `role: "tool"`; tool results are sent as user messages.
+ */
+function toOllamaMessages(history: Message[]): object[] {
+  const out: object[] = [];
+  for (const m of history) {
+    if (m.role === "tool") {
+      out.push({
+        role: "user",
+        content: `<tool_result${m.toolName ? ` for ${m.toolName}` : ""}>\n${m.content}\n</tool_result>`,
+      });
+      continue;
+    }
+    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+      out.push({
+        role: "assistant",
+        content: m.content || "",
+        tool_calls: m.toolCalls.map((tc) => ({
+          function: { name: tc.name, arguments: tc.arguments ?? {} },
+        })),
+      });
+      continue;
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
 function toOpenAiMessages(history: Message[]): object[] {
   const out: object[] = [];
   for (const m of history) {
@@ -381,7 +412,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     buildUrl: (s) => `${s.baseUrl.replace(/\/+$/, "")}/api/chat`,
     buildBody: (s, history, opts) => ({
       model: s.model,
-      messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
+      messages: [{ role: "system", content: s.systemPrompt }, ...toOllamaMessages(history)],
       stream: true,
       options: { temperature: s.temperature },
       ...(opts?.enableTools ? { tools: OPENAI_TOOLS } : {}),

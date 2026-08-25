@@ -653,6 +653,13 @@ export default function App() {
   const editorTabsRef = useRef<EditorTab[]>([]);
   editorTabsRef.current = editorTabs;
 
+  // Ref mirror of the focused tab path for the async agent loop. Set via an
+  // effect so we never write refs during render.
+  const activeEditorRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeEditorRef.current = activeEditorPath;
+  }, [activeEditorPath]);
+
   
   const syncTabWithDisk = async (path: string) => {
     let disk: string | null = null;
@@ -979,7 +986,14 @@ ${promptSuffix}` : ""}`,
     ];
 
     // Decide whether to enable agentic (file-tool) mode for this request.
-    const agentic = looksLikeFileRequest(trimmed);
+    // Edit-y verbs ("debug", "fix", "refactor"…) qualify when the user has
+    // context to act on — an active editor tab OR an open workspace folder.
+    const activeEditorAtSend = activeEditorRef.current;
+    const looksLikeEditTask =
+      /\b(fix|edit|refactor|improve|clean up|optimi[sz]e|document|comment|extend|complete|implement|rewrite|convert|debug|add)\b/i.test(
+        trimmed
+      ) && (activeEditorAtSend !== null || workspaceRoot !== null);
+    const agentic = looksLikeFileRequest(trimmed) || looksLikeEditTask;
 
     // Build the agent's environment suffix: a one-shot workspace view so it
     // starts oriented, plus any MCP tools exposed by enabled servers.
@@ -992,6 +1006,38 @@ ${promptSuffix}` : ""}`,
 Top-level entries: ${listing}`;
       } catch {
         /* ignore — the agent can list it itself */
+      }
+    }
+
+    // Editor awareness: tell the agent which files are open, which one is
+    // active, and inline the active file's verbatim contents when small —
+    // so even tool-shy local models know exactly what to work on.
+    // NOTE: this runs even WITHOUT an open workspace folder (standalone
+    // files opened via Open Files…) — that's precisely when context matters.
+    if (agentic) {
+      const rel = (p: string): string =>
+        workspaceRoot && p.startsWith(workspaceRoot)
+          ? p.slice(workspaceRoot.length).replace(/^[\\/]+/, "")
+          : p;
+      const openTabs = editorTabsRef.current;
+      if (openTabs.length > 0) {
+        promptSuffix += `\n\nOpen editor tabs: ${openTabs.map((t) => rel(t.path)).join(", ")}`;
+        const activeTab = openTabs.find((t) => t.path === activeEditorAtSend) ?? null;
+        if (activeTab) {
+          const dirOf = (p: string): string => {
+            const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
+            return i > 0 ? p.slice(0, i) : p;
+          };
+          promptSuffix += `\nThe ACTIVE file the user is viewing: ${rel(activeTab.path)} (folder: ${dirOf(activeTab.path)}). Treat references to "this file" or "the current file" as this one. All relative paths resolve against this folder.`;
+          const MAX_INLINE = 8000;
+          const bodyText =
+            activeTab.content.length <= MAX_INLINE
+              ? activeTab.content
+              : `${activeTab.content.slice(0, MAX_INLINE)}\n...[truncated - call read_active_file or read_file for more]`;
+          promptSuffix += `\n\nCurrent contents of ${rel(activeTab.path)}:\n${bodyText}\n(end of ${rel(activeTab.path)})`;
+        }
+      } else if (workspaceRoot) {
+        promptSuffix += `\n\nNo files are currently open in the editor. If the task is ambiguous, use list_dir or search_files to locate the right file before reading.`;
       }
     }
 
@@ -1030,6 +1076,11 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
       let ranTools = 0;
       let toolRounds = 0;
       let sawRawOutput = false;
+      // Anti-haywire state: prose-nudges issued, and consecutive rounds whose
+      // calls all failed with identical signatures.
+      let nudgeCount = 0;
+      let failStreak = 0;
+      let lastFailSig = "";
 
       while (!abortCtrl.signal.aborted) {
         const round = await streamRound(agentHistory, agentic, abortCtrl.signal, promptSuffix);
@@ -1068,6 +1119,23 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
 
         // If the model produced no tool calls, we're done.
         if (calls.length === 0 || toolRounds >= MAX_TOOL_ROUNDS) {
+          // Recovery: weak local models often DESCRIBE tool calls in prose
+          // ("Here is the JSON function call that would...") without actually
+          // emitting one. Nudge them to emit a real block instead of ending.
+          if (
+            calls.length === 0 &&
+            toolRounds < MAX_TOOL_ROUNDS &&
+            nudgeCount < 2 &&
+            /\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b/i.test(raw)
+          ) {
+            nudgeCount++;
+            agentHistory.push({
+              role: "user",
+              content:
+                'You described a tool call but did not actually emit one — descriptions do nothing. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n{"name": "list_dir", "arguments": {"path": "."}}\n</tool_call>\nNo prose, no code fences, no examples.',
+            });
+            continue;
+          }
           if (toolRounds >= MAX_TOOL_ROUNDS && calls.length > 0) {
             setError("Reached the maximum number of agentic tool turns. Stopping.");
           }
@@ -1088,6 +1156,20 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
 
         const resultsByKey = new Map<string, { ok: boolean; output: string }>();
 
+        /**
+         * Root for relative-path resolution: open workspace, else — when only
+         * standalone files are open — the active file's own folder. Prevents
+         * relative paths from resolving against a random process cwd.
+         */
+        const effRoot =
+          workspaceRoot ??
+          (() => {
+            const a = activeEditorRef.current;
+            if (!a) return null;
+            const i = Math.max(a.lastIndexOf("\\"), a.lastIndexOf("/"));
+            return i > 0 ? a.slice(0, i) : null;
+          })();
+
         /** Execute one call — built-in filesystem/command tools or MCP tools. */
         const runToolCall = async (call: ToolCall) => {
           if (call.name.startsWith("mcp_")) {
@@ -1095,7 +1177,12 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             if (!entry) return { ok: false, output: `Unknown MCP tool: ${call.name}` };
             return callMcpTool(entry.server, entry.tool, call.arguments);
           }
-          return executeTool(call.name, call.arguments, workspaceRoot);
+          return executeTool(call.name, call.arguments, effRoot, {
+            openPaths: editorTabsRef.current.map((t) => t.path),
+            activePath: activeEditorRef.current,
+            getTabContent: (p) =>
+              editorTabsRef.current.find((t) => t.path === p)?.content ?? null,
+          });
         };
 
         // --- Read-only batch (parallel). MCP tools always need approval. ---
@@ -1145,7 +1232,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             targetPath = call.arguments.path;
             try {
               beforeContent = await invoke<string>("fs_read_file", {
-                path: resolveFsPath(targetPath, workspaceRoot),
+                path: resolveFsPath(targetPath, effRoot),
               });
             } catch {
               beforeContent = null; // new file
@@ -1183,7 +1270,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           if (result.ok) {
             syncAllOpenTabsRef.current();
             if (FILE_MUTATORS.has(call.name) && targetPath) {
-              const absPath = resolveFsPath(targetPath, workspaceRoot);
+              const absPath = resolveFsPath(targetPath, effRoot);
               let afterContent = "";
               try {
                 afterContent = await invoke<string>("fs_read_file", { path: absPath });
@@ -1196,6 +1283,26 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           }
         }
         if (mutating.length > 0) setExplorerRefreshKey((k) => k + 1);
+
+        // Runaway guard: if every call in a round failed and the failing
+        // signatures match the previous round's, we're looping — stop early.
+        const failSig = calls
+          .filter(({ key }) => resultsByKey.get(key)?.ok === false)
+          .map(({ call }) => `${call.name}:${JSON.stringify(call.arguments)}`)
+          .sort()
+          .join("|");
+        if (failSig && failSig === lastFailSig) {
+          failStreak++;
+          if (failStreak >= 3) {
+            setError(
+              "The same tool calls kept failing identically — stopping to avoid an endless loop. Try rephrasing the task or checking that the files exist."
+            );
+            break;
+          }
+        } else {
+          lastFailSig = failSig;
+          failStreak = failSig ? 1 : 0;
+        }
 
         // Route results back in the original call order.
         const nativeResults: Message[] = [];
