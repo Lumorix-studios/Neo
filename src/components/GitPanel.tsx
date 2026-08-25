@@ -64,9 +64,12 @@ async function git(root: string, args: string): Promise<RunResult> {
   });
 }
 
-/** Quote a path so it survives the PowerShell round-trip intact. */
+/** Quote a path so it survives the PowerShell round-trip intact.
+ *  IMPORTANT: use single quotes — double quotes get escaped to \" by Rust's
+ *  argv handling and PowerShell then re-parses them wrongly, breaking any
+ *  command that contains spaces. */
 function quotePath(p: string): string {
-  return `"${p.replace(/["'`]/g, "")}"`;
+  return `'${p.replace(/['"]/g, "")}'`;
 }
 
 /** Decode git's C-quoted paths ("pa\th") back to plain text. */
@@ -100,8 +103,12 @@ function parseStatus(output: string): { branch: BranchInfo; changes: Change[] } 
   if (lines[0]?.startsWith("## ")) {
     i = 1;
     const head = lines[0].slice(3);
-    // "## main...origin/main [ahead 1, behind 2]" or "## HEAD (no branch)"
-    const main = head.split(/\.\.\.|\s+\[/)[0].trim();
+    // "## main...origin/main [ahead 1, behind 2]", "## HEAD (no branch)",
+    // or "## No commits yet on master" on a fresh repo.
+    const fresh = /^no commits yet on (.+)$/i.exec(head);
+    const main = fresh
+      ? fresh[1]
+      : head.split(/\.\.\.|\s+\[/)[0].trim();
     branch.name = main.includes("(") ? null : main || null;
     const am = /\bahead (\d+)/.exec(head);
     const bm = /\bbehind (\d+)/.exec(head);
@@ -226,6 +233,7 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
   const [changes, setChanges] = useState<Change[]>([]);
   const [notRepo, setNotRepo] = useState(false);
   const [fatal, setFatal] = useState<string | null>(null);
+  const [remotes, setRemotes] = useState<string[]>([]);
   const [busy, setBusy] = useState(true);
   const [msg, setMsg] = useState("");
   const [outOpen, setOutOpen] = useState(false);
@@ -257,6 +265,8 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
       const parsed = parseStatus(res.stdout);
       setBranch(parsed.branch);
       setChanges(parsed.changes);
+      const rm = await git(root, "remote");
+      setRemotes(rm.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
     } catch (e) {
       // invoke rejects when the command could not be spawned at all.
       setFatal(`Could not run git — is it installed and on PATH?\n${
@@ -276,22 +286,37 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
 
   /**
    * Run one git action, log its output and refresh the lists.
-   * Returns whether the command exited successfully.
+   * Returns whether the command exited successfully plus its raw output.
    */
-  const runGit = async (args: string, label: string): Promise<boolean> => {
+  const runGit = async (
+    args: string,
+    label: string
+  ): Promise<{ ok: boolean; text: string }> => {
     setBusy(true);
     try {
       const res = await git(root, args);
       const out = [res.stdout, res.stderr].filter((s) => s.trim()).join("\n").trim();
       appendLog(
-        `$ git ${label}\n${out || "(no output)"}${res.timedOut ? "\n(timed out)" : ""}`
+        `$ git ${label}\n${out || "(no output)"}${
+          res.exitCode !== 0 ? `\n(exit code ${res.exitCode ?? "timeout"})` : ""
+        }`
       );
-      if (res.exitCode !== 0 && out) setOutOpen(true);
-      return res.exitCode === 0;
+      if (res.exitCode !== 0) {
+        // Surface common setup problems directly in the console.
+        if (/tell me who you are|user\.email/i.test(out)) {
+          appendLog(
+            "hint: set your git identity once:\n" +
+              "$ git config --global user.name 'Your Name'\n" +
+              "$ git config --global user.email 'you@example.com'"
+          );
+        }
+        setOutOpen(true);
+      }
+      return { ok: res.exitCode === 0 && !res.timedOut, text: out };
     } catch (e) {
       appendLog(`$ git ${label}\n${e instanceof Error ? e.message : String(e)}`);
       setOutOpen(true);
-      return false;
+      return { ok: false, text: String(e) };
     } finally {
       setBusy(false);
       await refresh();
@@ -315,13 +340,60 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
       `discard ${c.path}`
     );
   };
-  const commit = async () => {
+  /** Commit staged changes. Returns true when a commit was created. */
+  const commit = async (): Promise<boolean> => {
+    // Single quotes only — double quotes break through the PowerShell layer.
     const clean = msg.trim().replace(/["'`]/g, "");
-    if (!clean || staged.length === 0) return;
-    const ok = await runGit(`commit -m "${clean}"`, "commit");
-    if (ok) setMsg("");
+    if (!clean || staged.length === 0) return false;
+    const r = await runGit(`commit -m '${clean}'`, "commit");
+    if (r.ok) {
+      setMsg("");
+      appendLog(`✓ committed ${staged.length} file(s)`);
+      return true;
+    }
+    return false;
   };
-  const pushPull = (args: string, label: string) => void runGit(args, label);
+  /** Safe subset of characters for branch names in shell commands. */
+  const safeBranch = () => (branch.name ?? "").replace(/[^A-Za-z0-9._\-/]/g, "");
+  /** Push; retries with --set-upstream when the branch has no upstream yet. */
+  const push = async () => {
+    const first = await runGit("push", "push");
+    if (first.ok) {
+      appendLog("✓ pushed");
+      return;
+    }
+    if (/set-upstream|upstream/i.test(first.text)) {
+      const b = safeBranch();
+      if (b) {
+        const retry = await runGit(`push --set-upstream origin ${b}`, `push -u origin ${b}`);
+        if (retry.ok) appendLog("✓ pushed (upstream set)");
+        return;
+      }
+    }
+    if (/does not appear to be a git repository|no configured push destination/i.test(first.text)) {
+      appendLog(
+        "hint: no remote configured yet — add one:\n$ git remote add origin <repo-url>"
+      );
+    } else if (/authentication|could not read username|permission|403/i.test(first.text)) {
+      appendLog(
+        "hint: authentication failed. Complete the sign-in window if one opened, or run 'git push' once in a terminal to cache credentials."
+      );
+    }
+    // A timeout usually means git is waiting on an interactive login prompt.
+  };
+  /** Pull; falls back to an explicit remote/branch when upstream is unset. */
+  const pull = async () => {
+    const first = await runGit("pull", "pull");
+    if (!first.ok && /no tracking information/i.test(first.text)) {
+      const b = safeBranch();
+      if (b) await runGit(`pull origin ${b}`, `pull origin ${b}`);
+    }
+  };
+  const fetchAll = () => void runGit("fetch --all", "fetch --all");
+  /** Commit and then push in one go. */
+  const commitAndPush = async () => {
+    if (await commit()) await push();
+  };
 
   const canCommit = staged.length > 0 && msg.trim().length > 0 && !busy;
 
@@ -388,17 +460,36 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
-              <IconButton title="Fetch" onClick={() => pushPull("fetch --all --quiet", "fetch")} disabled={busy}>
+              <IconButton
+                title={remotes.length === 0 ? "No remote configured" : "Fetch from remotes"}
+                onClick={fetchAll}
+                disabled={busy || remotes.length === 0}
+              >
                 <IoSync size={12} />
               </IconButton>
-              <IconButton title="Pull" onClick={() => pushPull("pull --quiet", "pull")} disabled={busy}>
+              <IconButton
+                title={remotes.length === 0 ? "No remote configured" : "Pull"}
+                onClick={() => void pull()}
+                disabled={busy || remotes.length === 0}
+              >
                 <IoArrowDown size={13} />
               </IconButton>
-              <IconButton title="Push" onClick={() => pushPull("push --quiet", "push")} disabled={busy}>
+              <IconButton
+                title={remotes.length === 0 ? "No remote configured — add one with: git remote add origin <url>" : "Push"}
+                onClick={() => void push()}
+                disabled={busy || (remotes.length === 0 && branch.ahead === 0)}
+              >
                 <IoArrowUp size={13} />
               </IconButton>
             </div>
           </div>
+          {remotes.length === 0 && (
+            <div className="shrink-0 border-b border-white/[0.05] bg-amber-500/[0.06] px-2.5 py-1.5 text-[10.5px] leading-4 text-amber-400/90">
+              No remote configured. Run{" "}
+              <span className="font-mono">git remote add origin &lt;url&gt;</span> in
+              the terminal to enable fetch / pull / push.
+            </div>
+          )}
 
           {/* ── Commit box ────────────────────────────────────────────── */}
           <div className="shrink-0 px-2.5 pb-2 pt-2.5">
@@ -411,22 +502,34 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
               placeholder={`Message (Ctrl+Enter to commit on ${branch.name ?? "HEAD"})`}
               className="mb-2 w-full rounded-md border border-white/[0.08] bg-[#0e0e0e] px-2.5 py-1.5 text-[12px] text-[#ececec] outline-none placeholder:text-[#5a5a62] focus:border-[#4c8dff]/60"
             />
-            <button
-              type="button"
-              onClick={() => void commit()}
-              disabled={!canCommit}
-              title={
-                staged.length === 0
-                  ? "Stage some changes first"
-                  : !msg.trim()
-                    ? "Enter a commit message"
-                    : `Commit ${staged.length} file(s)`
-              }
-              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#2563eb] py-1.5 text-[12px] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#3b76f5] disabled:cursor-not-allowed disabled:bg-white/[0.05] disabled:text-[#5a5a62] disabled:shadow-none"
-            >
-              <IoGitCommit size={14} />
-              Commit{staged.length > 0 ? ` (${staged.length})` : ""}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void commit()}
+                disabled={!canCommit}
+                title={
+                  staged.length === 0
+                    ? "Stage some changes first"
+                    : !msg.trim()
+                      ? "Enter a commit message"
+                      : `Commit ${staged.length} file(s)`
+                }
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2563eb] py-1.5 text-[12px] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#3b76f5] disabled:cursor-not-allowed disabled:bg-white/[0.05] disabled:text-[#5a5a62] disabled:shadow-none"
+              >
+                <IoGitCommit size={14} />
+                Commit{staged.length > 0 ? ` (${staged.length})` : ""}
+              </button>
+              <button
+                type="button"
+                onClick={() => void commitAndPush()}
+                disabled={!canCommit}
+                title="Commit and push to the remote"
+                aria-label="Commit and push"
+                className="flex w-9 items-center justify-center rounded-md border border-[#2563eb]/60 bg-transparent text-[#7ea6ff] transition hover:bg-[#2563eb]/15 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:text-[#5a5a62]"
+              >
+                <IoArrowUp size={14} />
+              </button>
+            </div>
           </div>
 
           {/* ── Change lists ──────────────────────────────────────────── */}

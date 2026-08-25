@@ -1,10 +1,3 @@
-/**
- * Minimal MCP (Model Context Protocol) client over the Streamable HTTP
- * transport. Servers are configured by URL; each agent run performs a fresh
- * `initialize` → `tools/list` handshake and executes tools via `tools/call`.
- *
- * Config is stored locally under "neochat.mcp.v1".
- */
 
 export interface McpServerConfig {
   id: string;
