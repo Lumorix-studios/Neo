@@ -436,7 +436,16 @@ export async function executeTool(
   }
   const resolved: Record<string, unknown> = { ...args };
   if (typeof resolved.path === "string") {
-    resolved.path = resolveFsPath(resolved.path, workspaceRoot);
+    // Sanitize model-supplied paths: strip wrapping quotes, whitespace and
+    // invisible characters that make the OS reject an otherwise-correct
+    // path (these fail IDENTICALLY every retry, tripping the loop breaker).
+    resolved.path = resolveFsPath(
+      resolved.path
+        .replace(/^["']+|["']+$/g, "")
+        .replace(/[\u200b-\u200f\u2028\u2029\ufeff]/g, "")
+        .trim(),
+      workspaceRoot
+    );
   }
   if (typeof resolved.new_path === "string") {
     resolved.new_path = resolveFsPath(resolved.new_path, workspaceRoot);
@@ -509,6 +518,13 @@ export async function executeTool(
         const runList = (dir: string) =>
           invoke<FsEntry[]>("fs_list_dir", { path: dir });
         const requested = String(args.path ?? "").trim();
+        if ((requested === "." || requested === "") && !workspaceRoot) {
+          return {
+            ok: false,
+            output:
+              "No folder is open and no file is active. Ask the user to open a folder from the sidebar or a file in the editor first.",
+          };
+        }
         let entries: FsEntry[];
         try {
           entries = await runList(requested || String(workspaceRoot ?? "."));
@@ -570,8 +586,12 @@ export async function executeTool(
         });
         const timedOut = Boolean(res.timedOut);
         const exitCode = res.exitCode as number | null;
-        const stdout = String(res.stdout ?? "").trim();
-        const stderr = String(res.stderr ?? "").trim();
+        // Cap streams — massive outputs blow up downstream diff/render paths.
+        const CAP = 6000;
+        const cap = (t: string): string =>
+          t.length > CAP ? `${t.slice(0, CAP)}\n...[truncated ${t.length - CAP} chars]` : t;
+        const stdout = cap(String(res.stdout ?? "").trim());
+        const stderr = cap(String(res.stderr ?? "").trim());
         const NL_CH2 = String.fromCharCode(10);
         const parts: string[] = [];
         if (timedOut) parts.push("Command timed out and was killed.");
@@ -584,9 +604,16 @@ export async function executeTool(
         return { ok: false, output: `Unknown tool: ${name}` };
     }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    let argPreview = "(unserializable)";
+    try {
+      argPreview = JSON.stringify(args).slice(0, 300);
+    } catch {
+      /* keep fallback */
+    }
     return {
       ok: false,
-      output: e instanceof Error ? e.message : String(e),
+      output: `${msg} | tool_args: ${argPreview}`,
     };
   }
 }
@@ -609,10 +636,30 @@ function pushNamedCall(calls: ToolCall[], name: unknown, args: unknown): void {
  *  - smart quotes → straight quotes
  */
 function repairJsonBlob(raw: string): string {
-  return raw
+  let s = raw
     .replace(/[\u201c\u201d]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/\\(?![\\/"bfnrtu])/g, "\\\\");
+
+  // Balance truncation damage: models often stream a call that gets cut off
+  // mid-string or mid-object (e.g. replace_in_file with a huge search text).
+  // Close any unterminated string literal and append the missing closers so
+  // the blob parses instead of being discarded.
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === '"') inStr = !inStr;
+  }
+  if (inStr) s += '"';
+  const openObj = (s.match(/{/g) || []).length - (s.match(/}/g) || []).length;
+  const openArr = (s.match(/\[/g) || []).length - (s.match(/]/g) || []).length;
+  if (openArr > 0) s += "]".repeat(openArr);
+  if (openObj > 0) s += "}".repeat(openObj);
+  return s;
 }
 
 function tryParseJsonCall(blob: string, calls: ToolCall[]): boolean {
@@ -982,8 +1029,11 @@ export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
 
 /** The protocol instructions injected into the system prompt. */
 export const AGENTIC_PROMPT = `
-You have access to filesystem tools. When the user asks you to read, create,
-edit, delete, search, or manage files and folders, use the tools below.
+You are an autonomous coding agent embedded in an IDE. YOU invoke the tools
+below YOURSELF by emitting tool calls — the user cannot see, run, or access
+them. NEVER ask the user to call a function, paste code into a terminal, or
+run anything on your behalf. When a task needs file contents, call the read
+tool yourself right now instead of describing what you would do.
 
 Available tools:
 ${Object.values(TOOL_DESCRIPTIONS).map((d) => `- ${d}`).join("\n")}
@@ -1000,7 +1050,7 @@ Rules:
 1. Batch independent read-only calls (read_file, read_file_range, list_dir, search_files) together in ONE message — the app executes them in parallel, which is much faster.
 2. Mutating tools (write_file, append_file, replace_in_file, delete_file, delete_dir, create_dir, rename, run_command) must be called ONE at a time; wait for each result before the next mutation.
 3. Keep commentary between tool calls minimal (one short sentence at most). When you have everything you need, reply with your final answer in plain text (no tool_call blocks).
-4. Destructive tools require user approval — the app will ask the user before executing them. If the user denies, you will receive an error result; adapt accordingly and do not retry the same call.
+4. Destructive tools need one-time user approval — after you emit the call, the app automatically shows the user a confirmation dialog and executes it. If denied, you receive an error result; adapt accordingly and do not retry the same call.
 5. Paths may be absolute or relative to the workspace root.
 6. Keep file contents you write complete and correct — never truncate or use placeholders.
 7. If a tool errors, read the error and try a different approach.

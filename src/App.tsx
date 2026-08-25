@@ -1021,6 +1021,7 @@ ${promptSuffix}` : ""}`,
     // so even tool-shy local models know exactly what to work on.
     // NOTE: this runs even WITHOUT an open workspace folder (standalone
     // files opened via Open Files…) — that's precisely when context matters.
+    let userFileNote = "";
     if (agentic) {
       const rel = (p: string): string =>
         workspaceRoot && p.startsWith(workspaceRoot)
@@ -1042,9 +1043,18 @@ ${promptSuffix}` : ""}`,
               ? activeTab.content
               : `${activeTab.content.slice(0, MAX_INLINE)}\n...[truncated - call read_active_file or read_file for more]`;
           promptSuffix += `\n\nCurrent contents of ${rel(activeTab.path)}:\n${bodyText}\n(end of ${rel(activeTab.path)})`;
+          userFileNote = `(Working file: ${rel(activeTab.path)} — its complete source is already in your system context above. Start analyzing it immediately; do not ask for it.)`;
         }
       } else if (workspaceRoot) {
         promptSuffix += `\n\nNo files are currently open in the editor. If the task is ambiguous, use list_dir or search_files to locate the right file before reading.`;
+      }
+    }
+
+    // The annotated user message is what small models actually attend to.
+    if (userFileNote) {
+      const lastMsg = agentHistory[agentHistory.length - 1];
+      if (lastMsg && lastMsg.role === "user") {
+        lastMsg.content = `${lastMsg.content}\n\n${userFileNote}`;
       }
     }
 
@@ -1133,7 +1143,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             calls.length === 0 &&
             toolRounds < MAX_TOOL_ROUNDS &&
             nudgeCount < 2 &&
-            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>)/i.test(raw)
+            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|\bcall\s+(read|list|get|search)_)/i.test(raw)
           ) {
             nudgeCount++;
             agentHistory.push({
@@ -1269,8 +1279,8 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           patchActivity(
             id,
             result.ok
-              ? { status: "done", output: result.output }
-              : { status: "error", error: result.output }
+              ? { status: "done", output: result.output.slice(0, 4000) }
+              : { status: "error", error: result.output.slice(0, 2000) }
           );
           // Reflect filesystem mutations in the editor immediately, show a
           // line-by-line diff in the activity feed, and open the changed file.
@@ -1732,6 +1742,23 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 }}
                 className="mx-auto w-full max-w-3xl"
               >
+                {activeEditorPath ? (
+                  <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                    <span
+                      title={`The agent will receive this file's contents automatically`}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#4c8dff]/30 bg-[#4c8dff]/10 px-2 py-0.5 text-[10.5px] font-medium text-[#8ab4ff]"
+                    >
+                      <span className="h-1 w-1 rounded-full bg-[#4c8dff]" />
+                      Attached: {activeEditorPath.split(/[\\/]/).pop()}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                    <span className="text-[10.5px] text-[#6b6b6b]">
+                      No file attached — open one in the editor and it will be sent to the agent automatically
+                    </span>
+                  </div>
+                )}
                 <div className="relative overflow-hidden rounded-xl border border-white/[0.09] bg-[#161616] shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-200 focus-within:border-white/[0.22] focus-within:shadow-[0_0_0_3px_rgba(76,141,255,0.09),0_8px_32px_rgba(0,0,0,0.4)]">
                   <textarea
                     value={message}

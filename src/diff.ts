@@ -15,6 +15,14 @@ const NL = String.fromCharCode(10);
 const MAX_LINES = 800;
 
 export function computeLineDiff(oldText: string, newText: string): DiffLine[] {
+  // Hard cap on input size — pathological inputs must never hang the UI.
+  const MAX_CHARS = 200000;
+  if (oldText.length > MAX_CHARS || newText.length > MAX_CHARS) {
+    return [
+      { type: "del", text: `(previous version — ${Math.round(oldText.length / 1024)} KB)` },
+      { type: "add", text: `(new version — ${Math.round(newText.length / 1024)} KB)` },
+    ];
+  }
   const a = oldText.split(NL);
   const b = newText.split(NL);
 
