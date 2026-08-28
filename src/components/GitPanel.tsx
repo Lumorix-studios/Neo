@@ -410,7 +410,7 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
   const hasRemote = remotes.length > 0;
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[#131313]">
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-panel)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a3a3a3]">
@@ -521,7 +521,7 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                 if (ev.key === "Enter" && canCommit) void commit();
               }}
               placeholder={`Message (Ctrl+Enter to commit on ${branch.name ?? "HEAD"})`}
-              className="mb-2 w-full rounded-md border border-white/[0.08] bg-[#0e0e0e] px-2.5 py-1.5 text-[12px] text-[#ececec] outline-none placeholder:text-[#5a5a62] focus:border-[#4c8dff]/60"
+              className="mb-2 w-full rounded-md border border-white/[0.08] bg-[var(--bg-base)] px-2.5 py-1.5 text-[12px] text-[#ececec] outline-none placeholder:text-[#5a5a62] focus:border-(--accent)/60"
             />
             <div className="flex gap-2">
               <button
@@ -559,7 +559,7 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                       className="fixed inset-0 z-40"
                       onClick={() => setCommitMenuOpen(false)}
                     />
-                    <div className="absolute bottom-full right-0 z-50 mb-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl">
+                    <div className="absolute bottom-full right-0 z-50 mb-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl">
                       <button
                         type="button"
                         onClick={() => {
@@ -662,7 +662,7 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
           {outOpen && log.length > 0 && (
             <pre
               ref={logEndRef}
-              className="max-h-40 shrink-0 overflow-y-auto border-t border-white/[0.05] bg-[#0e0e0e] px-2.5 py-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-[#8a8a93] scrollbar-thin"
+              className="max-h-40 shrink-0 overflow-y-auto border-t border-white/[0.05] bg-[var(--bg-base)] px-2.5 py-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-[#8a8a93] scrollbar-thin"
             >
               {log.join("\n")}
             </pre>

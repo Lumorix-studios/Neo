@@ -171,7 +171,7 @@ export default function PortsPanel({ active }: PortsPanelProps) {
               title={`Open http://localhost:${r.port}`}
               className="group flex w-full items-center gap-3 rounded-md px-2 py-1 text-left transition hover:bg-white/[0.05]"
             >
-              <span className="w-14 shrink-0 font-mono text-[12px] font-medium text-[#4c8dff] group-hover:underline">
+              <span className="w-14 shrink-0 font-mono text-[12px] font-medium text-(--accent) group-hover:underline">
                 {r.port}
               </span>
               <span className="w-28 shrink-0 truncate font-mono text-[11px] text-zinc-400">

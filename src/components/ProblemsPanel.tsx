@@ -189,7 +189,7 @@ export default function ProblemsPanel({
                 <span className="min-w-0 flex-1 text-zinc-300">
                   {p.message} <span className="text-[#6b6b6b]">({p.code})</span>
                 </span>
-                <span className="shrink-0 text-[10px] text-[#6b6b6b] group-hover:text-[#4c8dff]">
+                <span className="shrink-0 text-[10px] text-[#6b6b6b] group-hover:text-(--accent)">
                   [Ln {p.line}, Col {p.col}]
                 </span>
               </button>

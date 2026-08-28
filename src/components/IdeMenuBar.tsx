@@ -8,6 +8,7 @@ interface IdeMenuBarProps {
   onCloseAllTabs: () => void;
   onToggleTerminal: () => void;
   onClosePanel: () => void;
+  onOpenSettings?: () => void;
 }
 
 interface MenuItem {
@@ -19,7 +20,7 @@ interface MenuItem {
   onSelect: () => void;
 }
 
-/* --- Small stroke icons for menu rows ------------------------------------ */
+
 
 const iconProps = {
   viewBox: "0 0 16 16",
@@ -70,7 +71,13 @@ const CheckGlyph = (
   </svg>
 );
 
-/* --- Component ------------------------------------------------------------ */
+const GearGlyph = (
+  <svg {...iconProps}>
+    <circle cx="8" cy="8" r="2.1" />
+    <path d="M8 1.6l.7 1.7a4.9 4.9 0 011.7.7l1.8-.6 1.2 2-1.1 1.5a4.9 4.9 0 010 1.9l1.1 1.5-1.2 2-1.8-.6a4.9 4.9 0 01-1.7.7L8 14.4l-.7-1.7a4.9 4.9 0 01-1.7-.7l-1.8.6-1.2-2 1.1-1.5a4.9 4.9 0 010-1.9L2.6 5.7l1.2-2 1.8.6a4.9 4.9 0 011.7-.7z" />
+  </svg>
+);
+
 
 export default function IdeMenuBar({
   hasWorkspace,
@@ -80,6 +87,7 @@ export default function IdeMenuBar({
   onCloseAllTabs,
   onToggleTerminal,
   onClosePanel,
+  onOpenSettings,
 }: IdeMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "view" | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -125,6 +133,12 @@ export default function IdeMenuBar({
       checked: terminalOpen,
       onSelect: () => run(onToggleTerminal),
     },
+    {
+      label: "Settings…",
+      icon: GearGlyph,
+      hint: "Ctrl+,",
+      onSelect: () => run(() => onOpenSettings?.()),
+    },
   ];
 
   const renderMenu = (id: "file" | "view", title: string, items: MenuItem[]) => {
@@ -135,32 +149,52 @@ export default function IdeMenuBar({
           type="button"
           onClick={() => setOpenMenu(open ? null : id)}
           onMouseEnter={() => openMenu && setOpenMenu(id)}
-          className={`rounded-md px-2 py-[3px] text-[11.5px] font-medium transition-colors ${
-            open ? "bg-white/[0.09] text-zinc-100" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
+          className={`relative flex items-center gap-1.5 rounded-[5px] px-2.5 py-[4px] text-[11.5px] font-medium transition-colors ${
+            open
+              ? "bg-white/[0.09] text-zinc-50"
+              : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100"
           }`}
         >
           {title}
+          {open && (
+            <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          )}
+          {open && (
+            <span className="absolute inset-x-1 -bottom-[7px] h-[2px] rounded-full bg-(--accent)" />
+          )}
         </button>
         {open && (
-          <div className="absolute left-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border border-white/[0.09] bg-[#1a1a1a] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
-            {items.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                disabled={item.disabled}
-                onClick={item.onSelect}
-                className={`flex w-full items-center gap-2.5 rounded-md px-2 py-[6px] text-left text-[12px] transition-colors ${
-                  item.disabled
-                    ? "cursor-default text-[#555555]"
-                    : "text-[#c9c9c9] hover:bg-white/[0.06] hover:text-[#ececec]"
-                }`}
-              >
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.checked ? "text-[#4c8dff]" : "text-[#6b6b6b]"}`}>
-                  {item.checked ? CheckGlyph : item.icon}
-                </span>
-                <span className="flex-1 truncate">{item.label}</span>
-              </button>
-            ))}
+          <div className="panel-in absolute left-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-lg border border-white/[0.09] bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+            <p className="px-2.5 pb-1 pt-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+              {title}
+            </p>
+            <div className="h-px bg-white/[0.05]" />
+            <div className="pt-0.5">
+              {items.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  disabled={item.disabled}
+                  onClick={item.onSelect}
+                  className={`group/row relative flex w-full items-center gap-2.5 rounded-[5px] px-2.5 py-[6px] text-left text-[12px] transition-colors ${
+                    item.disabled
+                      ? "cursor-default text-[#555555]"
+                      : "text-[#c9c9c9] hover:bg-white/[0.07] hover:text-[#ececec]"
+                  }`}
+                >
+                  {!item.disabled && (
+                    <span className="absolute top-1/2 left-0 h-3.5 w-[2px] -translate-y-1/2 rounded-r-full bg-(--accent) opacity-0 transition-opacity group-hover/row:opacity-100" />
+                  )}
+                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.checked ? "text-(--accent)" : "text-[#6b6b6b]"}`}>
+                    {item.checked ? CheckGlyph : item.icon}
+                  </span>
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {item.hint && <span className="kbd shrink-0">{item.hint}</span>}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -169,6 +203,11 @@ export default function IdeMenuBar({
 
   return (
     <div ref={barRef} className="flex items-center gap-0.5">
+      {/* Brand glyph to ground the bar */}
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#8a8a8a" strokeWidth="1.1" strokeLinejoin="round" className="mr-1 opacity-80">
+        <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
+        <path d="M8 1v7m0 0l6-3.5M8 8L2 4.5" opacity="0.5" />
+      </svg>
       {renderMenu("file", "File", fileItems)}
       {renderMenu("view", "View", viewItems)}
     </div>

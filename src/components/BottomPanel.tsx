@@ -141,7 +141,7 @@ export default function BottomPanel({
   return (
     <section
       aria-label="Panel"
-      className="flex shrink-0 flex-col overflow-hidden border-t border-white/[0.07] bg-[#131313] transition-[height] duration-200 ease-out"
+      className="flex shrink-0 flex-col overflow-hidden border-t border-white/[0.07] bg-[var(--bg-panel)] transition-[height] duration-200 ease-out"
       style={{ height: open ? height : 0 }}
       aria-hidden={!open}
     >
@@ -154,7 +154,7 @@ export default function BottomPanel({
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
-        className="group flex h-1.5 shrink-0 cursor-row-resize touch-none select-none items-center justify-center bg-[#131313]"
+        className="group flex h-1.5 shrink-0 cursor-row-resize touch-none select-none items-center justify-center bg-[var(--bg-panel)]"
       >
         <span className="h-0.5 w-10 rounded-full bg-white/10 transition-colors group-hover:bg-white/30" />
       </div>
@@ -181,7 +181,7 @@ export default function BottomPanel({
                 </span>
               )}
               {tab === t.id && (
-                <span className="absolute inset-x-2 top-0 h-[2px] rounded-b bg-[#4c8dff]" />
+                <span className="absolute inset-x-2 top-0 h-[2px] rounded-b bg-(--accent)" />
               )}
             </button>
           ))}

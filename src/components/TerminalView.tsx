@@ -38,11 +38,11 @@ export default function TerminalView({ id, active }: TerminalViewProps) {
         "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace",
       fontSize: 12.5,
       theme: {
-        background: "#131313",
+        background: "var(--bg-panel)",
         foreground: "#d4d4d4",
         cursor: "#ececec",
         selectionBackground: "rgba(76, 141, 255, 0.28)",
-        black: "#131313",
+        black: "var(--bg-panel)",
         brightBlack: "#6b6b6b",
       },
     });

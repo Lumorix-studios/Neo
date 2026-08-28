@@ -161,7 +161,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#131313] text-[#ececec]">
+    <div className="flex h-full w-full flex-col bg-[var(--bg-panel)] text-[#ececec]">
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
           Local Models
@@ -348,7 +348,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                       >
                         <span
                           className={`shrink-0 ${
-                            selectedModel === model.name ? "text-[#4c8dff]" : "text-[#6b6b6b]"
+                            selectedModel === model.name ? "text-(--accent)" : "text-[#6b6b6b]"
                           }`}
                         >
                           {selectedModel === model.name ? (

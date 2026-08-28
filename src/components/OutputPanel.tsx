@@ -62,7 +62,7 @@ export default function OutputPanel() {
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as LogChannel | "All")}
-          className="rounded-md border border-white/[0.08] bg-[#1b1b1b] px-1.5 py-0.5 text-[11px] text-[#d4d4d4] outline-none"
+          className="rounded-md border border-white/[0.08] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[11px] text-[#d4d4d4] outline-none"
         >
           {CHANNELS.map((c) => (
             <option key={c} value={c}>

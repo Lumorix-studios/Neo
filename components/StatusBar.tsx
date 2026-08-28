@@ -49,10 +49,11 @@ export default function StatusBar({
   workspaceName,
 }: Props) {
   return (
-    <div className="flex h-6 shrink-0 items-center gap-3 border-t border-white/[0.07] bg-[#131313] px-2.5 text-[10.5px]">
+    <div className="flex h-6 shrink-0 items-center gap-3 border-t border-white/[0.07] bg-[var(--bg-panel)] px-2.5 text-[10.5px]">
       {/* Left */}
       <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
         <span className="flex shrink-0 items-center gap-1 font-medium text-[#8a8a8a]">
+          <span className="h-1.5 w-1.5 rounded-full bg-(--accent)" />
           Neo
           <span className="rounded-sm bg-white/[0.07] px-1 text-[9px] uppercase tracking-wide">Beta</span>
         </span>
@@ -97,9 +98,9 @@ export default function StatusBar({
         <ToggleButton
           active={sidebarOpen}
           onClick={onToggleSidebar}
-          title="Toggle Settings (Ctrl+B)"
+          title="Toggle Chat Sidebar (Ctrl+B)"
         >
-          Settings
+          Chat
         </ToggleButton>
       </div>
     </div>

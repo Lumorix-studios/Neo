@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FsEntry } from "../agentic";
 import { FileIcon } from "./FileIcon";
@@ -251,7 +251,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
         onBlur={() => void createEntry()}
         placeholder={creating?.kind === "folder" ? "folder name…" : "file name.ts…"}
         spellCheck={false}
-        className="min-w-0 flex-1 rounded border border-[#4c8dff] bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none placeholder-[#555555]"
+        className="min-w-0 flex-1 rounded border border-(--accent) bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none placeholder-[#555555]"
       />
     </div>
   );
@@ -309,7 +309,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
             title={e.path}
           >
             {active && (
-              <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-[#4c8dff]" />
+              <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
             )}
             <span className="flex w-3.5 shrink-0 items-center justify-center">
               {e.is_dir && <ChevronIcon open={isOpen} />}
@@ -330,7 +330,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
                   }
                 }}
                 onBlur={() => void commitRename()}
-                className="min-w-0 flex-1 rounded border border-[#4c8dff] bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none"
+                className="min-w-0 flex-1 rounded border border-(--accent) bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none"
               />
             ) : (
               <span className={`truncate ${active ? "font-medium" : ""}`}>
@@ -370,8 +370,8 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
   const itemCount = countVisible(root);
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.07] bg-[#131313]">
-      {/* ── Header ─────────────────────────────────────────────────────── */}
+    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-panel)]">
+      {/* -- Header ------------------------------------------------------- */}
       <div className="shrink-0 border-b border-white/[0.07]">
         <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
           <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#6b6b6b]">
@@ -404,7 +404,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
               {newMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNewMenu(false)} />
-                  <div className="absolute left-full top-0 z-50 ml-1 w-40 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl">
+                  <div className="absolute left-full top-0 z-50 ml-1 w-40 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl">
                     <button
                       type="button"
                       onClick={() => {
@@ -501,7 +501,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
         </div>
       </div>
 
-      {/* ── Tree ───────────────────────────────────────────────────────── */}
+      {/* -- Tree --------------------------------------------------------- */}
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
         {createError && (
           <p className="mx-0.5 mb-1.5 whitespace-pre-wrap rounded-md border border-[#e5534b]/30 bg-[#e5534b]/10 px-2 py-1 text-[10.5px] leading-4 text-[#e5534b]">
@@ -522,7 +522,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
         )}
       </div>
 
-      {/* ── Footer ─────────────────────────────────────────────────────── */}
+      {/* -- Footer ------------------------------------------------------- */}
       <div className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.07] px-3 text-[10px] text-[#555555]">
         <span>{itemCount} item{itemCount === 1 ? "" : "s"}</span>
         {query && <span className="truncate">filtered</span>}
@@ -540,7 +540,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
             }}
           />
           <div
-            className="fixed z-50 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl"
+            className="fixed z-50 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl"
             style={{
               left: Math.min(menu.x, window.innerWidth - 190),
               top: Math.min(menu.y, window.innerHeight - 220),

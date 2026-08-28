@@ -26,7 +26,7 @@ const components: Components = {
 
     return (
       <div className="group relative my-4 overflow-hidden rounded-lg border border-white/[0.08] bg-[#111111]">
-        <div className="flex items-center justify-between border-b border-white/[0.07] bg-[#161616] px-3 py-1.5">
+        <div className="flex items-center justify-between border-b border-white/[0.07] bg-[var(--bg-elevated)] px-3 py-1.5">
           <span className="font-mono text-[10px] uppercase tracking-wider text-[#6b6b6b]">
             {match ? match[1] : "code"}
           </span>
