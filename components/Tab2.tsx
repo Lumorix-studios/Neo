@@ -28,7 +28,7 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-6"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-xl border border-white/[0.09] bg-[#161616] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
+      <div className="w-full max-w-md overflow-hidden rounded-xl border border-white/[0.09] bg-[var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
           <div>

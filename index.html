@@ -5,6 +5,29 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>agenticcoder</title>
+    <script>
+      // Boot error trap: if any error fires before React mounts, paint it
+      // into the page instead of leaving a silent white screen.
+      (function () {
+        var shown = false;
+        function show(msg) {
+          if (shown) return;
+          var root = document.getElementById("root");
+          if (!root || root.childElementCount > 0) return; // app already mounted
+          shown = true;
+          root.innerHTML =
+            '<pre style="margin:0;padding:24px;background:#0e0e0e;color:#f87171;' +
+            'font:12px/1.6 Consolas,monospace;white-space:pre-wrap;min-height:100vh;">' +
+            "Boot error:\\n\\n" + String(msg) + "</pre>";
+        }
+        window.addEventListener("error", function (e) {
+          show((e.error && e.error.stack) || e.message || "Unknown error");
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          show((e.reason && (e.reason.stack || e.reason.message)) || String(e.reason));
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

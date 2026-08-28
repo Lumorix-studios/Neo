@@ -89,7 +89,7 @@ export default function ChatSidebar({ onClose, settings, onSave, onSelectLocalMo
   const needsKey = spec.needsAuth;
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#131313] text-[#ececec]">
+    <div className="flex h-full w-full flex-col bg-[var(--bg-panel)] text-[#ececec]">
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
           Settings
@@ -142,7 +142,7 @@ export default function ChatSidebar({ onClose, settings, onSave, onSelectLocalMo
                 className="w-full appearance-none rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 pr-8 text-[12.5px] text-[#ececec] outline-none transition placeholder:text-[#555555] focus:border-white/[0.18]"
               >
                 {PROVIDER_OPTIONS.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-[#1a1a1a]">
+                  <option key={p.id} value={p.id} className="bg-[var(--bg-elevated)]">
                     {p.label}
                   </option>
                 ))}
@@ -214,7 +214,7 @@ export default function ChatSidebar({ onClose, settings, onSave, onSelectLocalMo
                 step={0.1}
                 value={draft.temperature}
                 onChange={(e) => update("temperature", parseFloat(e.target.value))}
-                className="w-full accent-[#4c8dff]"
+                className="w-full accent-(--accent)"
               />
             </Field>
           </Section>
@@ -247,7 +247,7 @@ export default function ChatSidebar({ onClose, settings, onSave, onSelectLocalMo
               </div>
               <span
                 className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-                  draft.autoApproveTools ? "bg-[#4c8dff]" : "bg-white/[0.1]"
+                  draft.autoApproveTools ? "bg-(--accent)" : "bg-white/[0.1]"
                 }`}
               >
                 <span
@@ -277,7 +277,7 @@ export default function ChatSidebar({ onClose, settings, onSave, onSelectLocalMo
                     onClick={() => toggleMcpServer(s.id)}
                     title={s.enabled ? "Disable" : "Enable"}
                     className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
-                      s.enabled ? "bg-[#4c8dff]" : "bg-white/[0.12]"
+                      s.enabled ? "bg-(--accent)" : "bg-white/[0.12]"
                     }`}
                   >
                     <span

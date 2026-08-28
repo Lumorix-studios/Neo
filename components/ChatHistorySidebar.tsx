@@ -42,12 +42,12 @@ export default function ChatHistorySidebar({
 
   return (
     <aside
-      className={`shrink-0 overflow-hidden border-r border-white/[0.07] bg-[#131313] transition-[width] duration-200 ease-out ${
+      className={`shrink-0 overflow-hidden border-r border-white/[0.07] bg-[var(--bg-panel)] transition-[width] duration-200 ease-out ${
         isOpen ? "w-[260px] max-sm:w-full" : "w-0"
       }`}
     >
       {isOpen && (
-        <div className="flex h-full w-full flex-col bg-[#131313] text-[#ececec]">
+        <div className="flex h-full w-full flex-col bg-[var(--bg-panel)] text-[#ececec]">
           {/* Header */}
           <header className="flex h-10 shrink-0 items-center justify-between px-3">
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
@@ -109,7 +109,7 @@ export default function ChatHistorySidebar({
                       }}
                     >
                       {isActive && (
-                        <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-[#4c8dff]" />
+                        <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[12.5px] font-medium leading-5">

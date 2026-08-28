@@ -58,6 +58,18 @@ import IdeMenuBar from "./components/IdeMenuBar";
 import type { EditorTab } from "./components/CodeEditor";
 import GitPanel from "./components/GitPanel";
 import { IoGitCommit } from "react-icons/io5";
+import SettingsPanel from "./components/SettingsPanel";
+import {
+  applyUiSettings,
+  DEFAULT_UI_SETTINGS,
+  getRecentFiles,
+  getRecentFolders,
+  loadUiSettings,
+  pushRecentFile,
+  pushRecentFolder,
+  saveUiSettings,
+  type UiSettings,
+} from "./uiSettings";
 
 type JsonDict = Record<string, unknown>;
 
@@ -159,11 +171,11 @@ function RailButton({
       title={title}
       aria-label={title}
       className={`relative flex h-9 w-full items-center justify-center rounded-md transition-colors ${
-        active ? "text-[#ececec]" : "text-[#6b6b6b] hover:text-[#d4d4d4]"
+        active ? "text-(--accent)" : "text-[#6b6b6b] hover:text-[#d4d4d4]"
       }`}
     >
       {active && (
-        <span className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-full bg-[#ececec]" />
+        <span className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
       )}
       {children}
     </button>
@@ -279,6 +291,11 @@ export default function App() {
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   // VS Code-style: collapse the file-explorer sidebar for more editor room.
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  // --- UI settings (Settings tab) ---
+  const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI_SETTINGS);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [recentFiles, setRecentFiles] = useState<string[]>([]);
+  const [, setRecentFolders] = useState<string[]>([]);
 
   const spec: ProviderSpec = getProviderSpec(settings);
 
@@ -318,6 +335,22 @@ export default function App() {
         e.preventDefault();
         setOpenTerminal((v) => !v);
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen(true);
+      }
+      // Ctrl+Tab / Ctrl+Shift+Tab: cycle through open editor tabs.
+      if (e.ctrlKey && e.key === "Tab") {
+        e.preventDefault();
+        const tabs = editorTabsRef.current;
+        if (tabs.length > 1) {
+          const idx = tabs.findIndex((t) => t.path === activeEditorRef.current);
+          const next = e.shiftKey
+            ? tabs[(idx - 1 + tabs.length) % tabs.length]
+            : tabs[(idx + 1) % tabs.length];
+          if (next) setActiveEditorPath(next.path);
+        }
+      }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -326,14 +359,18 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [s, sess, activeId] = await Promise.all([
+      const [s, sess, activeId, ui] = await Promise.all([
         loadSettings(),
         loadSessions(),
         loadActiveSessionId(),
+        loadUiSettings(),
       ]);
       if (cancelled) return;
 
       setSettings(s);
+      setUiSettings(ui);
+      setRecentFiles(getRecentFiles());
+      setRecentFolders(getRecentFolders());
 
       // If we have saved sessions, restore the active one (or the most recent).
       if (sess.length > 0) {
@@ -379,6 +416,35 @@ export default function App() {
     }, 250);
     return () => clearTimeout(t);
   }, [activeSessionId, restored]);
+
+  // Apply UI settings to the document immediately, then persist (debounced).
+  useEffect(() => {
+    applyUiSettings(uiSettings);
+  }, [uiSettings]);
+  useEffect(() => {
+    if (!restored) return;
+    const t = setTimeout(() => {
+      void saveUiSettings(uiSettings);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [uiSettings, restored]);
+
+  /** Merge a patch into UI settings (Settings tab writes here). */
+  const updateUiSettings = (patch: Partial<UiSettings>) => {
+    setUiSettings((prev) => ({ ...prev, ...patch }));
+  };
+
+  // Auto-save: debounce-save every dirty editor tab after the configured delay.
+  useEffect(() => {
+    if (!uiSettings.autoSave) return;
+    const dirty = editorTabs.filter((t) => t.dirty);
+    if (dirty.length === 0) return;
+    const id = window.setTimeout(() => {
+      for (const t of dirty) void saveEditorFile(t.path);
+    }, uiSettings.autoSaveDelayMs);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorTabs, uiSettings.autoSave, uiSettings.autoSaveDelayMs]);
 
   // Keep the active session's messages in sync with the sessions list.
   useEffect(() => {
@@ -529,6 +595,7 @@ export default function App() {
         setEditorTabs([]);
         setActiveEditorPath(null);
         setExplorerRefreshKey((k) => k + 1);
+        setRecentFolders(pushRecentFolder(dir));
         // Make sure the picked folder is immediately visible in the editor.
         setIdeOpen(true);
         setExplorerCollapsed(false);
@@ -565,6 +632,7 @@ export default function App() {
     if (editorTabs.some((t) => t.path === path)) return;
     try {
       const content = await invoke<string>("fs_read_file", { path });
+      setRecentFiles(pushRecentFile(path));
       setEditorTabs((prev) => {
         if (prev.some((t) => t.path === path)) return prev;
         let next: EditorTab[] = [...prev, { path, content, dirty: false }];
@@ -646,6 +714,22 @@ export default function App() {
       setExplorerRefreshKey((k) => k + 1);
     } catch (e) {
       setError(`Failed to save ${path}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  /** Create an empty file inside the workspace (editor empty-state action). */
+  const createFileInWorkspace = async (name: string) => {
+    if (!workspaceRoot) {
+      setError("Open a folder first to create files.");
+      return;
+    }
+    const path = `${workspaceRoot.replace(/[\\/]+$/, "")}/${name.replace(/^[\\/]+/, "")}`;
+    try {
+      await invoke("fs_write_file", { path, content: "" });
+      setExplorerRefreshKey((k) => k + 1);
+      await openFileInEditor(path);
+    } catch (e) {
+      setError(`Failed to create ${path}: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -1397,7 +1481,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#0e0e0e] text-[#ececec] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-base)] text-[#ececec] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <TopMenu
           onOpenInfoPanel={() => setInfoPanelOpen(true)}
           onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
@@ -1406,6 +1490,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
           onOpenIde={() => setIdeOpen(true)}
           onOpenTerminal={() => setOpenTerminal(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
           right={
             <>
               {/* Provider / model pill */}
@@ -1430,7 +1515,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   </svg>
                 </button>
                 {modelOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-white/[0.09] bg-[#1a1a1a] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-white/[0.09] bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
                     <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-[#6b6b6b]">
                       AI Provider
                     </div>
@@ -1479,7 +1564,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.08]">
                         <div
                           className={`h-full rounded-full transition-all ${
-                            ctxPct > 85 ? "bg-red-400" : ctxPct > 60 ? "bg-amber-400" : "bg-[#4c8dff]"
+                            ctxPct > 85 ? "bg-red-400" : ctxPct > 60 ? "bg-amber-400" : "bg-(--accent)"
                           }`}
                           style={{ width: `${Math.max(2, ctxPct)}%` }}
                         />
@@ -1512,9 +1597,15 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
         <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
+        <SettingsPanel
+          open={settingsOpen}
+          settings={uiSettings}
+          onChange={updateUiSettings}
+          onClose={() => setSettingsOpen(false)}
+        />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Activity bar — VS Code-style icon rail */}
-          <nav className="flex w-11 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[#131313] py-2">
+          <nav className="flex w-11 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-panel)] py-2">
             <div className="relative flex w-full flex-col items-center gap-1">
               <RailButton active={ideOpen} title="Open editor / workspace (Ctrl+Shift+E)" onClick={() => setRailMenuOpen((v) => !v)}>
                 <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1526,7 +1617,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               {railMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setRailMenuOpen(false)} />
-                  <div className="absolute left-full top-0 z-50 ml-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[#1b1b1b] py-1 shadow-xl">
+                  <div className="absolute left-full top-0 z-50 ml-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl">
                     <button
                       type="button"
                       onClick={() => {
@@ -1569,6 +1660,12 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   <path d="M4.5 6l2 1.7-2 1.7M8 9.8h3.5" />
                 </svg>
               </RailButton>
+              <RailButton active={settingsOpen} title="Settings (Ctrl+,)" onClick={() => setSettingsOpen(true)}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="8" cy="8" r="2.1" />
+                  <path d="M8 1.6l.7 1.7a4.9 4.9 0 011.7.7l1.8-.6 1.2 2-1.1 1.5a4.9 4.9 0 010 1.9l1.1 1.5-1.2 2-1.8-.6a4.9 4.9 0 01-1.7.7L8 14.4l-.7-1.7a4.9 4.9 0 01-1.7-.7l-1.8.6-1.2-2 1.1-1.5a4.9 4.9 0 010-1.9L2.6 5.7l1.2-2 1.8.6a4.9 4.9 0 011.7-.7z" />
+                </svg>
+              </RailButton>
             </div>
           </nav>
           {/* Source-control panel (git status / commit / pull / push). */}
@@ -1584,7 +1681,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             />
           )}
           {gitPanelOpen && !workspaceRoot && (
-            <aside className="flex h-full w-64 shrink-0 flex-col items-center justify-center gap-3 border-r border-white/[0.07] bg-[#131313] px-4 text-center">
+            <aside className="flex h-full w-64 shrink-0 flex-col items-center justify-center gap-3 border-r border-white/[0.07] bg-[var(--bg-panel)] px-4 text-center">
               <p className="text-[12px] font-medium text-[#d4d4d4]">No workspace open</p>
               <p className="text-[11px] leading-5 text-[#6b6b6b]">
                 Open a folder to use git tools.
@@ -1607,7 +1704,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             onNewChat={newChat}
             onDeleteSession={deleteSession}
           />
-          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0e0e0e]">
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-base)]">
             <div className="fade-top" aria-hidden />
             <div
               ref={scrollRef}
@@ -1620,7 +1717,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   <div
                     aria-hidden
                     className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-[36rem] max-w-full -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.06]"
-                    style={{ background: "radial-gradient(closest-side, #4c8dff, transparent)" }}
+                    style={{ background: "radial-gradient(closest-side, var(--accent), transparent)" }}
                   />
                   <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
                     <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.09] bg-white/[0.03]">
@@ -1630,32 +1727,73 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       </svg>
                     </div>
                     <h1 className="text-[28px] font-semibold tracking-tight text-[#ececec]">
-                      What can I help you with?
+                      Welcome
                     </h1>
-                    <p className="mx-auto mt-3 max-w-md text-[13px] leading-6 text-[#6b6b6b]">
+                    {/* <p className="mx-auto mt-3 max-w-md text-[13px] leading-6 text-[#6b6b6b]">
                       Ask questions, explore ideas, or work through code — Neo can read and edit files in your workspace.
-                    </p>
-                    <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-                      <button
+                    </p> */}
+
+                    {/* Action cards */}
+                    <div className="mx-auto mt-8 grid max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-2">
+                      {/* <button
                         type="button"
                         onClick={() => {
                           setIdeOpen(true);
                           void pickWorkspaceFolder();
                         }}
-                        className="rounded-md border border-white/[0.09] bg-white/[0.02] px-3 py-1.5 text-[12px] text-[#d4d4d4] transition hover:border-white/[0.16] hover:bg-white/[0.05]"
+                        className="group flex items-start gap-3 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3.5 py-3 transition hover:border-white/[0.18] hover:bg-white/[0.05]"
                       >
-                        Open folder…
+                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] text-zinc-400 transition group-hover:text-[#ececec]">
+                          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+                            <path d="M1.75 13V3.75A.75.75 0 012.5 3h3l1.5 1.75h6a.75.75 0 01.75.75V13a.75.75 0 01-.75.75h-10.5A.75.75 0 011.75 13z" />
+                          </svg>
+                        </span>
+                        <span>
+                          <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
+                          <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">Browse and edit files in a real workspace</span>
+                        </span>
                       </button>
-                      {["Summarize my project", "Find and fix bugs"].map((prompt) => (
+                      {[
+                        {
+                          label: "Summarize my project",
+                          desc: "A quick overview of what's here",
+                          prompt: "Summarize my project",
+                        },
+                        {
+                          label: "Find and fix bugs",
+                          desc: "Scan for issues and apply fixes",
+                          prompt: "Find and fix bugs",
+                        },
+                        {
+                          label: "Write a new feature",
+                          desc: "Describe it and Neo builds it",
+                          prompt: "Write a new feature",
+                        },
+                      ].map((card) => (
                         <button
-                          key={prompt}
+                          key={card.label}
                           type="button"
-                          onClick={() => setMessage(prompt)}
-                          className="rounded-md border border-white/[0.09] bg-white/[0.02] px-3 py-1.5 text-[12px] text-[#d4d4d4] transition hover:border-white/[0.16] hover:bg-white/[0.05]"
+                          onClick={() => setMessage(card.prompt)}
+                          className="group flex items-start gap-3 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3.5 py-3 transition hover:border-white/[0.18] hover:bg-white/[0.05]"
                         >
-                          {prompt}
+                          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] text-zinc-400 transition group-hover:text-[#ececec]">
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M8 6l-5 6 5 6M16 6l5 6-5 6" transform="translate(0 -1.4) scale(0.95)" />
+                            </svg>
+                          </span>
+                          <span>
+                            <span className="block text-[12.5px] font-medium text-[#d4d4d4]">{card.label}</span>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">{card.desc}</span>
+                          </span>
                         </button>
-                      ))}
+                      ))} */}
+                    </div>
+
+                    {/* Shortcut hints */}
+                    <div className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[10.5px] text-zinc-600">
+                      <span className="flex items-center gap-1.5"><span className="kbd">Ctrl+Shift+P</span> commands</span>
+                      <span className="flex items-center gap-1.5"><span className="kbd">Ctrl+Shift+E</span> editor</span>
+                      <span className="flex items-center gap-1.5"><span className="kbd">Ctrl+,</span> settings</span>
                     </div>
                   </div>
                 </div>
@@ -1666,7 +1804,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <div key={index} className="msg-in">
                         {msg.role === "user" ? (
                           <div className="flex justify-end">
-                            <div className="max-w-[80%] whitespace-pre-wrap rounded-xl border border-white/[0.07] bg-white/[0.04] px-3.5 py-2.5 text-[13px] leading-6 text-[#ececec]">
+                            <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-(--accent)/25 bg-(--accent)/[0.08] px-3.5 py-2.5 text-[13px] leading-6 text-[#ececec]">
                               {msg.content}
                             </div>
                           </div>
@@ -1680,6 +1818,16 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           </div>
                         ) : (
                           <div className="group/msg min-w-0">
+                            <div className="mb-1.5 flex items-center gap-1.5">
+                              <span className="flex h-4.5 w-4.5 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03]">
+                                <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#ececec" strokeWidth="1.4" strokeLinejoin="round">
+                                  <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
+                                </svg>
+                              </span>
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                                Neo
+                              </span>
+                            </div>
                             <div className="text-[13.5px] leading-7 text-[#d4d4d4]">
                               <Markdown content={msg.content} />
                               {isLoading && index === messages.length - 1 && (
@@ -1746,9 +1894,9 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
                     <span
                       title={`The agent will receive this file's contents automatically`}
-                      className="inline-flex items-center gap-1 rounded-full border border-[#4c8dff]/30 bg-[#4c8dff]/10 px-2 py-0.5 text-[10.5px] font-medium text-[#8ab4ff]"
+                      className="inline-flex items-center gap-1 rounded-full border border-(--accent)/30 bg-(--accent)/10 px-2 py-0.5 text-[10.5px] font-medium text-[#8ab4ff]"
                     >
-                      <span className="h-1 w-1 rounded-full bg-[#4c8dff]" />
+                      <span className="h-1 w-1 rounded-full bg-(--accent)" />
                       Attached: {activeEditorPath.split(/[\\/]/).pop()}
                     </span>
                   </div>
@@ -1759,7 +1907,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     </span>
                   </div>
                 )}
-                <div className="relative overflow-hidden rounded-xl border border-white/[0.09] bg-[#161616] shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-200 focus-within:border-white/[0.22] focus-within:shadow-[0_0_0_3px_rgba(76,141,255,0.09),0_8px_32px_rgba(0,0,0,0.4)]">
+                <div className="relative overflow-hidden rounded-xl border border-white/[0.09] bg-[var(--bg-elevated)] shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-200 focus-within:border-(--accent)/40 focus-within:shadow-[0_0_0_3px_var(--accent-soft),0_8px_32px_rgba(0,0,0,0.4)]">
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
@@ -1805,7 +1953,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <button
                         type="submit"
                         disabled={!message.trim() || isLoading}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-[#ececec] text-[#111111] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
+                        className="flex h-7 w-7 items-center justify-center rounded-md bg-(--accent) text-white shadow-[0_1px_6px_var(--accent-soft)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555] disabled:shadow-none"
                         title="Send message"
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1833,13 +1981,13 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               onPointerMove={onIdeResizeMove}
               onPointerUp={onIdeResizeEnd}
               onPointerCancel={onIdeResizeEnd}
-              className="group w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-[#4c8dff]/40 select-none touch-none"
+              className="group w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-(--accent)/40 select-none touch-none"
             />
             <section
               style={{ width: `${ideWidth}px` }}
-              className="flex min-w-0 shrink-0 flex-col border-l border-white/[0.07] bg-[#131313]"
+              className="flex min-w-0 shrink-0 flex-col border-l border-white/[0.07] bg-[var(--bg-panel)]"
             >
-              <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[#161616] px-3">
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-elevated)] px-3">
                 {/* VS Code-style menu bar: File / View dropdowns */}
                 <IdeMenuBar
                   hasWorkspace={!!workspaceRoot}
@@ -1849,6 +1997,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   onCloseAllTabs={closeAllEditorTabs}
                   onToggleTerminal={() => setOpenTerminal((v) => !v)}
                   onClosePanel={() => setIdeOpen(false)}
+                  onOpenSettings={() => setSettingsOpen(true)}
                 />
                 <div className="flex shrink-0 items-center gap-1.5">
                   {workspaceRoot && (
@@ -1884,7 +2033,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   )}
                   {/* Slim strip to bring the explorer back after collapsing. */}
                   {workspaceRoot && explorerCollapsed && (
-                    <div className="flex w-7 shrink-0 flex-col items-center justify-start border-r border-white/[0.07] bg-[#131313] py-2">
+                    <div className="flex w-7 shrink-0 flex-col items-center justify-start border-r border-white/[0.07] bg-[var(--bg-panel)] py-2">
                       <button
                         type="button"
                         onClick={() => setExplorerCollapsed(false)}
@@ -1907,32 +2056,45 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     onSave={(p) => void saveEditorFile(p)}
                     onCloseAll={closeAllEditorTabs}
                     reveal={revealLine}
+                    prefs={uiSettings}
+                    emptyState={{
+                      hasWorkspace: !!workspaceRoot,
+                      onOpenFolder: () => void pickWorkspaceFolder(),
+                      onOpenFiles: () => void pickWorkspaceFiles(),
+                      onCreateFile: (name) => void createFileInWorkspace(name),
+                      recentFiles,
+                      onOpenRecent: (p) => void openFileInEditor(p),
+                    }}
                   />
                 </div>
               ) : (
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] font-mono text-base text-[#6b6b6b]">
-                    {"</>"}
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-medium text-[#d4d4d4]">Open a workspace</p>
-                    <p className="mt-1 text-[11.5px] leading-5 text-[#6b6b6b]">
-                      Browse files, edit code, and watch the AI's changes land live.
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
+                  <div className="msg-in flex w-full max-w-[240px] flex-col items-center text-center">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] text-zinc-500">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
+                      </svg>
+                    </div>
+                    <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No folder open</p>
+                    <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+                      Open a folder to browse and edit files.
                     </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => void pickWorkspaceFolder()}
-                      className="rounded-md bg-[#ececec] px-3.5 py-1.5 text-[12.5px] font-medium text-[#111111] transition hover:bg-white"
-                    >
-                      Open Folder
-                    </button>
-                    <button
-                      onClick={() => void pickWorkspaceFiles()}
-                      className="rounded-md border border-white/[0.09] bg-white/[0.02] px-3.5 py-1.5 text-[12.5px] font-medium text-[#d4d4d4] transition hover:bg-white/[0.05]"
-                    >
-                      Open File
-                    </button>
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void pickWorkspaceFiles()}
+                        className="rounded-md border border-white/[0.1] px-3 py-1.5 text-[11.5px] text-[#d4d4d4] transition hover:bg-white/[0.05]"
+                      >
+                        Open File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void pickWorkspaceFolder()}
+                        className="rounded-md bg-(--accent) px-3 py-1.5 text-[11.5px] font-medium text-white transition hover:brightness-110"
+                      >
+                        Open Folder
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1940,7 +2102,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             </>
           )}
           <aside
-            className={`shrink-0 overflow-hidden border-l border-white/[0.07] bg-[#131313] transition-[width] duration-200 ease-out ${
+            className={`shrink-0 overflow-hidden border-l border-white/[0.07] bg-[var(--bg-panel)] transition-[width] duration-200 ease-out ${
               sidebarOpen ? "w-80 max-sm:w-full" : "w-0"
             }`}
           >
@@ -1980,7 +2142,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           commands={[
             {
               id: "toggle-sidebar",
-              label: "Toggle Settings Panel",
+              label: "Toggle Chat Sidebar",
               category: "View",
               shortcut: "Ctrl+B",
               action: () => setSidebarOpen((v) => !v),
@@ -2049,6 +2211,13 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               label: "Open Files…",
               category: "File",
               action: () => void pickWorkspaceFiles(),
+            },
+            {
+              id: "open-settings",
+              label: "Open Settings",
+              category: "Settings",
+              shortcut: "Ctrl+,",
+              action: () => setSettingsOpen(true),
             },
           ]}
         />
