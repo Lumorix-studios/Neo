@@ -1,8 +1,6 @@
 interface Props {
   historySidebarOpen: boolean;
   onToggleHistorySidebar: () => void;
-  ideOpen?: boolean;
-  onToggleIde?: () => void;
   terminalOpen?: boolean;
   onToggleTerminal?: () => void;
   /** Open workspace folder name shown next to the brand. */
@@ -50,8 +48,6 @@ function ToggleButton({
 export default function StatusBar({
   historySidebarOpen,
   onToggleHistorySidebar,
-  ideOpen,
-  onToggleIde,
   terminalOpen,
   onToggleTerminal,
   workspaceName,
@@ -99,15 +95,6 @@ export default function StatusBar({
             title="Toggle Terminal (Ctrl+`)"
           >
             Terminal
-          </ToggleButton>
-        )}
-        {onToggleIde && (
-          <ToggleButton
-            active={ideOpen}
-            onClick={onToggleIde}
-            title="Toggle Editor (Ctrl+Shift+E)"
-          >
-            Editor
           </ToggleButton>
         )}
         <ToggleButton

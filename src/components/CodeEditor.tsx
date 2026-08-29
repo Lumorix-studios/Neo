@@ -135,9 +135,13 @@ export default function CodeEditor({
 
   const activeContent = active?.content ?? "";
   const activeLang = active ? langOf(active.path) : "text";
-  // React Compiler auto-memoizes these; plain derivation keeps lint happy.
-  const highlighted = highlightCode(activeContent, activeLang);
-  const lineCount = activeContent.split("\n").length;
+  // Memoize: without this, every keystroke AND every scroll-tick re-ran the
+  // tokenizer over the whole file (scrollTop is state → re-render → re-highlight).
+  const highlighted = useMemo(
+    () => highlightCode(activeContent, activeLang),
+    [activeContent, activeLang]
+  );
+  const lineCount = useMemo(() => activeContent.split("\n").length, [activeContent]);
   const gutterDigits = Math.max(2, String(lineCount).length);
 
   // Reset scroll + cursor bookkeeping whenever the user switches tabs.
@@ -549,10 +553,10 @@ export default function CodeEditor({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-panel)]">
       {/* ── Tab strip */}
-      <div className="flex h-9 shrink-0 items-stretch border-b border-white/[0.07] bg-[var(--bg-elevated)]">
-        <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex h-9 shrink-0 items-end border-b border-white/[0.07] bg-[var(--bg-elevated)] px-1 pt-1">
+        <div className="flex h-full min-w-0 flex-1 items-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.length === 0 && (
-            <div className="flex items-center px-3 text-[11.5px] text-zinc-600">
+            <div className="flex h-full items-center px-3 text-[11.5px] text-zinc-600">
               No files open
             </div>
           )}
@@ -564,17 +568,12 @@ export default function CodeEditor({
                 onAuxClick={(ev) => {
                   if (ev.button === 1) onClose(t.path);
                 }}
-                className={`group relative flex shrink-0 items-stretch transition-colors ${
+                className={`group relative mr-0.5 flex h-[calc(100%-2px)] shrink-0 items-center rounded-t-[8px] transition-colors ${
                   selected
                     ? "bg-[var(--bg-panel)] text-zinc-100"
-                    : "bg-transparent text-[#8b8b8b] hover:bg-white/[0.04] hover:text-zinc-300"
+                    : "bg-transparent text-[#8b8b8b] hover:bg-white/[0.05] hover:text-zinc-300"
                 }`}
               >
-                {/* VS Code-style: bright top accent on the active tab */}
-                <span
-                  className="absolute inset-x-0 top-0 h-px"
-                  style={{ backgroundColor: selected ? "#ffffff" : "transparent", opacity: selected ? 0.28 : 0 }}
-                />
                 <button
                   type="button"
                   onClick={() => onSelect(t.path)}
@@ -610,22 +609,6 @@ export default function CodeEditor({
           })}
         </div>
 
-        {/* Tab actions */}
-        <div className="flex shrink-0 items-center gap-1.5  px-2">
-          <button
-            type="button"
-            disabled={!active?.dirty}
-            onClick={() => active && onSave(active.path)}
-              className={`rounded-[4px] px-2.5 py-1 text-[11px] font-medium transition ${
-                active?.dirty
-                  ? "bg-[#2b6fd4] text-white hover:bg-[#3b7de0]"
-                  : "cursor-default bg-white/[0.04] text-[#555555]"
-              }`}
-            title="Save (Ctrl+S)"
-          >
-            Save
-          </button>
-        </div>
       </div>
 
       {active ? (

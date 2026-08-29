@@ -9,6 +9,13 @@ interface IdeMenuBarProps {
   onToggleTerminal: () => void;
   onClosePanel: () => void;
   onOpenSettings?: () => void;
+  /** True when the active editor tab has unsaved changes. */
+  canSave?: boolean;
+  /** Saves the active editor tab. */
+  onSaveFile?: () => void;
+  /** Git panel open state + toggle (IDE window). */
+  gitOpen?: boolean;
+  onToggleGit?: () => void;
 }
 
 interface MenuItem {
@@ -78,6 +85,23 @@ const GearGlyph = (
   </svg>
 );
 
+const SaveGlyph = (
+  <svg {...iconProps}>
+    <path d="M3.5 3h7.4l2.1 2.1v7.4a.5.5 0 01-.5.5H3.5a.5.5 0 01-.5-.5v-9a.5.5 0 01.5-.5z" />
+    <path d="M5.5 3v3.4h4.4V3" />
+    <path d="M5.5 13V9.2h5V13" />
+  </svg>
+);
+
+const GitGlyph = (
+  <svg {...iconProps}>
+    <circle cx="5" cy="4" r="1.9" />
+    <circle cx="5" cy="12" r="1.9" />
+    <circle cx="11.5" cy="8" r="1.9" />
+    <path d="M5 5.9v4.2M6.9 4.7l2.9 2.1M6.9 11.3l2.9-2.1" />
+  </svg>
+);
+
 
 export default function IdeMenuBar({
   hasWorkspace,
@@ -88,6 +112,10 @@ export default function IdeMenuBar({
   onToggleTerminal,
   onClosePanel,
   onOpenSettings,
+  canSave,
+  onSaveFile,
+  gitOpen,
+  onToggleGit,
 }: IdeMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "view" | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -115,6 +143,13 @@ export default function IdeMenuBar({
   };
 
   const fileItems: MenuItem[] = [
+    {
+      label: "Save",
+      icon: SaveGlyph,
+      hint: "Ctrl+S",
+      disabled: !canSave,
+      onSelect: () => run(() => onSaveFile?.()),
+    },
     { label: "Open Folder…", icon: FolderGlyph, onSelect: () => run(onOpenFolder) },
     { label: "Open File…", icon: FileGlyph, onSelect: () => run(onOpenFiles) },
     {
@@ -133,6 +168,16 @@ export default function IdeMenuBar({
       checked: terminalOpen,
       onSelect: () => run(onToggleTerminal),
     },
+    ...(onToggleGit
+      ? [
+          {
+            label: gitOpen ? "Hide Git Tools" : "Show Git Tools",
+            icon: GitGlyph,
+            checked: gitOpen,
+            onSelect: () => run(onToggleGit),
+          },
+        ]
+      : []),
     {
       label: "Settings…",
       icon: GearGlyph,

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -351,16 +352,40 @@ fn fs_search_files(path: String, pattern: String, content: Option<bool>) -> Resu
         if out.len() >= SEARCH_RESULT_LIMIT {
             return Ok(());
         }
-        let rd = fs::read_dir(dir).map_err(|e| format!("Failed to read {}: {e}", dir.display()))?;
+        // Skip dependency/vendor/build dirs and unreadable dirs gracefully —
+        // one permission error or node_modules crawl used to stall the search.
+        const SKIP: [&str; 9] = [
+            "node_modules",
+            ".git",
+            "target",
+            "dist",
+            ".next",
+            "build",
+            "__pycache__",
+            ".venv",
+            "venv",
+        ];
+        let Ok(rd) = fs::read_dir(dir) else {
+            return Ok(());
+        };
         let pat = pattern.to_lowercase();
         for entry in rd.flatten() {
             if out.len() >= SEARCH_RESULT_LIMIT {
                 return Ok(());
             }
             let p = entry.path();
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             if p.is_dir() {
-                walk(&p, pattern, in_content, out)?;
+                if !SKIP.contains(&name.as_str()) {
+                    walk(&p, pattern, in_content, out)?;
+                }
             } else if in_content {
+                // Skip huge files (lockfiles, bundles) and binary data.
+                if let Ok(meta) = entry.metadata() {
+                    if meta.len() > 1_000_000 {
+                        continue;
+                    }
+                }
                 // Content search: report every matching line as `path:line: text`
                 // so the model can jump straight to the right spot.
                 if let Ok(text) = fs::read_to_string(&p) {
@@ -394,15 +419,34 @@ fn fs_search_files(path: String, pattern: String, content: Option<bool>) -> Resu
     Ok(out)
 }
 
-/// Run a shell command in an optional working directory and capture its output.
-/// Used by the agent's `run_command` tool (builds, tests, git, etc.).
+
 #[tauri::command]
-fn run_command(
+async fn run_command(
     command: String,
     cwd: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<serde_json::Value, String> {
     use std::time::{Duration, Instant};
+
+    const CAP: usize = 32 * 1024;
+    /// Read a stream to a String, capping memory at `max` bytes and never
+    /// failing on invalid UTF-8 (PowerShell emits the OEM codepage by default).
+    fn drain_capped(mut h: impl Read, max: usize) -> String {
+        let mut buf: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            match h.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    buf.extend_from_slice(&chunk[..n]);
+                    if buf.len() >= max {
+                        break;
+                    }
+                }
+            }
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    }
 
     let shell = if cfg!(target_os = "windows") {
         "powershell.exe"
@@ -412,11 +456,13 @@ fn run_command(
 
     let mut cmd = Command::new(shell);
     if cfg!(target_os = "windows") {
-        cmd.arg("-NoProfile").arg("-Command");
+        // Force UTF-8 console output so non-ASCII output survives the pipe.
+        cmd.arg("-NoProfile").arg("-Command").arg(format!(
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; {command}"
+        ));
     } else {
-        cmd.arg("-c");
+        cmd.arg("-c").arg(&command);
     }
-    cmd.arg(&command);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
@@ -428,19 +474,17 @@ fn run_command(
 
     let stdout_handle = child.stdout.take();
     let stderr_handle = child.stderr.take();
+    // Cap what we read from the pipes too — a command spewing gigabytes must
+    // not balloon memory even though we truncate later for the model.
     let t_out = thread::spawn(move || {
-        let mut buf = String::new();
-        if let Some(mut h) = stdout_handle {
-            let _ = h.read_to_string(&mut buf);
-        }
-        buf
+        stdout_handle
+            .map(|h| drain_capped(h, CAP + 4096))
+            .unwrap_or_default()
     });
     let t_err = thread::spawn(move || {
-        let mut buf = String::new();
-        if let Some(mut h) = stderr_handle {
-            let _ = h.read_to_string(&mut buf);
-        }
-        buf
+        stderr_handle
+            .map(|h| drain_capped(h, CAP + 4096))
+            .unwrap_or_default()
     });
 
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(60).clamp(1, 300));
@@ -463,14 +507,18 @@ fn run_command(
     let stdout = t_out.join().unwrap_or_default();
     let stderr = t_err.join().unwrap_or_default();
 
-    // Cap captured output so huge logs cannot blow up the model's context.
-    const CAP: usize = 32 * 1024;
+    // Truncate on a UTF-8 char boundary — slicing raw bytes mid-multibyte
+    // character panicked the app whenever PowerShell output contained
+    // non-ASCII (unicode arrows, npm warnings, em-dashes…).
     let cap = |s: String| -> String {
         if s.len() <= CAP {
-            s
-        } else {
-            format!("{}…[truncated]", &s[..CAP])
+            return s;
         }
+        let mut cut = CAP;
+        while cut > 0 && !s.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        format!("{}…[truncated]", &s[..cut])
     };
 
     Ok(serde_json::json!({

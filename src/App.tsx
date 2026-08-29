@@ -669,6 +669,35 @@ export default function App() {
     setActiveEditorPath(null);
   };
 
+  /**
+   * Cursor-style "IDE →": open the full IDE in its own native window
+   * (explorer + editor + auto-save + git + terminal). Reuses the same bundle
+   * with ?window=ide so main.tsx mounts IdeWindowApp there.
+   */
+  const launchIdeWindow = async () => {
+    try {
+      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+      const existing = await WebviewWindow.getByLabel("ide");
+      if (existing) {
+        await existing.setFocus();
+        return;
+      }
+      const ideWin = new WebviewWindow("ide", {
+        url: "index.html?window=ide",
+        title: "Neo IDE",
+        width: 1280,
+        height: 820,
+        minWidth: 720,
+        minHeight: 480,
+      });
+      ideWin.once("tauri://error", (e) => {
+        setError(`Failed to open IDE window: ${e.payload}`);
+      });
+    } catch (e) {
+      setError(`Failed to open IDE window: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   // --- IDE panel resize-handle drag logic ---
   const MIN_IDE_WIDTH = 280;
 
@@ -1547,6 +1576,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           }}
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
           onOpenIde={() => setIdeOpen(true)}
+          onOpenIdeWindow={() => void launchIdeWindow()}
           onOpenTerminal={() => setOpenTerminal(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
@@ -2057,6 +2087,10 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 <IdeMenuBar
                   hasWorkspace={!!workspaceRoot}
                   terminalOpen={onOpenTerminal}
+                  canSave={(editorTabs.find((t) => t.path === activeEditorPath)?.dirty ?? false)}
+                  onSaveFile={() => {
+                    if (activeEditorPath) void saveEditorFile(activeEditorPath);
+                  }}
                   onOpenFolder={() => void pickWorkspaceFolder()}
                   onOpenFiles={() => void pickWorkspaceFiles()}
                   onCloseAllTabs={closeAllEditorTabs}
@@ -2193,8 +2227,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         <StatusBar
           historySidebarOpen={historySidebarOpen}
           onToggleHistorySidebar={() => setHistorySidebarOpen((v) => !v)}
-          ideOpen={ideOpen}
-          onToggleIde={() => setIdeOpen((v) => !v)}
           terminalOpen={onOpenTerminal}
           onToggleTerminal={() => setOpenTerminal((v) => !v)}
           workspaceName={workspaceRoot?.split(/[\\/]/).filter(Boolean).pop() ?? null}

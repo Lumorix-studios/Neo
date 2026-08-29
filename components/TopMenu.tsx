@@ -13,6 +13,8 @@ interface TopMenuProps {
   onOpenSettings?: () => void;
   /** Opens the command palette from the title-bar "command center" pill. */
   onOpenCommandPalette?: () => void;
+  /** Opens the full IDE in its own window (Cursor-style "IDE →"). */
+  onOpenIdeWindow?: () => void;
   /** Optional right-aligned slot (model pill, actions) rendered in the title bar. */
   right?: ReactNode;
 }
@@ -32,6 +34,7 @@ export default function TopMenu({
   onOpenTerminal,
   onOpenSettings,
   onOpenCommandPalette,
+  onOpenIdeWindow,
   right,
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -154,6 +157,21 @@ export default function TopMenu({
             </div>
           ))}
         </div>
+
+        {/* Cursor-style "IDE →" launcher: full editor in its own window */}
+        {onOpenIdeWindow && (
+          <button
+            type="button"
+            onClick={onOpenIdeWindow}
+            title="Open the IDE in its own window (explorer, git, terminal)"
+            className="ml-1.5 flex items-center gap-1 rounded-[4px] bg-white/[0.06] px-2 py-[3px] text-[11.5px] font-medium text-[#d4d4d4] transition-colors hover:bg-white/[0.12] hover:text-[#ececec]"
+          >
+            IDE
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 3.5L10.5 8 6 12.5" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Center: command-center pill, VS Code title-bar style */}

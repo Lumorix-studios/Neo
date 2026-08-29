@@ -298,9 +298,9 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
           <button
             type="button"
             onClick={() => toggle(e)}
-            className={`relative flex h-[22px] w-full items-center gap-1.5 rounded-none pr-2 text-left text-[13px] leading-none transition-colors duration-100 ${
+            className={`relative flex h-[22px] w-full items-center gap-1.5 rounded-[5px] pr-2 text-left text-[13px] leading-none transition-colors duration-100 ${
               active
-                ? "bg-white/[0.06] text-[#e8e8e8]"
+                ? "bg-white/[0.09] text-[#e8e8e8]"
                 : e.is_dir
                   ? "text-[#c9c9c9] hover:bg-white/[0.05]"
                   : "text-[#c9c9c9] hover:bg-white/[0.05] hover:text-[#e8e8e8]"
@@ -308,9 +308,6 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
             style={{ paddingLeft: 8 + depth * 14 }}
             title={e.path}
           >
-            {active && (
-              <span className="absolute left-0 top-1/2 h-full w-px -translate-y-1/2 bg-[#4a4a4a]" />
-            )}
             <span className="flex w-3.5 shrink-0 items-center justify-center">
               {e.is_dir && <ChevronIcon open={isOpen} />}
             </span>
@@ -477,7 +474,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
             onChange={(ev) => setQuery(ev.target.value)}
             placeholder="Filter files…"
             spellCheck={false}
-            className="w-full rounded-[3px] border border-white/[0.09] bg-[var(--bg-input)] py-[3px] pl-7 pr-2.5 text-[12px] text-[#d4d4d4] placeholder-[#555555] outline-none transition focus:border-[#2b6fd4]"
+            className="w-full rounded-md border border-white/[0.09] bg-[var(--bg-input)] py-[3px] pl-7 pr-2.5 text-[12px] text-[#d4d4d4] placeholder-[#555555] outline-none transition focus:border-[#2b6fd4]"
           />
           {query && (
             <button
