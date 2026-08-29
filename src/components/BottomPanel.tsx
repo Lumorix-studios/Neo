@@ -11,17 +11,19 @@ import {
   IoAlertCircle,
   IoCodeSlash,
   IoDocumentText,
+  IoEyeOutline,
   IoPulse,
   IoTerminal,
   IoTrash,
 } from "react-icons/io5";
-import TerminalView from "./TerminalView";
+import TerminalView, { type TerminalPrefs } from "./TerminalView";
 import ProblemsPanel from "./ProblemsPanel";
+import Markdown from "./Markdown";
 import DebugConsole from "./DebugConsole";
 import OutputPanel from "./OutputPanel";
 import PortsPanel from "./PortsPanel";
 
-export type PanelTab = "terminal" | "problems" | "debug" | "output" | "ports";
+export type PanelTab = "terminal" | "problems" | "debug" | "output" | "ports" | "preview";
 
 interface BottomPanelProps {
   open: boolean;
@@ -32,6 +34,13 @@ interface BottomPanelProps {
   root: string | null;
   /** Jump to a file (and optionally a line) in the editor. */
   onOpenFile: (path: string, line?: number) => void;
+  /** User-configurable terminal preferences (from Settings → Terminal). */
+  terminalPrefs?: TerminalPrefs;
+  /**
+   * Live Markdown preview contributed by the Markdown Preview Enhanced
+   * extension — null while the extension is not installed/enabled.
+   */
+  preview?: { path: string | null; content: string } | null;
 }
 
 const MIN_HEIGHT = 140;
@@ -44,6 +53,13 @@ const TABS: { id: PanelTab; label: string; icon: React.ReactNode }[] = [
   { id: "ports", label: "Ports", icon: <IoPulse size={12} /> },
 ];
 
+/** Extension-contributed tab (Markdown Preview Enhanced). */
+const PREVIEW_TAB: { id: PanelTab; label: string; icon: React.ReactNode } = {
+  id: "preview",
+  label: "Preview",
+  icon: <IoEyeOutline size={12} />,
+};
+
 export default function BottomPanel({
   open,
   tab,
@@ -51,6 +67,8 @@ export default function BottomPanel({
   onClose,
   root,
   onOpenFile,
+  terminalPrefs,
+  preview,
 }: BottomPanelProps) {
   // --- Terminal instance management ---
   const [terms, setTerms] = useState<number[]>([]);
@@ -162,7 +180,9 @@ export default function BottomPanel({
       {/* Tab strip + terminal instance controls */}
       <div className="flex h-8 shrink-0 items-stretch border-b border-white/[0.05]">
         <div className="flex min-w-0 items-stretch">
-          {TABS.map((t) => (
+          {/* The Preview tab is contributed at runtime by the Markdown Preview
+              Enhanced extension — it only exists while that extension is on. */}
+          {[...TABS, ...(preview ? [PREVIEW_TAB] : [])].map((t) => (
             <button
               key={t.id}
               type="button"
@@ -294,6 +314,7 @@ export default function BottomPanel({
                 key={id}
                 id={id}
                 active={open && tab === "terminal" && id === activeTerm}
+                prefs={terminalPrefs}
               />
             ))}
           </>
@@ -308,6 +329,19 @@ export default function BottomPanel({
         {tab === "debug" && <DebugConsole root={root} />}
         {tab === "output" && <OutputPanel />}
         {tab === "ports" && <PortsPanel active={open} />}
+        {tab === "preview" && (
+          <div className="h-full overflow-y-auto">
+            {preview?.path && /\.(md|markdown)$/i.test(preview.path) ? (
+              <div className="mx-auto max-w-3xl px-6 py-5 pb-10">
+                <Markdown content={preview.content} />
+              </div>
+            ) : (
+              <div className="flex h-full items-center justify-center px-6 text-center text-[11.5px] text-[#6b6b6b]">
+                Open a Markdown (.md) file in the editor to preview it here.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
 

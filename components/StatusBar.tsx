@@ -1,6 +1,4 @@
 interface Props {
-  sidebarOpen: boolean;
-  onToggleSidebar: () => void;
   historySidebarOpen: boolean;
   onToggleHistorySidebar: () => void;
   ideOpen?: boolean;
@@ -9,6 +7,18 @@ interface Props {
   onToggleTerminal?: () => void;
   /** Open workspace folder name shown next to the brand. */
   workspaceName?: string | null;
+  /**
+   * Live editor stats contributed by status-bar extensions (Word Count,
+   * TODO Inspector) — null while neither is installed/enabled.
+   */
+  editorStats?: {
+    words: number;
+    chars: number;
+    lines: number;
+    todos: number;
+    showWords: boolean;
+    showTodos: boolean;
+  } | null;
 }
 
 function ToggleButton({
@@ -26,10 +36,10 @@ function ToggleButton({
     <button
       onClick={onClick}
       title={title}
-      className={`rounded px-1.5 py-px text-[10.5px] transition-colors ${
+      className={`rounded px-1.5 py-px text-[11px] transition-colors ${
         active
-          ? "bg-white/[0.1] text-[#ececec]"
-          : "text-[#8a8a8a] hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+          ? "bg-white/[0.12] text-[#e8e8e8]"
+          : "text-[#8b8b8b] hover:bg-white/[0.1] hover:text-[#d4d4d4]"
       }`}
     >
       {children}
@@ -38,8 +48,6 @@ function ToggleButton({
 }
 
 export default function StatusBar({
-  sidebarOpen,
-  onToggleSidebar,
   historySidebarOpen,
   onToggleHistorySidebar,
   ideOpen,
@@ -47,15 +55,15 @@ export default function StatusBar({
   terminalOpen,
   onToggleTerminal,
   workspaceName,
+  editorStats,
 }: Props) {
   return (
-    <div className="flex h-6 shrink-0 items-center gap-3 border-t border-white/[0.07] bg-[var(--bg-panel)] px-2.5 text-[10.5px]">
+    <div className="flex h-[22px] shrink-0 items-center gap-3 border-t border-white/[0.07] bg-[var(--bg-panel)] px-2 text-[11px] text-[#8b8b8b]">
       {/* Left */}
       <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
         <span className="flex shrink-0 items-center gap-1 font-medium text-[#8a8a8a]">
           <span className="h-1.5 w-1.5 rounded-full bg-(--accent)" />
           Neo
-          <span className="rounded-sm bg-white/[0.07] px-1 text-[9px] uppercase tracking-wide">Beta</span>
         </span>
         {workspaceName && (
           <span className="flex min-w-0 shrink-0 items-center gap-1 text-[#8a8a8a]" title={workspaceName}>
@@ -65,11 +73,25 @@ export default function StatusBar({
             <span className="max-w-[140px] truncate">{workspaceName}</span>
           </span>
         )}
-        <span className="truncate text-[#4f4f4f]">v1.0.4</span>
       </div>
 
       {/* Right */}
       <div className="flex shrink-0 items-center gap-0.5">
+        {editorStats && (
+          <div className="mr-1.5 flex items-center gap-3 pr-1 text-[#8a8a8a]">
+            {editorStats.showTodos && (
+              <span title="TODO / FIXME / HACK / XXX comments in the active file">
+                {editorStats.todos} TODOs
+              </span>
+            )}
+            {editorStats.showWords && (
+              <span title="Word, character and line count of the active file">
+                {editorStats.words} words · {editorStats.chars} chars ·{" "}
+                {editorStats.lines} lines
+              </span>
+            )}
+          </div>
+        )}
         {onToggleTerminal && (
           <ToggleButton
             active={terminalOpen}
@@ -94,13 +116,6 @@ export default function StatusBar({
           title="Toggle Chat History (Ctrl+Shift+H)"
         >
           History
-        </ToggleButton>
-        <ToggleButton
-          active={sidebarOpen}
-          onClick={onToggleSidebar}
-          title="Toggle Chat Sidebar (Ctrl+B)"
-        >
-          Chat
         </ToggleButton>
       </div>
     </div>

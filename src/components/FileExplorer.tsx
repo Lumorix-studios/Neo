@@ -298,18 +298,18 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
           <button
             type="button"
             onClick={() => toggle(e)}
-            className={`relative flex h-6 w-full items-center gap-1.5 rounded-[4px] pr-2 text-left text-[12px] leading-none transition-colors duration-100 ${
+            className={`relative flex h-[22px] w-full items-center gap-1.5 rounded-none pr-2 text-left text-[13px] leading-none transition-colors duration-100 ${
               active
-                ? "bg-white/[0.08] text-[#ececec]"
+                ? "bg-white/[0.06] text-[#e8e8e8]"
                 : e.is_dir
                   ? "text-[#c9c9c9] hover:bg-white/[0.05]"
-                  : "text-[#a3a3a3] hover:bg-white/[0.05] hover:text-[#d4d4d4]"
+                  : "text-[#c9c9c9] hover:bg-white/[0.05] hover:text-[#e8e8e8]"
             }`}
             style={{ paddingLeft: 8 + depth * 14 }}
             title={e.path}
           >
             {active && (
-              <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
+              <span className="absolute left-0 top-1/2 h-full w-px -translate-y-1/2 bg-[#4a4a4a]" />
             )}
             <span className="flex w-3.5 shrink-0 items-center justify-center">
               {e.is_dir && <ChevronIcon open={isOpen} />}
@@ -373,9 +373,12 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-panel)]">
       {/* -- Header ------------------------------------------------------- */}
       <div className="shrink-0 border-b border-white/[0.07]">
-        <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#6b6b6b]">
-            Explorer
+        <div className="flex items-center justify-between pl-4 pr-2 pb-0 pt-2">
+          <span
+            className="min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.08em] text-[#cccccc]"
+            title={root}
+          >
+            {name}
           </span>
           <div className="flex items-center gap-0.5">
             <button
@@ -456,21 +459,11 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
           </div>
         </div>
 
-        {/* Workspace name */}
-        <div className="flex items-center gap-1.5 px-3 pb-2">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-[#a3a3a3]" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
-          </svg>
-          <span className="truncate text-[12px] font-medium text-[#d4d4d4]" title={root}>
-            {name}
-          </span>
-        </div>
-
         {/* Filter box */}
-        <div className="relative px-2.5 pb-2.5">
+        <div className="relative px-3 pb-1.5 pt-1">
           <svg
             viewBox="0 0 16 16"
-            className="pointer-events-none absolute left-[18px] top-1/2 h-3 w-3 -translate-y-1/2 text-[#555555]"
+            className="pointer-events-none absolute left-[20px] top-1/2 h-3 w-3 -translate-y-1/2 text-[#555555]"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.5"
@@ -484,7 +477,7 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
             onChange={(ev) => setQuery(ev.target.value)}
             placeholder="Filter files…"
             spellCheck={false}
-            className="w-full rounded-md border border-white/[0.08] bg-black/30 py-1.5 pl-7 pr-2.5 text-[11.5px] text-[#d4d4d4] placeholder-[#555555] outline-none transition focus:border-white/[0.18]"
+            className="w-full rounded-[3px] border border-white/[0.09] bg-[var(--bg-input)] py-[3px] pl-7 pr-2.5 text-[12px] text-[#d4d4d4] placeholder-[#555555] outline-none transition focus:border-[#2b6fd4]"
           />
           {query && (
             <button

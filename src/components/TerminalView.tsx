@@ -10,11 +10,19 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import "xterm/css/xterm.css";
 
+export interface TerminalPrefs {
+  fontSize: number;
+  scrollback: number;
+  cursorBlink: boolean;
+}
+
 interface TerminalViewProps {
   /** Backend PTY session id (from `terminal_create`). */
   id: number;
   /** Whether this instance is the visible tab (drives fitting). */
   active: boolean;
+  /** User-configurable terminal preferences (from Settings → Terminal). */
+  prefs?: TerminalPrefs;
 }
 
 interface PtyDataPayload {
@@ -22,7 +30,7 @@ interface PtyDataPayload {
   data: string;
 }
 
-export default function TerminalView({ id, active }: TerminalViewProps) {
+export default function TerminalView({ id, active, prefs }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -33,10 +41,11 @@ export default function TerminalView({ id, active }: TerminalViewProps) {
     if (!el || termRef.current) return;
 
     const term = new XTerm({
-      cursorBlink: true,
+      cursorBlink: prefs?.cursorBlink ?? true,
       fontFamily:
         "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace",
-      fontSize: 12.5,
+      fontSize: prefs?.fontSize ?? 12.5,
+      scrollback: prefs?.scrollback ?? 1000,
       theme: {
         background: "var(--bg-panel)",
         foreground: "#d4d4d4",
@@ -79,7 +88,25 @@ export default function TerminalView({ id, active }: TerminalViewProps) {
       termRef.current = null;
       fitRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prefs only seed the constructor; live updates use the effect above
   }, [id]);
+
+  // Live-apply preference changes to already-running terminals.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !prefs) return;
+    term.options.fontSize = prefs.fontSize;
+    term.options.cursorBlink = prefs.cursorBlink;
+    term.options.scrollback = prefs.scrollback;
+    try {
+      fitRef.current?.fit();
+    } catch {
+      /* hidden container */
+    }
+    void invoke("terminal_resize", { id, rows: term.rows, cols: term.cols }).catch(
+      () => {}
+    );
+  }, [prefs, id]);
 
   // Reflow whenever visibility or container size changes.
   useEffect(() => {

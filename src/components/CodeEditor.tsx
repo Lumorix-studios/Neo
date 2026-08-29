@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
-import { langOf, langColorOf, highlightCode, commentToken } from "./highlight";
+import { langOf, highlightCode, commentToken } from "./highlight";
 import { FileIcon } from "./FileIcon";
 import FindReplaceBar from "./FindReplaceBar";
 
@@ -104,7 +104,6 @@ export default function CodeEditor({
   onClose,
   onChange,
   onSave,
-  onCloseAll,
   reveal,
   prefs,
   emptyState,
@@ -565,16 +564,16 @@ export default function CodeEditor({
                 onAuxClick={(ev) => {
                   if (ev.button === 1) onClose(t.path);
                 }}
-                className={`group relative flex shrink-0 items-center border-r border-white/[0.06] transition-colors ${
+                className={`group relative flex shrink-0 items-stretch transition-colors ${
                   selected
                     ? "bg-[var(--bg-panel)] text-zinc-100"
-                    : "bg-transparent text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
+                    : "bg-transparent text-[#8b8b8b] hover:bg-white/[0.04] hover:text-zinc-300"
                 }`}
               >
-                {/* Language-coloured top accent on the active tab */}
+                {/* VS Code-style: bright top accent on the active tab */}
                 <span
-                  className="absolute inset-x-0 top-0 h-[2px] transition-opacity"
-                  style={{ backgroundColor: langColorOf(t.path), opacity: selected ? 1 : 0 }}
+                  className="absolute inset-x-0 top-0 h-px"
+                  style={{ backgroundColor: selected ? "#ffffff" : "transparent", opacity: selected ? 0.28 : 0 }}
                 />
                 <button
                   type="button"
@@ -613,23 +612,13 @@ export default function CodeEditor({
 
         {/* Tab actions */}
         <div className="flex shrink-0 items-center gap-1.5  px-2">
-          {tabs.length > 0 && onCloseAll && (
-            <button
-              type="button"
-              onClick={onCloseAll}
-              className="rounded-md px-2 py-1 text-[11px] text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
-              title="Close all tabs"
-            >
-              Close all
-            </button>
-          )}
           <button
             type="button"
             disabled={!active?.dirty}
             onClick={() => active && onSave(active.path)}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+              className={`rounded-[4px] px-2.5 py-1 text-[11px] font-medium transition ${
                 active?.dirty
-                  ? "bg-[#ececec] text-[#111111] hover:bg-white"
+                  ? "bg-[#2b6fd4] text-white hover:bg-[#3b7de0]"
                   : "cursor-default bg-white/[0.04] text-[#555555]"
               }`}
             title="Save (Ctrl+S)"
@@ -656,12 +645,6 @@ export default function CodeEditor({
                 </span>
               </span>
             ))}
-            {active.dirty && (
-              <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-amber-500/10 px-2 py-px text-[10px] font-medium text-amber-400">
-                <span className="h-1 w-1 rounded-full bg-current" />
-                unsaved
-              </span>
-            )}
           </div>
 
           {/* ── Find / Replace bar ──────────────────────────────── */}

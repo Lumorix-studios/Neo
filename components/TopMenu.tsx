@@ -6,11 +6,13 @@ interface TopMenuProps {
   onOpenInfoPanel: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenTab2: () => void;
-  onOpenChatSidebar: () => void;
+  onOpenAiSettings: () => void;
   onOpenChatHistory: () => void;
   onOpenIde: () => void;
   onOpenTerminal: () => void;
   onOpenSettings?: () => void;
+  /** Opens the command palette from the title-bar "command center" pill. */
+  onOpenCommandPalette?: () => void;
   /** Optional right-aligned slot (model pill, actions) rendered in the title bar. */
   right?: ReactNode;
 }
@@ -24,11 +26,12 @@ export default function TopMenu({
   onOpenInfoPanel,
   onOpenPrivacyPolicy,
   onOpenTab2,
-  onOpenChatSidebar,
+  onOpenAiSettings,
   onOpenChatHistory,
   onOpenIde,
   onOpenTerminal,
   onOpenSettings,
+  onOpenCommandPalette,
   right,
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -56,7 +59,7 @@ export default function TopMenu({
       label: "View",
       items: [
         { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
-        { label: "Chat & AI Config", action: onOpenChatSidebar, shortcut: "Ctrl+B" },
+        { label: "AI Settings…", action: onOpenAiSettings, shortcut: "Ctrl+B" },
         ...(onOpenSettings
           ? [{ label: "Settings…", action: onOpenSettings, shortcut: "Ctrl+," }]
           : []),
@@ -86,7 +89,7 @@ export default function TopMenu({
   return (
     <nav
       ref={menuRef}
-      className="relative z-50 flex h-9 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-panel)] pl-3 pr-2"
+      className="relative z-50 flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-panel)] pl-3 pr-2"
       data-tauri-drag-region
     >
       {/* Left: brand + menus */}
@@ -117,17 +120,17 @@ export default function TopMenu({
               <button
                 onClick={() => setOpenMenu(openMenu === menu.label ? null : menu.label)}
                 onMouseEnter={() => openMenu && setOpenMenu(menu.label)}
-                className={`rounded-md px-2.5 py-[4px] text-[12px] font-medium transition-colors ${
+                className={`rounded-[4px] px-2 py-[3px] text-[12.5px] transition-colors ${
                   openMenu === menu.label
-                    ? "bg-white/[0.08] text-[#ececec]"
-                    : "text-[#a3a3a3] hover:bg-white/[0.05] hover:text-[#ececec]"
+                    ? "bg-white/[0.09] text-[#e8e8e8]"
+                    : "text-[#ababab] hover:bg-white/[0.09] hover:text-[#e8e8e8]"
                 }`}
               >
                 {menu.label}
               </button>
 
               {openMenu === menu.label && (
-                <div className="panel-in absolute left-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-lg border border-white/[0.09] bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+                <div className="panel-in absolute left-0 top-full z-50 mt-px w-64 overflow-hidden rounded-[5px] border border-white/[0.1] bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
                   {menu.items.map((item, i) => (
                     <button
                       key={i}
@@ -136,10 +139,14 @@ export default function TopMenu({
                         item.action();
                         setOpenMenu(null);
                       }}
-                      className="flex w-full items-center justify-between rounded-md px-2.5 py-[6px] text-left text-[12px] text-[#c9c9c9] transition-colors hover:bg-white/[0.06] hover:text-[#ececec] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex w-full items-center justify-between rounded-[3px] px-2.5 py-[5px] text-left text-[12.5px] text-[#c9c9c9] transition-colors hover:bg-white/[0.09] hover:text-[#ececec] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <span>{item.label}</span>
-                      {item.shortcut && <span className="kbd ml-4">{item.shortcut}</span>}
+                      {item.shortcut && (
+                        <span className="ml-8 text-[11px] tracking-wide text-[#8b8b8b]">
+                          {item.shortcut}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -148,6 +155,24 @@ export default function TopMenu({
           ))}
         </div>
       </div>
+
+      {/* Center: command-center pill, VS Code title-bar style */}
+      {onOpenCommandPalette && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-[35px] items-center justify-center lg:flex">
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            title="Search commands and files (Ctrl+P)"
+            className="pointer-events-auto flex h-[22px] w-[34%] max-w-[320px] items-center justify-center gap-2 rounded-[6px] border border-white/[0.09] bg-white/[0.03] text-[11.5px] text-[#8b8b8b] transition-colors hover:border-white/[0.18] hover:bg-white/[0.06] hover:text-[#c9c9c9]"
+          >
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="7" cy="7" r="4.4" />
+              <path d="M10.4 10.4L13.5 13.5" />
+            </svg>
+            Search Neo
+          </button>
+        </div>
+      )}
 
       {/* Right: optional slot */}
       {right && <div className="flex items-center gap-2">{right}</div>}

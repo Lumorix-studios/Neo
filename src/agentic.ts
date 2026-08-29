@@ -730,11 +730,7 @@ function looksLikeToolCallJson(blob: string): boolean {
   );
 }
 
-/**
- * Extract bare JSON tool calls printed as plain text with no tags or fences,
- * e.g.  {"tool": "read_file", "arguments": {"path": "C:/x.py"}}
- * Scans balanced `{…}` regions and parses the ones that look like calls.
- */
+
 export function extractBareJsonCalls(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
   for (let i = 0; i < text.length; i++) {
@@ -938,9 +934,7 @@ export function parseToolCalls(text: string): ToolCall[] {
   return calls;
 }
 
-/** Remove self-named XML tool tags (<read_active_file/> etc.) that some
- *  models emit instead of the documented <tool_call> protocol. Only strips
- *  tags whose name matches a real tool, so ordinary markup survives. */
+
 function stripXmlToolTags(text: string): string {
   if (!(/<([a-zA-Z_][a-zA-Z0-9_]*)\s*\/>/.test(text) || /<\/[a-zA-Z_][a-zA-Z0-9_]*>/.test(text)))
     return text;
@@ -953,11 +947,7 @@ function stripXmlToolTags(text: string): string {
   );
 }
 
-/**
- * Strip tool-call markup from a response so the visible answer is clean.
- * Also removes *incomplete* trailing markup (e.g. `<tool_call>{"na`) so raw
- * tool JSON never flashes on screen while a response is streaming.
- */
+
 export function stripToolCalls(text: string): string {
   const stripped = text
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
@@ -971,13 +961,7 @@ export function stripToolCalls(text: string): string {
   return stripTrailingPartialJson(stripBareJsonCalls(stripXmlToolTags(stripped))).trim();
 }
 
-/**
- * Make partially-streamed markdown render sanely: if a tool call was
- * stripped from the middle of a fenced code block, the fence becomes
- * unbalanced and the whole message renders as a code wall. Appending a
- * closing fence while streaming keeps the layout stable until the real
- * content completes.
- */
+
 export function stabilizeStreamingMarkdown(text: string): string {
   const fenceCount = (text.match(/```/g) ?? []).length;
   if (fenceCount % 2 === 1) return `${text}

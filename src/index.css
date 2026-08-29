@@ -4,6 +4,7 @@
   --bg-panel: #131313;       /* sidebars, panels */
   --bg-elevated: #1a1a1a;    /* cards, inputs, popovers */
   --bg-active: #232323;      /* selected rows, pressed states */
+  --bg-input: #313131;       /* text inputs, VS Code Dark Modern style */
 
   --border: rgba(255, 255, 255, 0.07);
   --border-strong: rgba(255, 255, 255, 0.13);

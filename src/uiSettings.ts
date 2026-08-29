@@ -1,10 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-
-/**
- * UI / workspace preferences — everything that is NOT the AI config.
- * Persisted with the same Tauri-disk-then-localStorage strategy as store.ts
- * and applied to the document as CSS custom properties (see index.css).
- */
+import { installedThemePresets } from "./extensions";
 export interface UiSettings {
   /** Active theme preset id (see THEMES). */
   themeId: string;
@@ -26,6 +21,12 @@ export interface UiSettings {
   autoSave: boolean;
   /** Debounce (ms) before an auto-save fires. */
   autoSaveDelayMs: number;
+  /** Terminal font size (px). */
+  terminalFontSize: number;
+  /** Terminal scrollback buffer (lines). */
+  terminalScrollback: number;
+  /** Blink the terminal cursor. */
+  terminalCursorBlink: boolean;
 }
 
 export interface ThemePreset {
@@ -65,11 +66,11 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   showLineNumbers: true,
   autoSave: false,
   autoSaveDelayMs: 1000,
+  terminalFontSize: 12.5,
+  terminalScrollback: 1000,
+  terminalCursorBlink: true,
 };
 
-/* ------------------------------------------------------------------ *
- * Persistence (mirrors store.ts: Tauri disk first, localStorage fallback)
- * ------------------------------------------------------------------ */
 
 const UI_SETTINGS_KEY = "neo.ui-settings.v1";
 
@@ -116,10 +117,6 @@ export async function saveUiSettings(s: UiSettings): Promise<void> {
   }
 }
 
-/* ------------------------------------------------------------------ *
- * Color helpers
- * ------------------------------------------------------------------ */
-
 function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
@@ -157,14 +154,10 @@ function normalizeHex(hex: string): string {
   if (h.length === 3) return `#${h.split("").map((c) => c + c).join("")}`;
   return `#${h}`;
 }
-
-/* ------------------------------------------------------------------ *
- * Theme resolution + application
- * ------------------------------------------------------------------ */
-
 /** Resolve the concrete CSS variable map for a settings object. */
 export function resolveThemeVars(s: UiSettings): Record<string, string> {
-  const theme = THEMES.find((t) => t.id === s.themeId) ?? THEMES[0];
+  const extTheme = installedThemePresets().find((t) => t.id === s.themeId);
+  const theme = extTheme ?? THEMES.find((t) => t.id === s.themeId) ?? THEMES[0];
   const custom = !!(s.customBackground && isValidHex(s.customBackground));
   const base = custom ? normalizeHex(s.customBackground as string) : theme.base;
   return {
@@ -185,9 +178,6 @@ export function applyUiSettings(s: UiSettings): void {
   }
 }
 
-/* ------------------------------------------------------------------ *
- * Recents (localStorage is fine — these are lightweight lists)
- * ------------------------------------------------------------------ */
 
 const RECENT_FILES_KEY = "neo.recents.files.v1";
 const RECENT_FOLDERS_KEY = "neo.recents.folders.v1";

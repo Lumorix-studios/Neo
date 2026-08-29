@@ -4,7 +4,6 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import TopMenu from "../components/TopMenu";
-import ChatSidebar from "../components/ChatSidebar.tsx";
 import ChatHistorySidebar from "../components/ChatHistorySidebar.tsx";
 import InfoPanel from "../components/InfoPanel";
 import PrivacyPolicy from "../components/PrivacyPolicy.tsx";
@@ -13,6 +12,8 @@ import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import Markdown from "./components/Markdown";
 import BottomPanel, { type PanelTab } from "./components/BottomPanel";
+import { isExtensionEnabled } from "./extensions";
+import { formatWithPrettier } from "./extensionsRuntime";
 import "./editor.css";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
@@ -58,7 +59,7 @@ import IdeMenuBar from "./components/IdeMenuBar";
 import type { EditorTab } from "./components/CodeEditor";
 import GitPanel from "./components/GitPanel";
 import { IoGitCommit } from "react-icons/io5";
-import SettingsPanel from "./components/SettingsPanel";
+import SettingsPanel, { type SectionId } from "./components/SettingsPanel";
 import {
   applyUiSettings,
   DEFAULT_UI_SETTINGS,
@@ -170,12 +171,12 @@ function RailButton({
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`relative flex h-9 w-full items-center justify-center rounded-md transition-colors ${
-        active ? "text-(--accent)" : "text-[#6b6b6b] hover:text-[#d4d4d4]"
+      className={`relative flex h-[48px] w-full items-center justify-center transition-colors ${
+        active ? "text-[#e8e8e8]" : "text-[#868686] hover:text-[#e8e8e8]"
       }`}
     >
       {active && (
-        <span className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-full bg-(--accent)" />
+        <span className="absolute left-0 top-0 h-full w-[2px] bg-(--accent)" />
       )}
       {children}
     </button>
@@ -237,7 +238,6 @@ function MessageAction({
 
 export default function App() {
   const [modelOpen, setModelOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [onOpenTerminal, setOpenTerminal] = useState(false);
   // Which tab of the bottom dock is visible (terminal/problems/debug/…).
   const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
@@ -247,6 +247,9 @@ export default function App() {
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Bumped when extensions are installed/toggled so contributed UI (preview
+  // tab, status-bar stats) re-evaluates immediately. Value itself is unused.
+  const [, setExtensionTick] = useState(0);
   const [Tab2Open, setTab2Open] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -294,6 +297,8 @@ export default function App() {
   // --- UI settings (Settings tab) ---
   const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Which section of the settings panel was requested (null = default). */
+  const [settingsSection, setSettingsSection] = useState<SectionId | null>(null);
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
   const [, setRecentFolders] = useState<string[]>([]);
 
@@ -313,7 +318,8 @@ export default function App() {
     const handleKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
-        setSidebarOpen((v) => !v);
+        setSettingsSection("ai");
+        setSettingsOpen(true);
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "h") {
         e.preventDefault();
@@ -331,12 +337,19 @@ export default function App() {
         e.preventDefault();
         setGitPanelOpen((v) => !v);
       }
+      // Ctrl+Alt+F: Format Document (command contributed by the Prettier
+      // extension — a no-op while it is not installed and enabled).
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        void formatDocument(activeEditorRef.current);
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === "`") {
         e.preventDefault();
         setOpenTerminal((v) => !v);
       }
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         e.preventDefault();
+        setSettingsSection(null);
         setSettingsOpen(true);
       }
       // Ctrl+Tab / Ctrl+Shift+Tab: cycle through open editor tabs.
@@ -668,10 +681,16 @@ export default function App() {
   const onIdeResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = ideDragRef.current;
     if (!drag) return;
-    // Keep room for the chat pane and settings sidebar on the right.
-    const max = Math.max(MIN_IDE_WIDTH + 120, window.innerWidth - 360);
+    // Let the IDE panel slide across the whole window (fully extended IDE).
+    const max = window.innerWidth;
     const next = drag.startWidth - (e.clientX - drag.startX);
     setIdeWidth(Math.min(max, Math.max(MIN_IDE_WIDTH, next)));
+  };
+
+  /** Double-click the resize handle: snap between full-window and restored. */
+  const ideMaximized = ideWidth >= window.innerWidth - 8;
+  const toggleIdeMaximize = () => {
+    setIdeWidth(ideMaximized ? 520 : window.innerWidth);
   };
 
   const onIdeResizeEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -706,8 +725,22 @@ export default function App() {
   const saveEditorFile = async (path: string) => {
     const tab = editorTabs.find((t) => t.path === path);
     if (!tab) return;
+    // Format-on-Save, contributed by the Prettier extension. The formatted
+    // text is written to disk and reflected back into the editor tab.
+    let contentToSave = tab.content;
+    if (isExtensionEnabled("prettier.formatter")) {
+      const formatted = await formatWithPrettier(path, tab.content);
+      if (formatted != null && formatted !== tab.content) {
+        contentToSave = formatted;
+        setEditorTabs((prev) =>
+          prev.map((t) =>
+            t.path === path ? { ...t, content: formatted, dirty: false } : t
+          )
+        );
+      }
+    }
     try {
-      await invoke("fs_write_file", { path, content: tab.content });
+      await invoke("fs_write_file", { path, content: contentToSave });
       setEditorTabs((prev) =>
         prev.map((t) => (t.path === path ? { ...t, dirty: false } : t))
       );
@@ -716,6 +749,36 @@ export default function App() {
       setError(`Failed to save ${path}: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+
+  /**
+   * Format Document — command contributed by the Prettier extension.
+   * Uses ref mirrors so the (once-registered) global key handler always
+   * formats the tab that is active right now.
+   */
+  const formatDocument = async (path: string | null) => {
+    if (!isExtensionEnabled("prettier.formatter")) {
+      setError("Prettier is not active — install and enable it in Settings → Extensions.");
+      return;
+    }
+    const p = path ?? activeEditorRef.current;
+    if (!p) return;
+    const tab = editorTabsRef.current.find((t) => t.path === p);
+    if (!tab) return;
+    const out = await formatWithPrettier(p, tab.content);
+    if (out == null) {
+      setError(`Prettier: unsupported file type or syntax error in ${p}`);
+      return;
+    }
+    if (out !== tab.content) updateEditorContent(p, out);
+  };
+
+  // --- Extension contributions (VS Code-style activation) ----------------
+  // Read live on every render so features activate the moment an extension
+  // is installed/toggled in Settings (the panel reports changes back).
+  const markdownPreviewEnabled = isExtensionEnabled("md.markdown-preview");
+  const wordCountEnabled = isExtensionEnabled("status.word-count");
+  const todoEnabled = isExtensionEnabled("status.todo-inspector");
+  const statusExtensionsOn = wordCountEnabled || todoEnabled;
 
   /** Create an empty file inside the workspace (editor empty-state action). */
   const createFileInWorkspace = async (name: string) => {
@@ -1100,11 +1163,7 @@ ${promptSuffix}` : ""}`,
       }
     }
 
-    // Editor awareness: tell the agent which files are open, which one is
-    // active, and inline the active file's verbatim contents when small —
-    // so even tool-shy local models know exactly what to work on.
-    // NOTE: this runs even WITHOUT an open workspace folder (standalone
-    // files opened via Open Files…) — that's precisely when context matters.
+  
     let userFileNote = "";
     if (agentic) {
       const rel = (p: string): string =>
@@ -1257,11 +1316,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
 
         const resultsByKey = new Map<string, { ok: boolean; output: string }>();
 
-        /**
-         * Root for relative-path resolution: open workspace, else — when only
-         * standalone files are open — the active file's own folder. Prevents
-         * relative paths from resolving against a random process cwd.
-         */
+        
         const effRoot =
           workspaceRoot ??
           (() => {
@@ -1486,11 +1541,15 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           onOpenInfoPanel={() => setInfoPanelOpen(true)}
           onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
           onOpenTab2={() => setTab2Open(true)}
-          onOpenChatSidebar={() => setSidebarOpen(true)}
+          onOpenAiSettings={() => {
+            setSettingsSection("ai");
+            setSettingsOpen(true);
+          }}
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
           onOpenIde={() => setIdeOpen(true)}
           onOpenTerminal={() => setOpenTerminal(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
           right={
             <>
               {/* Provider / model pill */}
@@ -1601,11 +1660,16 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           open={settingsOpen}
           settings={uiSettings}
           onChange={updateUiSettings}
+          aiSettings={settings}
+          onAiChange={handleSaveSettings}
+          onSelectLocalModel={handleSelectLocalModel}
+          initialSection={settingsSection}
           onClose={() => setSettingsOpen(false)}
+          onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
         />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Activity bar — VS Code-style icon rail */}
-          <nav className="flex w-11 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-panel)] py-2">
+          <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-panel)] py-1">
             <div className="relative flex w-full flex-col items-center gap-1">
               <RailButton active={ideOpen} title="Open editor / workspace (Ctrl+Shift+E)" onClick={() => setRailMenuOpen((v) => !v)}>
                 <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1976,18 +2040,19 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             <div
               role="separator"
               aria-orientation="vertical"
-              title="Drag to resize editor panel"
+              title="Drag to resize — double-click to maximize / restore"
               onPointerDown={onIdeResizeStart}
               onPointerMove={onIdeResizeMove}
               onPointerUp={onIdeResizeEnd}
               onPointerCancel={onIdeResizeEnd}
+              onDoubleClick={toggleIdeMaximize}
               className="group w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-(--accent)/40 select-none touch-none"
             />
             <section
               style={{ width: `${ideWidth}px` }}
               className="flex min-w-0 shrink-0 flex-col border-l border-white/[0.07] bg-[var(--bg-panel)]"
             >
-              <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-elevated)] px-3">
+              <div className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-elevated)] px-2">
                 {/* VS Code-style menu bar: File / View dropdowns */}
                 <IdeMenuBar
                   hasWorkspace={!!workspaceRoot}
@@ -2002,7 +2067,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 <div className="flex shrink-0 items-center gap-1.5">
                   {workspaceRoot && (
                     <span
-                      className="max-w-[220px] truncate rounded bg-white/[0.05] px-1.5 py-0.5 text-[10.5px] text-zinc-500"
+                      className="max-w-[220px] truncate rounded-[4px] bg-white/[0.06] px-1.5 py-0.5 text-[10.5px] text-[#8b8b8b]"
                       title={workspaceRoot}
                     >
                       {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
@@ -2101,20 +2166,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             </section>
             </>
           )}
-          <aside
-            className={`shrink-0 overflow-hidden border-l border-white/[0.07] bg-[var(--bg-panel)] transition-[width] duration-200 ease-out ${
-              sidebarOpen ? "w-80 max-sm:w-full" : "w-0"
-            }`}
-          >
-            {sidebarOpen && (
-              <ChatSidebar
-                onClose={() => setSidebarOpen(false)}
-                settings={settings}
-                onSave={handleSaveSettings}
-                onSelectLocalModel={handleSelectLocalModel}
-              />
-            )}
-          </aside>
         </div>
         {/* VS Code-style bottom dock: Terminal / Problems / Debug / Output / Ports */}
         <BottomPanel
@@ -2124,10 +2175,22 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           onClose={() => setOpenTerminal(false)}
           root={workspaceRoot}
           onOpenFile={(p, line) => void openFileInEditor(p, line)}
+          terminalPrefs={{
+            fontSize: uiSettings.terminalFontSize,
+            scrollback: uiSettings.terminalScrollback,
+            cursorBlink: uiSettings.terminalCursorBlink,
+          }}
+          preview={
+            markdownPreviewEnabled
+              ? {
+                  path: activeEditorPath,
+                  content:
+                    editorTabs.find((t) => t.path === activeEditorPath)?.content ?? "",
+                }
+              : null
+          }
         />
         <StatusBar
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((v) => !v)}
           historySidebarOpen={historySidebarOpen}
           onToggleHistorySidebar={() => setHistorySidebarOpen((v) => !v)}
           ideOpen={ideOpen}
@@ -2135,17 +2198,36 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           terminalOpen={onOpenTerminal}
           onToggleTerminal={() => setOpenTerminal((v) => !v)}
           workspaceName={workspaceRoot?.split(/[\\/]/).filter(Boolean).pop() ?? null}
+          editorStats={
+            statusExtensionsOn
+              ? (() => {
+                  const c =
+                    editorTabs.find((t) => t.path === activeEditorPath)?.content ?? "";
+                  return {
+                    words: (c.match(/\S+/g) ?? []).length,
+                    chars: c.length,
+                    lines: c ? c.split("\n").length : 1,
+                    todos: (c.match(/\b(TODO|FIXME|HACK|XXX)\b/g) ?? []).length,
+                    showWords: wordCountEnabled,
+                    showTodos: todoEnabled,
+                  };
+                })()
+              : null
+          }
         />
         <CommandPalette
           isOpen={commandPaletteOpen}
           onClose={() => setCommandPaletteOpen(false)}
           commands={[
             {
-              id: "toggle-sidebar",
-              label: "Toggle Chat Sidebar",
-              category: "View",
+              id: "open-ai-settings",
+              label: "Open AI Settings",
+              category: "Settings",
               shortcut: "Ctrl+B",
-              action: () => setSidebarOpen((v) => !v),
+              action: () => {
+                setSettingsSection("ai");
+                setSettingsOpen(true);
+              },
             },
             {
               id: "toggle-history",
@@ -2219,6 +2301,17 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               shortcut: "Ctrl+,",
               action: () => setSettingsOpen(true),
             },
+            ...(isExtensionEnabled("prettier.formatter")
+              ? [
+                  {
+                    id: "format-document",
+                    label: "Format Document (Prettier)",
+                    category: "Editor",
+                    shortcut: "Ctrl+Alt+F",
+                    action: () => void formatDocument(activeEditorRef.current),
+                  },
+                ]
+              : []),
           ]}
         />
       </div>

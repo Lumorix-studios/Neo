@@ -149,49 +149,34 @@ export default function IdeMenuBar({
           type="button"
           onClick={() => setOpenMenu(open ? null : id)}
           onMouseEnter={() => openMenu && setOpenMenu(id)}
-          className={`relative flex items-center gap-1.5 rounded-[5px] px-2.5 py-[4px] text-[11.5px] font-medium transition-colors ${
+          className={`flex items-center gap-1.5 rounded-[4px] px-2 py-[3px] text-[12.5px] transition-colors ${
             open
-              ? "bg-white/[0.09] text-zinc-50"
-              : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100"
+              ? "bg-white/[0.09] text-[#e8e8e8]"
+              : "text-[#ababab] hover:bg-white/[0.09] hover:text-[#e8e8e8]"
           }`}
         >
           {title}
-          {open && (
-            <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          )}
-          {open && (
-            <span className="absolute inset-x-1 -bottom-[7px] h-[2px] rounded-full bg-(--accent)" />
-          )}
         </button>
         {open && (
-          <div className="panel-in absolute left-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-lg border border-white/[0.09] bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
-            <p className="px-2.5 pb-1 pt-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-              {title}
-            </p>
-            <div className="h-px bg-white/[0.05]" />
-            <div className="pt-0.5">
+          <div className="panel-in absolute left-0 top-full z-50 mt-px w-60 overflow-hidden rounded-[5px] border border-white/[0.1] bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
+            <div>
               {items.map((item) => (
                 <button
                   key={item.label}
                   type="button"
                   disabled={item.disabled}
                   onClick={item.onSelect}
-                  className={`group/row relative flex w-full items-center gap-2.5 rounded-[5px] px-2.5 py-[6px] text-left text-[12px] transition-colors ${
+                  className={`flex w-full items-center gap-2.5 rounded-[3px] px-2 py-[5px] text-left text-[12.5px] transition-colors ${
                     item.disabled
                       ? "cursor-default text-[#555555]"
-                      : "text-[#c9c9c9] hover:bg-white/[0.07] hover:text-[#ececec]"
+                      : "text-[#c9c9c9] hover:bg-white/[0.09] hover:text-[#ececec]"
                   }`}
                 >
-                  {!item.disabled && (
-                    <span className="absolute top-1/2 left-0 h-3.5 w-[2px] -translate-y-1/2 rounded-r-full bg-(--accent) opacity-0 transition-opacity group-hover/row:opacity-100" />
-                  )}
                   <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.checked ? "text-(--accent)" : "text-[#6b6b6b]"}`}>
                     {item.checked ? CheckGlyph : item.icon}
                   </span>
                   <span className="flex-1 truncate">{item.label}</span>
-                  {item.hint && <span className="kbd shrink-0">{item.hint}</span>}
+                  {item.hint && <span className="shrink-0 text-[11px] tracking-wide text-[#8b8b8b]">{item.hint}</span>}
                 </button>
               ))}
             </div>
