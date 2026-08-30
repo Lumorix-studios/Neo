@@ -1897,7 +1897,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             </div>
           </main>
         </div>
-        {/* VS Code-style bottom dock: Terminal / Problems / Debug / Output / Ports */}
+       
         <BottomPanel
           open={onOpenTerminal}
           tab={panelTab}

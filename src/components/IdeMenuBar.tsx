@@ -178,12 +178,6 @@ export default function IdeMenuBar({
           },
         ]
       : []),
-    {
-      label: "Settings…",
-      icon: GearGlyph,
-      hint: "Ctrl+,",
-      onSelect: () => run(() => onOpenSettings?.()),
-    },
   ];
 
   const renderMenu = (id: "file" | "view", title: string, items: MenuItem[]) => {

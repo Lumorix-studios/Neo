@@ -66,6 +66,7 @@ export default function IdeWindowApp() {
   const [gitOpen, setGitOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+
   // --- editor tabs ---------------------------------------------------------
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
@@ -382,6 +383,7 @@ export default function IdeWindowApp() {
                 <path d="M4.5 6l2 1.7-2 1.7M8 9.8h3.5" />
               </svg>
             </RailButton>
+            
           </div>
         </nav>
         {workspaceRoot && !explorerCollapsed && (
