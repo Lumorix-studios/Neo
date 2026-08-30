@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { open } from "@tauri-apps/plugin-dialog";
+import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import TopMenu from "../components/TopMenu";
 import ChatHistorySidebar from "../components/ChatHistorySidebar.tsx";
@@ -53,12 +52,9 @@ import {
 } from "./mcp";
 import { computeLineDiff } from "./diff";
 import { resolveFsPath } from "./agentic";
-import FileExplorer from "./components/FileExplorer";
-import CodeEditor from "./components/CodeEditor";
-import IdeMenuBar from "./components/IdeMenuBar";
 import type { EditorTab } from "./components/CodeEditor";
-import GitPanel from "./components/GitPanel";
-import { IoGitCommit } from "react-icons/io5";
+/* GitPanel removed — moved to IDE window only */
+
 import SettingsPanel, { type SectionId } from "./components/SettingsPanel";
 import {
   applyUiSettings,
@@ -67,7 +63,6 @@ import {
   getRecentFolders,
   loadUiSettings,
   pushRecentFile,
-  pushRecentFolder,
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
@@ -152,6 +147,10 @@ function deriveTitle(messages: Message[]): string {
   const text = firstUser.content.trim();
   return text.length > 50 ? text.slice(0, 50) + "…" : text;
 }
+
+/** localStorage key shared between the chat window and the IDE window so both
+ *  operate on the same workspace folder (the IDE window persists it). */
+const SHARED_WS_KEY = "neo.ide.workspaceRoot";
 
 /** Icon button for the VS Code-style activity bar rail. */
 function RailButton({
@@ -241,8 +240,6 @@ export default function App() {
   const [onOpenTerminal, setOpenTerminal] = useState(false);
   // Which tab of the bottom dock is visible (terminal/problems/debug/…).
   const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
-  // Jump-to-line request forwarded to the CodeEditor (problems panel etc.).
-  const [revealLine, setRevealLine] = useState<{ path: string; line: number } | null>(null);
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
@@ -279,27 +276,26 @@ export default function App() {
   // Whether the user is scrolled near the bottom (auto-follow).
   const autoScrollRef = useRef(true);
 
-  // --- IDE / Code editor state ---
-  const [ideOpen, setIdeOpen] = useState(false);
-  // Popup menu on the rail folder button (Open Folder… / Open Files…).
-  const [railMenuOpen, setRailMenuOpen] = useState(false);
-  // Source-control side panel toggled from the rail's Git button.
-  const [gitPanelOpen, setGitPanelOpen] = useState(false);
-  // Resizable width of the IDE panel (px), adjusted by dragging its left edge.
-  const [ideWidth, setIdeWidth] = useState(520);
-  const ideDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
+  // --- Workspace / agent-editor state ---------------------------------------
+  // The chat window renders NO file explorer, code editor, or git panel — all
+  // file browsing and editing lives in the dedicated IDE window. The state
+  // below only backs the agent tools (read_active_file, get_open_files,
+  // formatting) so the AI can inspect and modify files during a chat turn.
+  // Ref indirection so keyboard shortcuts registered below can launch the IDE
+  // window before launchIdeWindow itself is defined further down.
+  const launchIdeWindowRef = useRef<() => void>(() => {});
+  // Workspace root shared with the IDE window via a persisted localStorage key.
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(() =>
+    localStorage.getItem(SHARED_WS_KEY)
+  );
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
-  const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
-  // VS Code-style: collapse the file-explorer sidebar for more editor room.
-  const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   // --- UI settings (Settings tab) ---
   const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** Which section of the settings panel was requested (null = default). */
   const [settingsSection, setSettingsSection] = useState<SectionId | null>(null);
-  const [recentFiles, setRecentFiles] = useState<string[]>([]);
+  const [, setRecentFiles] = useState<string[]>([]);
   const [, setRecentFolders] = useState<string[]>([]);
 
   const spec: ProviderSpec = getProviderSpec(settings);
@@ -331,12 +327,9 @@ export default function App() {
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
         e.preventDefault();
-        setIdeOpen((v) => !v);
+        launchIdeWindowRef.current();
       }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "g") {
-        e.preventDefault();
-        setGitPanelOpen((v) => !v);
-      }
+
       // Ctrl+Alt+F: Format Document (command contributed by the Prettier
       // extension — a no-op while it is not installed and enabled).
       if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "f") {
@@ -595,53 +588,42 @@ export default function App() {
     }
   };
 
-  
-  const pickWorkspaceFolder = async () => {
-    try {
-      const dir = await open({ directory: true, multiple: false });
-      if (typeof dir === "string" && dir) {
-        // Opening a folder always REPLACES the current workspace: every open
-        // editor tab is closed and the explorer starts from a clean state.
-        // The `key` on <FileExplorer> forces a full remount so no stale tree
-        // state from the previous folder can survive.
-        setWorkspaceRoot(dir);
-        setEditorTabs([]);
-        setActiveEditorPath(null);
-        setExplorerRefreshKey((k) => k + 1);
-        setRecentFolders(pushRecentFolder(dir));
-        // Make sure the picked folder is immediately visible in the editor.
-        setIdeOpen(true);
-        setExplorerCollapsed(false);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  /** Ask the user to pick one or more files to open directly in the editor.
-   *  Only the picked files are opened — no workspace folder is loaded. */
-  const pickWorkspaceFiles = async () => {
-    try {
-      const files = await open({ multiple: true, directory: false });
-      if (!files) return;
-      const list = Array.isArray(files) ? files : [files];
-      // Show the editor panel so the picked files are visible right away.
-      setIdeOpen(true);
-      for (const f of list) {
-        await openFileInEditor(f);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  /**
+   * Keep the workspace root in sync with the dedicated IDE window. The IDE
+   * window persists the folder it opens under a shared localStorage key; the
+   * chat re-reads it on focus / storage events so agent tools operate on the
+   * same workspace without the chat rendering any file UI itself.
+   */
+  useEffect(() => {
+    const syncRoot = () => {
+      const root = localStorage.getItem(SHARED_WS_KEY);
+      if (root) setWorkspaceRoot((prev) => (prev === root ? prev : root));
+    };
+    syncRoot();
+    window.addEventListener("focus", syncRoot);
+    window.addEventListener("storage", syncRoot);
+    return () => {
+      window.removeEventListener("focus", syncRoot);
+      window.removeEventListener("storage", syncRoot);
+    };
+  }, []);
 
   /** Max simultaneously open editor tabs (LRU-evicted beyond this). */
   const MAX_OPEN_TABS = 10;
 
-  /** Open a file from the explorer in an editor tab (optionally at a line). */
+  /**
+   * Open a file (agent tools, git panel, bottom-dock clicks). The chat renders
+   * no editor itself — the file is opened/revealed in the dedicated IDE window
+   * via a Tauri event, while the tab bookkeeping here keeps the agent tools
+   * (read_active_file, get_open_files, Format Document) working.
+   */
   const openFileInEditor = async (path: string, line?: number) => {
     setActiveEditorPath(path);
-    if (line != null) setRevealLine({ path, line });
+    try {
+      await emit("neo:ide-open-file", { path, line: line ?? null });
+    } catch {
+      /* IDE window not open / event system unavailable — non-fatal */
+    }
     if (editorTabs.some((t) => t.path === path)) return;
     try {
       const content = await invoke<string>("fs_read_file", { path });
@@ -661,12 +643,6 @@ export default function App() {
     } catch (e) {
       setError(`Failed to open ${path}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  };
-
-  /** Close every open editor tab. */
-  const closeAllEditorTabs = () => {
-    setEditorTabs([]);
-    setActiveEditorPath(null);
   };
 
   /**
@@ -698,50 +674,9 @@ export default function App() {
     }
   };
 
-  // --- IDE panel resize-handle drag logic ---
-  const MIN_IDE_WIDTH = 280;
-
-  const onIdeResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    ideDragRef.current = { startX: e.clientX, startWidth: ideWidth };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const onIdeResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = ideDragRef.current;
-    if (!drag) return;
-    // Let the IDE panel slide across the whole window (fully extended IDE).
-    const max = window.innerWidth;
-    const next = drag.startWidth - (e.clientX - drag.startX);
-    setIdeWidth(Math.min(max, Math.max(MIN_IDE_WIDTH, next)));
-  };
-
-  /** Double-click the resize handle: snap between full-window and restored. */
-  const ideMaximized = ideWidth >= window.innerWidth - 8;
-  const toggleIdeMaximize = () => {
-    setIdeWidth(ideMaximized ? 520 : window.innerWidth);
-  };
-
-  const onIdeResizeEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
-    ideDragRef.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* pointer already released */
-    }
-  };
-
-  /** Close an editor tab, falling back to a neighbouring tab. */
-  const closeEditorTab = (path: string) => {
-    const idx = editorTabs.findIndex((t) => t.path === path);
-    if (idx === -1) return;
-    const next = editorTabs.filter((t) => t.path !== path);
-    setEditorTabs(next);
-    if (activeEditorPath === path) {
-      const fallback = next[Math.min(idx, next.length - 1)];
-      setActiveEditorPath(fallback ? fallback.path : null);
-    }
-  };
+  // Late-bound so the Ctrl+Shift+E shortcut registered above always calls the
+  // current launchIdeWindow closure.
+  launchIdeWindowRef.current = launchIdeWindow;
 
   /** Mark a tab dirty as its content changes. */
   const updateEditorContent = (path: string, content: string) => {
@@ -773,7 +708,6 @@ export default function App() {
       setEditorTabs((prev) =>
         prev.map((t) => (t.path === path ? { ...t, dirty: false } : t))
       );
-      setExplorerRefreshKey((k) => k + 1);
     } catch (e) {
       setError(`Failed to save ${path}: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -809,22 +743,6 @@ export default function App() {
   const todoEnabled = isExtensionEnabled("status.todo-inspector");
   const statusExtensionsOn = wordCountEnabled || todoEnabled;
 
-  /** Create an empty file inside the workspace (editor empty-state action). */
-  const createFileInWorkspace = async (name: string) => {
-    if (!workspaceRoot) {
-      setError("Open a folder first to create files.");
-      return;
-    }
-    const path = `${workspaceRoot.replace(/[\\/]+$/, "")}/${name.replace(/^[\\/]+/, "")}`;
-    try {
-      await invoke("fs_write_file", { path, content: "" });
-      setExplorerRefreshKey((k) => k + 1);
-      await openFileInEditor(path);
-    } catch (e) {
-      setError(`Failed to create ${path}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
-
   // Mirror of editorTabs for use inside intervals / async callbacks.
   const editorTabsRef = useRef<EditorTab[]>([]);
   editorTabsRef.current = editorTabs;
@@ -836,7 +754,6 @@ export default function App() {
     activeEditorRef.current = activeEditorPath;
   }, [activeEditorPath]);
 
-  
   const syncTabWithDisk = async (path: string) => {
     let disk: string | null = null;
     try {
@@ -864,14 +781,6 @@ export default function App() {
   const syncAllOpenTabsRef = useRef<() => void>(() => {});
   syncAllOpenTabsRef.current = syncAllOpenTabs;
 
-  // Poll the filesystem while the IDE panel is open so external edits
-  // (AI tools, other editors, git operations) show up without reopening.
-  useEffect(() => {
-    if (!ideOpen) return;
-    const id = window.setInterval(() => syncAllOpenTabsRef.current(), 1200);
-    return () => window.clearInterval(id);
-  }, [ideOpen]);
-
   /** Approve a pending destructive tool call. */
   const handleApproveTool = (id: string) => {
     const pending = approvalRef.current;
@@ -897,7 +806,6 @@ export default function App() {
       approvalRef.current = { id, resolve };
     });
 
-  
   const streamRound = async (
     history: Message[],
     agentic: boolean,
@@ -1192,7 +1100,6 @@ ${promptSuffix}` : ""}`,
       }
     }
 
-  
     let userFileNote = "";
     if (agentic) {
       const rel = (p: string): string =>
@@ -1278,7 +1185,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         const raw = round.text;
         if (raw.trim().length > 0 || round.nativeCalls.length > 0) sawRawOutput = true;
 
-        
         agentHistory.push({
           role: "assistant",
           content: raw,
@@ -1331,7 +1237,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           break;
         }
 
-        
         const activityIds = new Map<string, string>();
         const planned: AgenticActivityType[] = calls.map(({ call }) => {
           const id = activityId();
@@ -1345,7 +1250,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
 
         const resultsByKey = new Map<string, { ok: boolean; output: string }>();
 
-        
         const effRoot =
           workspaceRoot ??
           (() => {
@@ -1467,7 +1371,15 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             }
           }
         }
-        if (mutating.length > 0) setExplorerRefreshKey((k) => k + 1);
+        if (mutating.length > 0) {
+          // Nudge the IDE window so its explorer + open tabs pick up the
+          // agent's file changes immediately (it also polls as a fallback).
+          try {
+            await emit("neo:workspace-changed", {});
+          } catch {
+            /* IDE window not open — non-fatal */
+          }
+        }
 
         // Runaway guard: if every call in a round failed and the failing
         // signatures match the previous round's, we're looping — stop early.
@@ -1575,7 +1487,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             setSettingsOpen(true);
           }}
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
-          onOpenIde={() => setIdeOpen(true)}
+          onOpenIde={() => launchIdeWindowRef.current()}
           onOpenIdeWindow={() => void launchIdeWindow()}
           onOpenTerminal={() => setOpenTerminal(true)}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -1700,53 +1612,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Activity bar — VS Code-style icon rail */}
           <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-panel)] py-1">
-            <div className="relative flex w-full flex-col items-center gap-1">
-              <RailButton active={ideOpen} title="Open editor / workspace (Ctrl+Shift+E)" onClick={() => setRailMenuOpen((v) => !v)}>
-                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
-                  <path d="M1.5 7h13" opacity="0.5" />
-                </svg>
-              </RailButton>
-              {/* Popup for the native file dialog: pick a workspace folder or loose files. */}
-              {railMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setRailMenuOpen(false)} />
-                  <div className="absolute left-full top-0 z-50 ml-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRailMenuOpen(false);
-                        void pickWorkspaceFolder();
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
-                      </svg>
-                      Open Folder…
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRailMenuOpen(false);
-                        void pickWorkspaceFiles();
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M4 1.75h5L12.5 5v8.75a1 1 0 01-1 1h-7.5a1 1 0 01-1-1V2.75a1 1 0 011-1z" />
-                        <path d="M9 1.75V5h3.5" opacity="0.6" />
-                      </svg>
-                      Open Files…
-                    </button>
-                  </div>
-                </>
-              )}
-              <RailButton active={gitPanelOpen} title="Git tools (Ctrl+Shift+G)" onClick={() => setGitPanelOpen((v) => !v)}>
-                <IoGitCommit size={15}/>
-              </RailButton>
-
-            </div>
             <div className="w-full">
               <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
                 <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1762,33 +1627,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               </RailButton>
             </div>
           </nav>
-          {/* Source-control panel (git status / commit / pull / push). */}
-          {gitPanelOpen && workspaceRoot && (
-            <GitPanel
-              root={workspaceRoot}
-              onClose={() => setGitPanelOpen(false)}
-              onOpenFile={(p) =>
-                void openFileInEditor(
-                  `${workspaceRoot.replace(/[\\/]+$/, "")}/${p}`
-                )
-              }
-            />
-          )}
-          {gitPanelOpen && !workspaceRoot && (
-            <aside className="flex h-full w-64 shrink-0 flex-col items-center justify-center gap-3 border-r border-white/[0.07] bg-[var(--bg-panel)] px-4 text-center">
-              <p className="text-[12px] font-medium text-[#d4d4d4]">No workspace open</p>
-              <p className="text-[11px] leading-5 text-[#6b6b6b]">
-                Open a folder to use git tools.
-              </p>
-              <button
-                type="button"
-                onClick={() => void pickWorkspaceFolder()}
-                className="rounded-md bg-[#ececec] px-3 py-1.5 text-[12px] font-medium text-[#111111] transition hover:bg-white"
-              >
-                Open Folder
-              </button>
-            </aside>
-          )}
           <ChatHistorySidebar
             isOpen={historySidebarOpen}
             onClose={() => setHistorySidebarOpen(false)}
@@ -1822,13 +1660,14 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     </div>
                     <h1 className="text-[28px] font-semibold tracking-tight text-[#ececec]">
                       Welcome
-                    </h1>
+                  </h1>
+                  
                     {/* <p className="mx-auto mt-3 max-w-md text-[13px] leading-6 text-[#6b6b6b]">
                       Ask questions, explore ideas, or work through code — Neo can read and edit files in your workspace.
                     </p> */}
 
                     {/* Action cards */}
-                    <div className="mx-auto mt-8 grid max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-2">
+                    {/*<div className="mx-auto mt-8 grid max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-2">*/}
                       {/* <button
                         type="button"
                         onClick={() => {
@@ -1883,14 +1722,8 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       ))} */}
                     </div>
 
-                    {/* Shortcut hints */}
-                    <div className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[10.5px] text-zinc-600">
-                      <span className="flex items-center gap-1.5"><span className="kbd">Ctrl+Shift+P</span> commands</span>
-                      <span className="flex items-center gap-1.5"><span className="kbd">Ctrl+Shift+E</span> editor</span>
-                      <span className="flex items-center gap-1.5"><span className="kbd">Ctrl+,</span> settings</span>
-                    </div>
+                    {/* Shortcut hints removed along with the inline editor UI. */}
                   </div>
-                </div>
               ) : (
                 <div className="mx-auto w-full max-w-3xl px-6 py-8">
                   <div className="space-y-7">
@@ -2024,9 +1857,9 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
                     <button
                       type="button"
-                      onClick={() => setIdeOpen(true)}
+                      onClick={() => launchIdeWindowRef.current()}
                       className="flex h-7 w-7 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#ececec]"
-                      title="Open editor panel"
+                      title="Open IDE window"
                     >
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                         <path d="M8 3v10M3 8h10" />
@@ -2063,143 +1896,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               </form>
             </div>
           </main>
-          {/* Integrated IDE panel: file explorer + code editor beside the chat */}
-          {ideOpen && (
-            <>
-            {/* Drag handle: grab this edge to resize the IDE panel horizontally */}
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              title="Drag to resize — double-click to maximize / restore"
-              onPointerDown={onIdeResizeStart}
-              onPointerMove={onIdeResizeMove}
-              onPointerUp={onIdeResizeEnd}
-              onPointerCancel={onIdeResizeEnd}
-              onDoubleClick={toggleIdeMaximize}
-              className="group w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-(--accent)/40 select-none touch-none"
-            />
-            <section
-              style={{ width: `${ideWidth}px` }}
-              className="flex min-w-0 shrink-0 flex-col border-l border-white/[0.07] bg-[var(--bg-panel)]"
-            >
-              <div className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-elevated)] px-2">
-                {/* VS Code-style menu bar: File / View dropdowns */}
-                <IdeMenuBar
-                  hasWorkspace={!!workspaceRoot}
-                  terminalOpen={onOpenTerminal}
-                  canSave={(editorTabs.find((t) => t.path === activeEditorPath)?.dirty ?? false)}
-                  onSaveFile={() => {
-                    if (activeEditorPath) void saveEditorFile(activeEditorPath);
-                  }}
-                  onOpenFolder={() => void pickWorkspaceFolder()}
-                  onOpenFiles={() => void pickWorkspaceFiles()}
-                  onCloseAllTabs={closeAllEditorTabs}
-                  onToggleTerminal={() => setOpenTerminal((v) => !v)}
-                  onClosePanel={() => setIdeOpen(false)}
-                  onOpenSettings={() => setSettingsOpen(true)}
-                />
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {workspaceRoot && (
-                    <span
-                      className="max-w-[220px] truncate rounded-[4px] bg-white/[0.06] px-1.5 py-0.5 text-[10.5px] text-[#8b8b8b]"
-                      title={workspaceRoot}
-                    >
-                      {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => setIdeOpen(false)}
-                    aria-label="Close editor panel"
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                      <path d="M4 4l8 8M12 4l-8 8" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              {workspaceRoot || editorTabs.length > 0 ? (
-                <div className="flex min-h-0 flex-1">
-                  {workspaceRoot && !explorerCollapsed && (
-                    <FileExplorer
-                      key={workspaceRoot}
-                      root={workspaceRoot}
-                      activePath={activeEditorPath}
-                      refreshKey={explorerRefreshKey}
-                      onOpenFile={(p) => void openFileInEditor(p)}
-                      onCollapse={() => setExplorerCollapsed(true)}
-                    />
-                  )}
-                  {/* Slim strip to bring the explorer back after collapsing. */}
-                  {workspaceRoot && explorerCollapsed && (
-                    <div className="flex w-7 shrink-0 flex-col items-center justify-start border-r border-white/[0.07] bg-[var(--bg-panel)] py-2">
-                      <button
-                        type="button"
-                        onClick={() => setExplorerCollapsed(false)}
-                        title="Show explorer"
-                        aria-label="Show explorer"
-                        className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
-                      >
-                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 4l3.5 4L5 12M9.5 4L13 8l-3.5 4" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                  <CodeEditor
-                    tabs={editorTabs}
-                    activePath={activeEditorPath}
-                    onSelect={setActiveEditorPath}
-                    onClose={closeEditorTab}
-                    onChange={updateEditorContent}
-                    onSave={(p) => void saveEditorFile(p)}
-                    onCloseAll={closeAllEditorTabs}
-                    reveal={revealLine}
-                    prefs={uiSettings}
-                    emptyState={{
-                      hasWorkspace: !!workspaceRoot,
-                      onOpenFolder: () => void pickWorkspaceFolder(),
-                      onOpenFiles: () => void pickWorkspaceFiles(),
-                      onCreateFile: (name) => void createFileInWorkspace(name),
-                      recentFiles,
-                      onOpenRecent: (p) => void openFileInEditor(p),
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-                  <div className="msg-in flex w-full max-w-[240px] flex-col items-center text-center">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] text-zinc-500">
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
-                      </svg>
-                    </div>
-                    <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No folder open</p>
-                    <p className="mt-1 text-[11px] leading-5 text-zinc-500">
-                      Open a folder to browse and edit files.
-                    </p>
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void pickWorkspaceFiles()}
-                        className="rounded-md border border-white/[0.1] px-3 py-1.5 text-[11.5px] text-[#d4d4d4] transition hover:bg-white/[0.05]"
-                      >
-                        Open File
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void pickWorkspaceFolder()}
-                        className="rounded-md bg-(--accent) px-3 py-1.5 text-[11.5px] font-medium text-white transition hover:brightness-110"
-                      >
-                        Open Folder
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </section>
-            </>
-          )}
         </div>
         {/* VS Code-style bottom dock: Terminal / Problems / Debug / Output / Ports */}
         <BottomPanel
@@ -2301,31 +1997,13 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               action: () => setOpenTerminal((v) => !v),
             },
             {
-              id: "toggle-ide",
-              label: "Toggle Code Editor",
+              id: "open-ide-window",
+              label: "Open IDE Window",
               category: "View",
               shortcut: "Ctrl+Shift+E",
-              action: () => setIdeOpen((v) => !v),
+              action: () => launchIdeWindowRef.current(),
             },
-            {
-              id: "toggle-git-panel",
-              label: "Toggle Git Panel",
-              category: "View",
-              shortcut: "Ctrl+Shift+G",
-              action: () => setGitPanelOpen((v) => !v),
-            },
-            {
-              id: "open-workspace-folder",
-              label: "Open Folder…",
-              category: "File",
-              action: () => void pickWorkspaceFolder(),
-            },
-            {
-              id: "open-files",
-              label: "Open Files…",
-              category: "File",
-              action: () => void pickWorkspaceFiles(),
-            },
+
             {
               id: "open-settings",
               label: "Open Settings",

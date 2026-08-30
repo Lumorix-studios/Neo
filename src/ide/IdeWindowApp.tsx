@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
+import { IoGitCommit } from "react-icons/io5";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
 import CodeEditor, {
@@ -9,6 +11,36 @@ import CodeEditor, {
 } from "../components/CodeEditor";
 import BottomPanel, { type PanelTab } from "../components/BottomPanel";
 import GitPanel from "../components/GitPanel";
+
+/** Icon button for the VS Code-style activity bar rail (same look as chat). */
+function RailButton({
+  active,
+  title,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={`relative flex h-[48px] w-full items-center justify-center transition-colors ${
+        active ? "text-[#e8e8e8]" : "text-[#868686] hover:text-[#e8e8e8]"
+      }`}
+    >
+      {active && (
+        <span className="absolute left-0 top-0 h-full w-[2px] bg-(--accent)" />
+      )}
+      {children}
+    </button>
+  );
+}
 
 /* --- persisted workspace / recents --------------------------------------- */
 
@@ -58,21 +90,32 @@ export default function IdeWindowApp() {
 
   // __PART_B__
 
+  // Mirror of the open tabs for callbacks that must stay referentially stable
+  // (Tauri event listeners, memoized child props, intervals).
+  const tabsRef = useRef<EditorTab[]>([]);
+  tabsRef.current = editorTabs;
+
   /** Open a file in an editor tab (fetching content from disk). */
-  const openFileInEditor = async (path: string, line?: number) => {
-    setActiveEditorPath(path);
-    if (line != null) setRevealLine({ path, line });
-    if (editorTabs.some((t) => t.path === path)) return;
-    try {
-      const content = await invoke<string>("fs_read_file", { path });
-      pushRecent(path);
-      setEditorTabs((prev) =>
-        prev.some((t) => t.path === path) ? prev : [...prev, { path, content, dirty: false }]
-      );
-    } catch (e) {
-      setError(`Failed to open ${path}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
+  const openFileInEditor = useCallback(
+    async (path: string, line?: number) => {
+      setActiveEditorPath(path);
+      if (line != null) setRevealLine({ path, line });
+      if (tabsRef.current.some((t) => t.path === path)) return;
+      try {
+        const content = await invoke<string>("fs_read_file", { path });
+        pushRecent(path);
+        setEditorTabs((prev) =>
+          prev.some((t) => t.path === path) ? prev : [...prev, { path, content, dirty: false }]
+        );
+      } catch (e) {
+        setError(`Failed to open ${path}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [pushRecent]
+  );
+
+  const collapseExplorer = useCallback(() => setExplorerCollapsed(true), []);
+  const closeGit = useCallback(() => setGitOpen(false), []);
 
   const closeEditorTab = (path: string) => {
     const idx = editorTabs.findIndex((t) => t.path === path);
@@ -113,8 +156,6 @@ export default function IdeWindowApp() {
   // __PART_C__
 
   // --- AUTO-SAVE: persist dirty tabs 800ms after the last keystroke --------
-  const tabsRef = useRef(editorTabs);
-  tabsRef.current = editorTabs;
   useEffect(() => {
     const dirty = editorTabs.filter((t) => t.dirty);
     if (dirty.length === 0) return;
@@ -135,6 +176,60 @@ export default function IdeWindowApp() {
     );
     return () => timers.forEach(clearTimeout);
   }, [editorTabs]);
+
+  // --- Cross-window sync (chat window ⇄ IDE window) --------------------------
+  // Refresh a tab from disk unless it has unsaved local edits.
+  const syncTabWithDisk = useCallback(async (path: string) => {
+    let disk: string | null = null;
+    try {
+      disk = await invoke<string>("fs_read_file", { path });
+    } catch {
+      disk = null; // file was deleted / moved / is unreadable
+    }
+    setEditorTabs((prev) => {
+      const idx = prev.findIndex((t) => t.path === path);
+      if (idx === -1) return prev;
+      const tab = prev[idx];
+      if (disk === null) return tab.dirty ? prev : prev.filter((t) => t.path !== path);
+      if (tab.dirty || tab.content === disk) return prev;
+      const next = [...prev];
+      next[idx] = { ...tab, content: disk };
+      return next;
+    });
+  }, []);
+
+  // Poll the filesystem so edits made from the chat window (agent tools), git
+  // operations or other editors show up without reopening the file.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      for (const t of tabsRef.current) {
+        if (!t.dirty) void syncTabWithDisk(t.path);
+      }
+    }, 2500);
+    return () => window.clearInterval(id);
+  }, [syncTabWithDisk]);
+
+  // The chat window forwards file opens (agent tools, problems-panel jumps)
+  // and workspace changes to this window via Tauri events.
+  useEffect(() => {
+    const unlistenOpen = listen<{ path: string; line: number | null }>(
+      "neo:ide-open-file",
+      (e) => {
+        const { path, line } = e.payload;
+        if (typeof path === "string" && path) void openFileInEditor(path, line ?? undefined);
+      }
+    );
+    const unlistenChanged = listen("neo:workspace-changed", () => {
+      setExplorerRefreshKey((k) => k + 1);
+      for (const t of tabsRef.current) {
+        if (!t.dirty) void syncTabWithDisk(t.path);
+      }
+    });
+    return () => {
+      void unlistenOpen.then((f) => f());
+      void unlistenChanged.then((f) => f());
+    };
+  }, [openFileInEditor, syncTabWithDisk]);
 
   // --- workspace pickers ----------------------------------------------------
   const pickWorkspaceFolder = async () => {
@@ -261,30 +356,42 @@ export default function IdeWindowApp() {
         </div>
       </header>
 
-      {/* ── Body: explorer | editor | git ──────────────────────────────── */}
+      {/* ── Body: activity rail | explorer | editor | git ──────────────── */}
       <div className="flex min-h-0 flex-1">
+        {/* Activity bar — VS Code-style icon rail */}
+        <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-panel)] py-1">
+          <div className="flex w-full flex-col items-center gap-1">
+            <RailButton
+              active={!explorerCollapsed}
+              title="Toggle file explorer (Ctrl+Shift+E)"
+              onClick={() => setExplorerCollapsed((v) => !v)}
+            >
+              <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
+                <path d="M1.5 7h13" opacity="0.5" />
+              </svg>
+            </RailButton>
+            <RailButton active={gitOpen} title="Git tools" onClick={() => setGitOpen((v) => !v)}>
+              <IoGitCommit size={15} />
+            </RailButton>
+          </div>
+          <div className="w-full">
+            <RailButton active={terminalOpen} title="Terminal (Ctrl+`)" onClick={() => setTerminalOpen((v) => !v)}>
+              <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" />
+                <path d="M4.5 6l2 1.7-2 1.7M8 9.8h3.5" />
+              </svg>
+            </RailButton>
+          </div>
+        </nav>
         {workspaceRoot && !explorerCollapsed && (
           <FileExplorer
             root={workspaceRoot}
             activePath={activeEditorPath}
             refreshKey={explorerRefreshKey}
-            onOpenFile={(p) => void openFileInEditor(p)}
-            onCollapse={() => setExplorerCollapsed(true)}
+            onOpenFile={openFileInEditor}
+            onCollapse={collapseExplorer}
           />
-        )}
-        {workspaceRoot && explorerCollapsed && (
-          <div className="flex w-7 shrink-0 flex-col items-center border-r border-white/[0.07] bg-[var(--bg-panel)] py-2">
-            <button
-              type="button"
-              onClick={() => setExplorerCollapsed(false)}
-              title="Show explorer"
-              className="flex h-6 w-6 items-center justify-center rounded text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
-            >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 4l3.5 4L5 12M9.5 4L13 8l-3.5 4" />
-              </svg>
-            </button>
-          </div>
         )}
 
         <CodeEditor
@@ -310,8 +417,10 @@ export default function IdeWindowApp() {
         {gitOpen && workspaceRoot && (
           <GitPanel
             root={workspaceRoot}
-            onClose={() => setGitOpen(false)}
-            onOpenFile={(p) => void openFileInEditor(p)}
+            onClose={closeGit}
+            onOpenFile={(p: string) =>
+              void openFileInEditor(`${workspaceRoot.replace(/[\/]+$/, "")}/${p}`)
+            }
           />
         )}
       </div>

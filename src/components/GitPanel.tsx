@@ -3,7 +3,7 @@
  * All git access shells out to the system `git` CLI via the existing
  * `run_command` Tauri command — no extra backend needed.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { logToBus } from "./logBus";
 import {
@@ -228,7 +228,7 @@ function ChangeRow({
  * The panel component. Keeps a live view of the repo: branch + sync state,
  * staged vs unstaged changes, commit box and an output console.
  */
-export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
+function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
   const [branch, setBranch] = useState<BranchInfo>({ name: null, ahead: 0, behind: 0 });
   const [changes, setChanges] = useState<Change[]>([]);
   const [notRepo, setNotRepo] = useState(false);
@@ -670,9 +670,11 @@ export default function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
 
         </>
       )}
-    </aside>
+        </aside>
   );
 }
+
+export default memo(GitPanel, (prev, next) => prev.root === next.root && prev.onClose === next.onClose && prev.onOpenFile === next.onOpenFile);
 
 
 

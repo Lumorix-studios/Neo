@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
 import { langOf, highlightCode, commentToken } from "./highlight";
 import { FileIcon } from "./FileIcon";
@@ -97,6 +105,50 @@ function offsetToLineCol(text: string, offset: number): { line: number; col: num
   return { line: lines.length - 1, col: lines[lines.length - 1].length };
 }
 
+interface LineNumberGutterProps {
+  lineCount: number;
+  width: number;
+  fontSize: number;
+  lineHeight: number;
+  padTop: number;
+  innerRef: RefObject<HTMLDivElement | null>;
+}
+
+/**
+ * Line-number gutter. Memoized so typing never re-reconciles one div per line
+ * of the file (this was the main lag source on large files); the highlighted
+ * active row is toggled imperatively by the parent instead.
+ */
+const LineNumberGutter = memo(function LineNumberGutter({
+  lineCount,
+  width,
+  fontSize,
+  lineHeight,
+  padTop,
+  innerRef,
+}: LineNumberGutterProps) {
+  return (
+    <div
+      className="relative shrink-0 select-none overflow-hidden bg-[var(--bg-panel)] text-right font-mono hairline-r"
+      style={{ width, fontSize }}
+      aria-hidden
+    >
+      <div ref={innerRef} style={{ transform: "translateY(0px)", paddingTop: padTop }}>
+        {Array.from({ length: lineCount }, (_, i) => (
+          <div
+            key={i}
+            data-ln={i + 1}
+            className="text-zinc-700"
+            style={{ height: lineHeight, lineHeight: `${lineHeight}px`, paddingRight: 12 }}
+          >
+            {i + 1}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
 export default function CodeEditor({
   tabs,
   activePath,
@@ -130,34 +182,48 @@ export default function CodeEditor({
   const active = tabs.find((t) => t.path === activePath) ?? null;
   const preRef = useRef<HTMLPreElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
+  // Scroll bookkeeping via refs + direct DOM writes: driving these through
+  // React state re-rendered the entire editor (gutter + highlight layer) on
+  // every scroll tick and keystroke, which felt laggy on large files.
+  const scrollTopRef = useRef(0);
+  const gutterInnerRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const activeBandRef = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState({ line: 1, col: 1, sel: 0 });
 
   const activeContent = active?.content ?? "";
   const activeLang = active ? langOf(active.path) : "text";
-  // Memoize: without this, every keystroke AND every scroll-tick re-ran the
-  // tokenizer over the whole file (scrollTop is state → re-render → re-highlight).
+  // Tokenize off the critical typing path: useDeferredValue lets the textarea
+  // (and its caret) update immediately while re-highlighting large files
+  // catches up in a low-priority render instead of blocking the keystroke.
+  const deferredContent = useDeferredValue(activeContent);
   const highlighted = useMemo(
-    () => highlightCode(activeContent, activeLang),
-    [activeContent, activeLang]
+    () => highlightCode(deferredContent, activeLang),
+    [deferredContent, activeLang]
   );
   const lineCount = useMemo(() => activeContent.split("\n").length, [activeContent]);
   const gutterDigits = Math.max(2, String(lineCount).length);
 
-  // Reset scroll + cursor bookkeeping whenever the user switches tabs.
+  // Reset scroll + cursor bookkeeping whenever the user switches tabs. Every
+  // visual layer (textarea, highlight <pre>, gutter, overlay) is re-synced —
+  // otherwise a previously scrolled layer stays offset and the syntax appears
+  // shifted relative to the caret.
   useEffect(() => {
-    void Promise.resolve().then(() => {
-      setScrollTop(0);
-      setCursor({ line: 1, col: 1, sel: 0 });
+    setFindOpen(false);
+    setGoToOpen(false);
+    setCtxMenu(null);
+    setCursor({ line: 1, col: 1, sel: 0 });
+    scrollTopRef.current = 0;
+    const raf = requestAnimationFrame(() => {
       const el = taRef.current;
       if (el) {
         el.scrollTop = 0;
         el.scrollLeft = 0;
       }
+      applyScrollTransforms();
     });
-    setFindOpen(false);
-    setGoToOpen(false);
-    setCtxMenu(null);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath]);
 
   // Jump to a requested file+line (problems panel / git panel clicks).
@@ -167,9 +233,11 @@ export default function CodeEditor({
     if (!el) return;
     const target = Math.max(0, (reveal.line - 4) * LINE_HEIGHT);
     el.scrollTop = target;
-    setScrollTop(target);
+    scrollTopRef.current = el.scrollTop;
+    applyScrollTransforms();
     setCursor({ line: reveal.line, col: 1, sel: 0 });
     el.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal, activePath]);
 
   const syncCursor = () => {
@@ -183,6 +251,38 @@ export default function CodeEditor({
       sel: el.selectionEnd - el.selectionStart,
     });
   };
+
+  /** Align every visual layer with the textarea's scroll position using
+   *  direct DOM writes — no React re-render per scroll tick. */
+  const applyScrollTransforms = () => {
+    const st = scrollTopRef.current;
+    const el = taRef.current;
+    if (preRef.current) {
+      preRef.current.scrollTop = st;
+      preRef.current.scrollLeft = el?.scrollLeft ?? 0;
+    }
+    if (gutterInnerRef.current) {
+      gutterInnerRef.current.style.transform = `translateY(${-st}px)`;
+    }
+    if (overlayRef.current) {
+      overlayRef.current.style.transform = `translateY(${-st}px)`;
+    }
+  };
+
+  // Keep the active-line band and the highlighted gutter row on the cursor's
+  // line (imperative updates — the memoized gutter never re-renders here).
+  useEffect(() => {
+    if (activeBandRef.current) {
+      activeBandRef.current.style.top = `${PAD_TOP + (cursor.line - 1) * LINE_HEIGHT}px`;
+    }
+    const g = gutterInnerRef.current;
+    if (g) {
+      const prev = g.querySelector<HTMLElement>(".gutter-active");
+      if (prev) prev.classList.remove("gutter-active", "font-medium", "text-zinc-400");
+      const cur = g.querySelector<HTMLElement>(`[data-ln="${cursor.line}"]`);
+      if (cur) cur.classList.add("gutter-active", "font-medium", "text-zinc-400");
+    }
+  }, [cursor.line, LINE_HEIGHT, lineCount, activePath]);
 
   
   const replaceRange = (text: string, from: number, to: number) => {
@@ -363,11 +463,8 @@ export default function CodeEditor({
 
   const handleScroll = (e: ReactUIEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget;
-    setScrollTop(el.scrollTop);
-    if (preRef.current) {
-      preRef.current.scrollTop = el.scrollTop;
-      preRef.current.scrollLeft = el.scrollLeft;
-    }
+    scrollTopRef.current = el.scrollTop;
+    applyScrollTransforms();
   };
 
   // Find & replace: match offsets for the current query.
@@ -407,11 +504,8 @@ export default function CodeEditor({
     const { line } = offsetToLineCol(activeContent, m.start);
     const top = Math.max(0, (line - 2) * LINE_HEIGHT);
     el.scrollTop = top;
-    setScrollTop(top);
-    if (preRef.current) {
-      preRef.current.scrollTop = top;
-      preRef.current.scrollLeft = el.scrollLeft;
-    }
+    scrollTopRef.current = el.scrollTop;
+    applyScrollTransforms();
     syncCursor();
   };
 
@@ -481,8 +575,8 @@ export default function CodeEditor({
     el.focus();
     el.setSelectionRange(pos, pos);
     el.scrollTop = Math.max(0, (target - 3) * LINE_HEIGHT);
-    setScrollTop(el.scrollTop);
-    if (preRef.current) preRef.current.scrollTop = el.scrollTop;
+    scrollTopRef.current = el.scrollTop;
+    applyScrollTransforms();
     setCursor({ line: target, col: 1, sel: 0 });
   };
 
@@ -544,8 +638,8 @@ export default function CodeEditor({
       el.selectionStart = pos;
       el.selectionEnd = pos;
       el.scrollTop = Math.max(0, (newLine - 2) * LINE_HEIGHT);
-      setScrollTop(el.scrollTop);
-      if (preRef.current) preRef.current.scrollTop = el.scrollTop;
+      scrollTopRef.current = el.scrollTop;
+      applyScrollTransforms();
       syncCursor();
     });
   };
@@ -701,61 +795,52 @@ export default function CodeEditor({
           <div className="flex min-h-0 flex-1">
             {/* Line-number gutter */}
             {SHOW_LINE_NUMBERS && (
-            <div
-              className="relative shrink-0 select-none overflow-hidden bg-[var(--bg-panel)] text-right font-mono hairline-r"
-              style={{ width: gutterDigits * FONT_SIZE * 0.62 + 28, fontSize: FONT_SIZE }}
-              aria-hidden
-            >
-              <div style={{ transform: `translateY(${-scrollTop}px)`, paddingTop: PAD_TOP }}>
-                {Array.from({ length: lineCount }, (_, i) => (
-                  <div
-                    key={i}
-                    style={{ height: LINE_HEIGHT, lineHeight: `${LINE_HEIGHT}px`, paddingRight: 12 }}
-                    className={
-                      i + 1 === cursor.line
-                        ? "font-medium text-zinc-400"
-                        : "text-zinc-700"
-                    }
-                  >
-                    {i + 1}
-                  </div>
-                ))}
-              </div>
-            </div>
+              <LineNumberGutter
+                lineCount={lineCount}
+                width={gutterDigits * FONT_SIZE * 0.62 + 28}
+                fontSize={FONT_SIZE}
+                lineHeight={LINE_HEIGHT}
+                padTop={PAD_TOP}
+                innerRef={gutterInnerRef}
+              />
             )}
 
             {/* Code area: highlight layer under a transparent textarea */}
             <div className="relative min-w-0 flex-1 overflow-hidden font-mono" style={{ fontSize: FONT_SIZE }}>
-              {/* Active-line highlight */}
+              {/* Active-line band + find-match marks share one scroll-translated
+                  layer so they can never desync from the caret. */}
               <div
+                ref={overlayRef}
                 aria-hidden
-                className="pointer-events-none absolute inset-x-0 bg-white/[0.035]"
-                style={{
-                  top: PAD_TOP + (cursor.line - 1) * LINE_HEIGHT - scrollTop,
-                  height: LINE_HEIGHT,
-                }}
-              />
+                className="pointer-events-none absolute inset-0"
+                style={{ transform: "translateY(0px)", willChange: "transform" }}
+              >
+                <div
+                  ref={activeBandRef}
+                  className="absolute inset-x-0 bg-white/[0.035]"
+                  style={{ top: PAD_TOP, height: LINE_HEIGHT }}
+                />
+                {findMarks.map((mk, i) => (
+                  <span
+                    key={mk.key}
+                    className={`absolute rounded-[2px] ${i === matchIndex ? "bg-(--accent)/40" : "bg-(--accent)/20"}`}
+                    style={{ top: mk.top, left: mk.left, width: mk.width, height: LINE_HEIGHT }}
+                  />
+                ))}
+              </div>
               <pre
                 ref={preRef}
                 aria-hidden
                 className={`pointer-events-none absolute inset-0 m-0 overflow-hidden pb-20 pl-4 pr-10 text-zinc-200 ${
                   WORD_WRAP ? "whitespace-pre-wrap break-words" : "whitespace-pre"
                 }`}
-                style={{ paddingTop: PAD_TOP, lineHeight: `${LINE_HEIGHT}px` }}
+                style={{
+                  paddingTop: PAD_TOP,
+                  lineHeight: `${LINE_HEIGHT}px`,
+                  tabSize: TAB_SIZE,
+                }}
                 dangerouslySetInnerHTML={{ __html: highlighted }}
               />
-              {/* Find-match highlight marks */}
-              {findMarks.length > 0 && (
-                <div aria-hidden className="pointer-events-none absolute inset-0" style={{ transform: `translateY(${-scrollTop}px)` }}>
-                  {findMarks.map((mk, i) => (
-                    <span
-                      key={mk.key}
-                      className={`absolute rounded-[2px] ${i === matchIndex ? "bg-(--accent)/40" : "bg-(--accent)/20"}`}
-                      style={{ top: mk.top, left: mk.left, width: mk.width, height: LINE_HEIGHT }}
-                    />
-                  ))}
-                </div>
-              )}
               <textarea
                 ref={taRef}
                 value={active.content}

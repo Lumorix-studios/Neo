@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FsEntry } from "../agentic";
 import { FileIcon } from "./FileIcon";
@@ -73,7 +73,7 @@ function FolderIcon({ open }: { open: boolean }) {
  * Component
  * ======================================================================== */
 
-export default function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse }: FileExplorerProps) {
+function FileExplorer({ root, activePath, refreshKey, onOpenFile,  onCollapse }: FileExplorerProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({});
   const [query, setQuery] = useState("");
   // Inline "new file / new folder" entry input.
@@ -592,6 +592,15 @@ export default function FileExplorer({ root, activePath, refreshKey, onOpenFile,
           </div>
         </>
       )}
-    </aside>
+        </aside>
   );
 }
+
+export default memo(
+  FileExplorer,
+  (prev, next) =>
+    prev.root === next.root &&
+    prev.activePath === next.activePath &&
+    prev.refreshKey === next.refreshKey &&
+    prev.onCollapse === next.onCollapse
+);
