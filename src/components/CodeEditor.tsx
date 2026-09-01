@@ -60,6 +60,8 @@ export interface CodeEditorProps {
   prefs?: Partial<EditorPrefs>;
   /** Empty-state content: actions and recents. */
   emptyState?: EmptyStateInfo;
+  /** Report caret position for the status bar (1-based line/col). */
+  onCursorChange?: (pos: { line: number; col: number }) => void;
 }
 
 /** Top padding shared by the gutter, highlight layer and textarea. */
@@ -114,11 +116,7 @@ interface LineNumberGutterProps {
   innerRef: RefObject<HTMLDivElement | null>;
 }
 
-/**
- * Line-number gutter. Memoized so typing never re-reconciles one div per line
- * of the file (this was the main lag source on large files); the highlighted
- * active row is toggled imperatively by the parent instead.
- */
+
 const LineNumberGutter = memo(function LineNumberGutter({
   lineCount,
   width,
@@ -129,7 +127,7 @@ const LineNumberGutter = memo(function LineNumberGutter({
 }: LineNumberGutterProps) {
   return (
     <div
-      className="relative shrink-0 select-none overflow-hidden bg-[var(--bg-panel)] text-right font-mono hairline-r"
+      className="relative shrink-0 select-none overflow-hidden bg-[var(--bg-editor)] text-right font-mono hairline-r"
       style={{ width, fontSize }}
       aria-hidden
     >
@@ -159,6 +157,7 @@ export default function CodeEditor({
   reveal,
   prefs,
   emptyState,
+  onCursorChange,
 }: CodeEditorProps) {
   // Metrics shared by the gutter, highlight layer and textarea so they stay
   // pixel-aligned. Derived per-render from the Settings-driven prefs.
@@ -193,6 +192,12 @@ export default function CodeEditor({
 
   const activeContent = active?.content ?? "";
   const activeLang = active ? langOf(active.path) : "text";
+
+  // Report the caret to the parent (status bar) whenever it moves.
+  useEffect(() => {
+    onCursorChange?.({ line: cursor.line + 1, col: cursor.col + 1 });
+  }, [cursor.line, cursor.col, onCursorChange]);
+
   // Tokenize off the critical typing path: useDeferredValue lets the textarea
   // (and its caret) update immediately while re-highlighting large files
   // catches up in a low-priority render instead of blocking the keystroke.
@@ -645,12 +650,12 @@ export default function CodeEditor({
   };
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-panel)]">
-      {/* ── Tab strip */}
-      <div className="flex h-9 shrink-0 items-end border-b border-white/[0.07] bg-[var(--bg-elevated)] px-1 pt-1">
-        <div className="flex h-full min-w-0 flex-1 items-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-editor)]">
+      {/* ── Tab strip (VS Code Dark Modern: flat tabs on chrome) */}
+      <div className="flex h-[35px] shrink-0 items-stretch border-b border-white/[0.07] bg-[var(--bg-chrome)]">
+        <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.length === 0 && (
-            <div className="flex h-full items-center px-3 text-[11.5px] text-zinc-600">
+            <div className="flex items-center px-3 text-[11.5px] text-zinc-600">
               No files open
             </div>
           )}
@@ -662,18 +667,19 @@ export default function CodeEditor({
                 onAuxClick={(ev) => {
                   if (ev.button === 1) onClose(t.path);
                 }}
-                className={`group relative mr-0.5 flex h-[calc(100%-2px)] shrink-0 items-center rounded-t-[8px] transition-colors ${
+                className={`group relative flex shrink-0 items-stretch border-r border-white/[0.05] transition-colors ${
                   selected
-                    ? "bg-[var(--bg-panel)] text-zinc-100"
-                    : "bg-transparent text-[#8b8b8b] hover:bg-white/[0.05] hover:text-zinc-300"
+                    ? "bg-[var(--bg-editor)] text-[#e8e8e8]"
+                    : "bg-transparent text-[#8b8b8b] hover:bg-white/[0.04] hover:text-[#c9c9c9]"
                 }`}
               >
+                {selected && (
+                  <span className="absolute inset-x-0 top-0 h-[1px] bg-[#0078d4]" />
+                )}
                 <button
                   type="button"
                   onClick={() => onSelect(t.path)}
-                  className={`flex max-w-[190px] items-center gap-2 py-0 pl-3 pr-1 text-[12px] ${
-                    t.dirty && !selected ? "italic" : ""
-                  }`}
+                  className="flex max-w-[190px] items-center gap-2 py-0 pl-3 pr-1 text-[12px]"
                   title={t.path}
                 >
                   <FileIcon name={t.path} />

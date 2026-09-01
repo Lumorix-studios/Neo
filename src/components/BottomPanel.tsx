@@ -159,7 +159,7 @@ export default function BottomPanel({
   return (
     <section
       aria-label="Panel"
-      className="flex shrink-0 flex-col overflow-hidden border-t border-white/[0.07] bg-[var(--bg-panel)] transition-[height] duration-200 ease-out"
+      className="flex shrink-0 flex-col overflow-hidden border-t border-white/[0.07] bg-[var(--bg-chrome)] transition-[height] duration-200 ease-out"
       style={{ height: open ? height : 0 }}
       aria-hidden={!open}
     >
@@ -172,7 +172,7 @@ export default function BottomPanel({
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
-        className="group flex h-1.5 shrink-0 cursor-row-resize touch-none select-none items-center justify-center bg-[var(--bg-panel)]"
+        className="group flex h-1.5 shrink-0 cursor-row-resize touch-none select-none items-center justify-center bg-[var(--bg-chrome)]"
       >
         <span className="h-0.5 w-10 rounded-full bg-white/10 transition-colors group-hover:bg-white/30" />
       </div>
@@ -187,10 +187,10 @@ export default function BottomPanel({
               key={t.id}
               type="button"
               onClick={() => onTab(t.id)}
-              className={`relative flex items-center gap-1.5 px-3 text-[11px] font-medium uppercase tracking-wide transition ${
+              className={`relative flex items-center gap-1.5 px-3 text-[11px] uppercase tracking-wide transition ${
                 tab === t.id
                   ? "text-[#ececec]"
-                  : "text-[#6b6b6b] hover:bg-white/[0.03] hover:text-[#a3a3a3]"
+                  : "text-[#8a8a93] hover:bg-white/[0.03] hover:text-[#c9c9c9]"
               }`}
             >
               {t.icon}
