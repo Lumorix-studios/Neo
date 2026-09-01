@@ -25,22 +25,22 @@ const components: Components = {
     }
 
     return (
-      <div className="group relative my-4 overflow-hidden rounded-lg border border-white/[0.08] bg-[#111111]">
-        <div className="flex items-center justify-between border-b border-white/[0.07] bg-[var(--bg-elevated)] px-3 py-1.5">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[#6b6b6b]">
+      <div className="group relative my-3 overflow-hidden rounded-md border border-white/[0.06] bg-[#111111]">
+        <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-1">
+          <span className="font-mono text-[10px] text-[#5a5a5a]">
             {match ? match[1] : "code"}
           </span>
           <button
             onClick={() => {
               void navigator.clipboard.writeText(codeText);
             }}
-            className="rounded px-2 py-0.5 text-[10px] text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+            className="text-[10px] text-[#5a5a5a] transition hover:text-[#d4d4d4]"
           >
             Copy
           </button>
         </div>
-        <pre className="scrollbar-thin overflow-x-auto p-3.5">
-          <code className={`hljs font-mono text-[12.5px] leading-6 ${className || ""}`} {...props}>
+        <pre className="scrollbar-thin overflow-x-auto p-3">
+          <code className={`hljs font-mono text-[12px] leading-[1.55] ${className || ""}`} {...props}>
             {children}
           </code>
         </pre>
@@ -60,52 +60,52 @@ const components: Components = {
     );
   },
   h1: ({ children }) => (
-    <h1 className="mb-3 mt-6 border-b border-white/[0.07] pb-2 text-xl font-semibold text-[#ececec]">
+    <h1 className="mb-2 mt-5 text-[15px] font-semibold text-[#ececec]">
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 className="mb-2.5 mt-6 text-lg font-semibold text-[#ececec]">{children}</h2>
+    <h2 className="mb-1.5 mt-4 text-[14px] font-semibold text-[#ececec]">{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="mb-2 mt-5 text-base font-semibold text-[#ececec]">{children}</h3>
+    <h3 className="mb-1.5 mt-3.5 text-[13.5px] font-semibold text-[#ececec]">{children}</h3>
   ),
   h4: ({ children }) => (
-    <h4 className="mb-2 mt-4 text-sm font-semibold text-[#ececec]">{children}</h4>
+    <h4 className="mb-1.5 mt-3 text-[13px] font-semibold text-[#ececec]">{children}</h4>
   ),
   p: ({ children }) => (
-    <p className="my-2 leading-7 text-[#cfcfcf] first:mt-0 last:mb-0">{children}</p>
+    <p className="my-1.5 leading-6 text-[#cfcfcf] first:mt-0 last:mb-0">{children}</p>
   ),
   ul: ({ children }) => (
-    <ul className="my-2 list-disc space-y-1 pl-6 text-[#cfcfcf] marker:text-[#555555]">{children}</ul>
+    <ul className="my-1.5 list-disc space-y-0.5 pl-5 text-[#cfcfcf] marker:text-[#555555]">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="my-2 list-decimal space-y-1 pl-6 text-[#cfcfcf] marker:text-[#555555]">{children}</ol>
+    <ol className="my-1.5 list-decimal space-y-0.5 pl-5 text-[#cfcfcf] marker:text-[#555555]">{children}</ol>
   ),
-  li: ({ children }) => <li className="leading-7">{children}</li>,
-  hr: () => <hr className="my-6 border-white/[0.08]" />,
+  li: ({ children }) => <li className="leading-6">{children}</li>,
+  hr: () => <hr className="my-4 border-white/[0.08]" />,
   blockquote: ({ children }) => (
-    <blockquote className="my-3 border-l-2 border-[#4a4a4a] pl-4 text-[#a3a3a3] italic">
+    <blockquote className="my-2.5 border-l border-[#3f3f3f] pl-3 text-[#a3a3a3]">
       {children}
     </blockquote>
   ),
   table: ({ children }) => (
-    <div className="my-4 overflow-x-auto">
-      <table className="min-w-full border-collapse text-sm">{children}</table>
+    <div className="my-3 overflow-x-auto">
+      <table className="min-w-full border-collapse text-[13px]">{children}</table>
     </div>
   ),
   thead: ({ children }) => (
-    <thead className="border-b border-white/[0.1] bg-white/[0.03]">{children}</thead>
+    <thead className="border-b border-white/[0.1]">{children}</thead>
   ),
   th: ({ children }) => (
-    <th className="border border-white/[0.08] px-3 py-2 text-left font-medium text-[#d4d4d4]">
+    <th className="border-b border-white/[0.08] px-2.5 py-1.5 text-left font-medium text-[#d4d4d4]">
       {children}
     </th>
   ),
   td: ({ children }) => (
-    <td className="border border-white/[0.08] px-3 py-2 text-[#cfcfcf]">{children}</td>
+    <td className="border-b border-white/[0.06] px-2.5 py-1.5 text-[#cfcfcf]">{children}</td>
   ),
-  tr: ({ children }) => <tr className="even:bg-white/[0.02]">{children}</tr>,
+  tr: ({ children }) => <tr>{children}</tr>,
   strong: ({ children }) => <strong className="font-semibold text-[#ececec]">{children}</strong>,
   em: ({ children }) => <em className="text-[#ececec]">{children}</em>,
 };

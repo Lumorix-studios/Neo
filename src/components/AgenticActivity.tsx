@@ -10,14 +10,14 @@ interface AgenticActivityProps {
   onDeny: (id: string) => void;
 }
 
-/** Tiny status dot — no emoji, Cursor-style. */
+/** Tiny status dot — muted, minimal (no boxes, no badges). */
 const STATUS_DOT: Record<AgenticActivityType["status"], string> = {
-  pending: "bg-amber-400",
-  running: "bg-blue-400 animate-pulse",
-  approved: "bg-zinc-500",
-  denied: "bg-red-400",
-  done: "bg-emerald-400",
-  error: "bg-red-400",
+  pending: "bg-amber-400/80",
+  running: "bg-blue-400/70 animate-pulse",
+  approved: "bg-zinc-600",
+  denied: "bg-red-400/70",
+  done: "bg-emerald-500/60",
+  error: "bg-red-400/70",
 };
 
 function shortPath(p: string): string {
@@ -135,7 +135,7 @@ export default function AgenticActivity({
     <div className="relative z-20 mx-auto w-full max-w-3xl px-5 pt-2">
       <div className="space-y-1.5">
         {pending && (
-          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900 shadow-lg shadow-black/40">
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/80 shadow-md shadow-black/20">
             <div className="flex items-center justify-between gap-3 px-3 py-2">
               <div className="flex min-w-0 items-center gap-2">
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT.pending}`} />
@@ -151,14 +151,14 @@ export default function AgenticActivity({
               <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   onClick={() => onDeny(pending.id)}
-                  className="rounded-md px-2.5 py-1 text-[11px] font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                  className="rounded px-2.5 py-1 text-[11px] text-zinc-500 transition hover:text-zinc-200"
                   title="Reject (Esc)"
                 >
                   Reject
                 </button>
                 <button
                   onClick={() => onApprove(pending.id)}
-                  className="rounded-md bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-900 transition hover:bg-white"
+                  className="rounded bg-zinc-100 px-2.5 py-1 text-[11px] font-medium text-zinc-900 transition hover:bg-white"
                   title="Accept (Enter)"
                 >
                   Accept
@@ -177,12 +177,12 @@ export default function AgenticActivity({
           return (
             <div
               key={item.id}
-              className="group rounded-lg border border-zinc-800/80 bg-zinc-900/60"
+              className="group rounded-md transition-colors hover:bg-white/[0.03]"
             >
               <button
                 onClick={() => hasDetail && toggleRow(item.id)}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
-                  hasDetail ? "cursor-pointer hover:bg-zinc-800/40" : "cursor-default"
+                className={`flex w-full items-center gap-2 px-3 py-1 text-left ${
+                  hasDetail ? "cursor-pointer" : "cursor-default"
                 }`}
               >
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[item.status]}`} />
