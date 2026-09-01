@@ -410,7 +410,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
   const hasRemote = remotes.length > 0;
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-panel)]">
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-chrome)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a3a3a3]">

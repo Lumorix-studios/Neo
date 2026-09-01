@@ -21,6 +21,8 @@ interface FileExplorerProps {
   onOpenFile: (path: string) => void;
   /** Hide the whole explorer panel (VS Code-style sidebar collapse). */
   onCollapse?: () => void;
+  /** Sidebar width in px (drag-to-resize, owned by the parent window). */
+  width?: number;
 }
 
 interface NodeState {
@@ -73,7 +75,7 @@ function FolderIcon({ open }: { open: boolean }) {
  * Component
  * ======================================================================== */
 
-function FileExplorer({ root, activePath, refreshKey, onOpenFile,  onCollapse }: FileExplorerProps) {
+function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, width }: FileExplorerProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({});
   const [query, setQuery] = useState("");
   // Inline "new file / new folder" entry input.
@@ -367,10 +369,19 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile,  onCollapse }:
   const itemCount = countVisible(root);
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-panel)]">
+    <aside
+      className="flex h-full shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-chrome)]"
+      style={{ width: width ?? 240 }}
+    >
       {/* -- Header ------------------------------------------------------- */}
       <div className="shrink-0 border-b border-white/[0.07]">
-        <div className="flex items-center justify-between pl-4 pr-2 pb-0 pt-2">
+        {/* VS Code shows the view name above the workspace section. */}
+        <div className="flex h-[22px] items-center pl-4 pr-2 pt-1">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-[#bbbbbb]">
+            Explorer
+          </span>
+        </div>
+        <div className="flex items-center justify-between pb-1 pl-4 pr-2">
           <span
             className="min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.08em] text-[#cccccc]"
             title={root}
@@ -602,5 +613,6 @@ export default memo(
     prev.root === next.root &&
     prev.activePath === next.activePath &&
     prev.refreshKey === next.refreshKey &&
-    prev.onCollapse === next.onCollapse
+    prev.onCollapse === next.onCollapse &&
+    prev.width === next.width
 );
