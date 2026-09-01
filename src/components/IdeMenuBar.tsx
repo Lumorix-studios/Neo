@@ -78,13 +78,6 @@ const CheckGlyph = (
   </svg>
 );
 
-const GearGlyph = (
-  <svg {...iconProps}>
-    <circle cx="8" cy="8" r="2.1" />
-    <path d="M8 1.6l.7 1.7a4.9 4.9 0 011.7.7l1.8-.6 1.2 2-1.1 1.5a4.9 4.9 0 010 1.9l1.1 1.5-1.2 2-1.8-.6a4.9 4.9 0 01-1.7.7L8 14.4l-.7-1.7a4.9 4.9 0 01-1.7-.7l-1.8.6-1.2-2 1.1-1.5a4.9 4.9 0 010-1.9L2.6 5.7l1.2-2 1.8.6a4.9 4.9 0 011.7-.7z" />
-  </svg>
-);
-
 const SaveGlyph = (
   <svg {...iconProps}>
     <path d="M3.5 3h7.4l2.1 2.1v7.4a.5.5 0 01-.5.5H3.5a.5.5 0 01-.5-.5v-9a.5.5 0 01.5-.5z" />
@@ -111,7 +104,6 @@ export default function IdeMenuBar({
   onCloseAllTabs,
   onToggleTerminal,
   onClosePanel,
-  onOpenSettings,
   canSave,
   onSaveFile,
   gitOpen,

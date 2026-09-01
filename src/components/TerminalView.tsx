@@ -45,13 +45,18 @@ export default function TerminalView({ id, active, prefs }: TerminalViewProps) {
       fontFamily:
         "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace",
       fontSize: prefs?.fontSize ?? 12.5,
+      lineHeight: 1.2,
       scrollback: prefs?.scrollback ?? 1000,
+      // NOTE: xterm's theme is resolved outside CSS — CSS variables like
+      // var(--bg-panel) silently fail and fall back to black, which reads as
+      // a harsh black rectangle against the #131313 panel. Use literal hex.
       theme: {
-        background: "var(--bg-panel)",
+        background: "#181818",
         foreground: "#d4d4d4",
-        cursor: "#ececec",
+        cursor: "#cccccc",
+        cursorAccent: "#181818",
         selectionBackground: "rgba(76, 141, 255, 0.28)",
-        black: "var(--bg-panel)",
+        black: "#181818",
         brightBlack: "#6b6b6b",
       },
     });
@@ -146,7 +151,7 @@ export default function TerminalView({ id, active, prefs }: TerminalViewProps) {
   return (
     <div
       ref={containerRef}
-      className="h-full w-full px-2 py-1.5"
+      className="h-full w-full px-3 py-2"
       style={{ display: active ? "block" : "none" }}
     />
   );

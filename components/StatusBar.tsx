@@ -1,8 +1,6 @@
 interface Props {
   historySidebarOpen: boolean;
   onToggleHistorySidebar: () => void;
-  terminalOpen?: boolean;
-  onToggleTerminal?: () => void;
   /** Open workspace folder name shown next to the brand. */
   workspaceName?: string | null;
   /**
@@ -48,8 +46,6 @@ function ToggleButton({
 export default function StatusBar({
   historySidebarOpen,
   onToggleHistorySidebar,
-  terminalOpen,
-  onToggleTerminal,
   workspaceName,
   editorStats,
 }: Props) {
@@ -88,21 +84,12 @@ export default function StatusBar({
             )}
           </div>
         )}
-        {onToggleTerminal && (
-          <ToggleButton
-            active={terminalOpen}
-            onClick={onToggleTerminal}
-            title="Toggle Terminal (Ctrl+`)"
-          >
-            Terminal
-          </ToggleButton>
-        )}
         <ToggleButton
           active={historySidebarOpen}
           onClick={onToggleHistorySidebar}
           title="Toggle Chat History (Ctrl+Shift+H)"
         >
-          History
+          Chat History
         </ToggleButton>
       </div>
     </div>

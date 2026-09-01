@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { IoGitCommit } from "react-icons/io5";
+import { IoGitBranch, IoGitCommit } from "react-icons/io5";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
 import CodeEditor, {
@@ -56,6 +56,32 @@ const loadRecents = (): string[] => {
   }
 };
 
+/* Language-mode label for the status bar (VS Code shows the active language). */
+const LANG_LABELS: Array<[RegExp, string]> = [
+  [/\.(ts|tsx)$/i, "TypeScript"],
+  [/\.(js|jsx|mjs|cjs)$/i, "JavaScript"],
+  [/\.json$/i, "JSON"],
+  [/\.css$/i, "CSS"],
+  [/\.(html?|htm)$/i, "HTML"],
+  [/\.(md|markdown)$/i, "Markdown"],
+  [/\.rs$/i, "Rust"],
+  [/\.py$/i, "Python"],
+  [/\.go$/i, "Go"],
+  [/\.java$/i, "Java"],
+  [/\.(c|h)$/i, "C"],
+  [/\.(cpp|hpp|cc)$/i, "C++"],
+  [/\.(cs)$/i, "C#"],
+  [/\.(yml|yaml)$/i, "YAML"],
+  [/\.toml$/i, "TOML"],
+  [/\.sh(\.bats)?$/i, "Shell Script"],
+  [/\.sql$/i, "SQL"],
+];
+
+function langLabel(path: string): string {
+  for (const [re, label] of LANG_LABELS) if (re.test(path)) return label;
+  return "Plain Text";
+}
+
 export default function IdeWindowApp() {
   const appWindow = getCurrentWindow();
 
@@ -76,6 +102,77 @@ export default function IdeWindowApp() {
   // --- bottom panel (terminal etc.) ----------------------------------------
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
+
+  // --- status bar state (git branch + caret position) ------------------------
+  const [gitBranch, setGitBranch] = useState<string | null>(null);
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+
+  // Poll the git branch for the status bar. Uses the same `run_command`
+  // shell-out as the GitPanel — no dedicated backend command needed.
+  useEffect(() => {
+    if (!workspaceRoot) {
+      setGitBranch(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchBranch = async () => {
+      try {
+        const res = await invoke<Record<string, unknown>>("run_command", {
+          command: "git status --porcelain=v1 -b",
+          cwd: workspaceRoot,
+          timeout_secs: 10,
+        });
+        if (cancelled) return;
+        const first = (String(res.stdout ?? "").split(/\r?\n/)[0] ?? "").trim();
+        if (!first.startsWith("##")) {
+          setGitBranch(null); // not a git repository
+          return;
+        }
+        const fresh = /^##\s+no commits yet on\s+(.+)$/i.exec(first);
+        const name =
+          fresh?.[1] ?? /^##\s+(.+?)(?=\.\.\.|\s+\[|$)/.exec(first)?.[1] ?? null;
+        setGitBranch(name && !name.includes("(") ? name.trim() : null);
+      } catch {
+        if (!cancelled) setGitBranch(null);
+      }
+    };
+    void fetchBranch();
+    const id = window.setInterval(fetchBranch, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [workspaceRoot, explorerRefreshKey]);
+
+  // --- explorer width (drag-to-resize, persisted) ---------------------------
+  const EXPLORER_KEY = "neo.ide.explorerWidth";
+  const [explorerWidth, setExplorerWidth] = useState(() => {
+    const stored = Number(localStorage.getItem(EXPLORER_KEY));
+    return Number.isFinite(stored) && stored >= 170 && stored <= 480 ? stored : 240;
+  });
+  const explorerDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const onExplorerResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    explorerDragRef.current = { startX: e.clientX, startWidth: explorerWidth };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onExplorerResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = explorerDragRef.current;
+    if (!drag) return;
+    setExplorerWidth(Math.min(480, Math.max(170, drag.startWidth + (e.clientX - drag.startX))));
+  };
+  const onExplorerResizeEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    explorerDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+  };
+  useEffect(() => {
+    localStorage.setItem(EXPLORER_KEY, String(explorerWidth));
+  }, [explorerWidth]);
 
   const pushRecent = useCallback((path: string) => {
     setRecentFiles((prev) => {
@@ -284,11 +381,11 @@ export default function IdeWindowApp() {
   }, [workspaceRoot]);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-base)] text-[#d4d4d4]">
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-editor)] text-[#d4d4d4]">
       {/* ── Title bar: menus + workspace + window controls ─────────────── */}
       <header
         data-tauri-drag-region
-        className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-panel)] px-2"
+        className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-chrome)] px-2"
       >
         <IdeMenuBar
           hasWorkspace={!!workspaceRoot}
@@ -308,10 +405,17 @@ export default function IdeWindowApp() {
         <div data-tauri-drag-region className="flex items-center gap-1.5">
           {workspaceRoot && (
             <span
-              className="max-w-[240px] truncate rounded bg-white/[0.05] px-1.5 py-0.5 text-[10.5px] text-zinc-500"
+              data-tauri-drag-region
+              className="max-w-[340px] truncate text-[11.5px] text-[#8a8a93]"
               title={workspaceRoot}
             >
-              {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
+              {[
+                activeEditorPath ? (activeEditorPath.split(/[\\/]/).pop() ?? null) : null,
+                workspaceRoot.split(/[\\/]/).filter(Boolean).pop() ?? null,
+                "Neo",
+              ]
+                .filter(Boolean)
+                .join(" — ")}
             </span>
           )}
           {error && (
@@ -324,43 +428,13 @@ export default function IdeWindowApp() {
               {error} ✕
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => void appWindow.minimize()}
-            aria-label="Minimize"
-            className="flex h-6 w-7 items-center justify-center rounded text-[#8a8a8a] transition hover:bg-white/[0.08] hover:text-[#e8e8e8]"
-          >
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M3.5 8h9" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => void appWindow.toggleMaximize()}
-            aria-label="Maximize"
-            className="flex h-6 w-7 items-center justify-center rounded text-[#8a8a8a] transition hover:bg-white/[0.08] hover:text-[#e8e8e8]"
-          >
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
-              <rect x="3.5" y="3.5" width="9" height="9" rx="1" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => void appWindow.close()}
-            aria-label="Close IDE window"
-            className="flex h-6 w-7 items-center justify-center rounded text-[#8a8a8a] transition hover:bg-[#e5534b] hover:text-white"
-          >
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
         </div>
       </header>
 
       {/* ── Body: activity rail | explorer | editor | git ──────────────── */}
       <div className="flex min-h-0 flex-1">
         {/* Activity bar — VS Code-style icon rail */}
-        <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-panel)] py-1">
+        <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-chrome)] py-1">
           <div className="flex w-full flex-col items-center gap-1">
             <RailButton
               active={!explorerCollapsed}
@@ -387,13 +461,27 @@ export default function IdeWindowApp() {
           </div>
         </nav>
         {workspaceRoot && !explorerCollapsed && (
-          <FileExplorer
-            root={workspaceRoot}
-            activePath={activeEditorPath}
-            refreshKey={explorerRefreshKey}
-            onOpenFile={openFileInEditor}
-            onCollapse={collapseExplorer}
-          />
+          <>
+            <FileExplorer
+              root={workspaceRoot}
+              activePath={activeEditorPath}
+              refreshKey={explorerRefreshKey}
+              onOpenFile={openFileInEditor}
+              onCollapse={collapseExplorer}
+              width={explorerWidth}
+            />
+            {/* Drag handle — VS Code-style sash between sidebar and editor. */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="Drag to resize explorer"
+              onPointerDown={onExplorerResizeStart}
+              onPointerMove={onExplorerResizeMove}
+              onPointerUp={onExplorerResizeEnd}
+              onPointerCancel={onExplorerResizeEnd}
+              className="w-[3px] shrink-0 cursor-col-resize touch-none select-none bg-transparent transition-colors hover:bg-(--accent)/25 active:bg-(--accent)/40"
+            />
+          </>
         )}
 
         <CodeEditor
@@ -406,6 +494,7 @@ export default function IdeWindowApp() {
           onCloseAll={closeAllEditorTabs}
           reveal={revealLine}
           prefs={DEFAULT_EDITOR_PREFS}
+          onCursorChange={setCursorPos}
           emptyState={{
             hasWorkspace: !!workspaceRoot,
             onOpenFolder: () => void pickWorkspaceFolder(),
@@ -436,6 +525,34 @@ export default function IdeWindowApp() {
         root={workspaceRoot}
         onOpenFile={(p, line) => void openFileInEditor(p, line)}
       />
+
+      {/* ── Status bar (VS Code-style) ──────────────────────────────────── */}
+      <footer className="flex h-[22px] shrink-0 items-center justify-between border-t border-white/[0.07] bg-[var(--bg-chrome)] px-2 text-[11px] text-[#a8a8a8]">
+        <div className="flex min-w-0 items-center gap-3">
+          {workspaceRoot && (
+            <span className="min-w-0 truncate" title={workspaceRoot}>
+              {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
+            </span>
+          )}
+          {gitBranch && (
+            <span className="flex shrink-0 items-center gap-1" title="Current branch">
+              <IoGitBranch size={12} />
+              {gitBranch}
+            </span>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {activeEditorPath && (
+            <span className="tabular-nums">
+              Ln {cursorPos.line}, Col {cursorPos.col}
+            </span>
+          )}
+          <span>Spaces: {DEFAULT_EDITOR_PREFS.tabSize}</span>
+          <span>UTF-8</span>
+          <span>LF</span>
+          {activeEditorPath && <span>{langLabel(activeEditorPath)}</span>}
+        </div>
+      </footer>
     </div>
   );
 

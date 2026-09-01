@@ -28,6 +28,9 @@ import {
 } from "../extensions";
 import LocalModels from "../../components/LocalModels";
 
+import { IoCode } from "react-icons/io5";
+
+
 export type SectionId =
   | "appearance"
   | "ai"
@@ -311,21 +314,10 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> =
     id: "ai",
     label: "AI",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M8 1.75l1.55 3.6 3.6 1.55-3.6 1.55L8 12.05 6.45 8.45 2.85 6.9l3.6-1.55L8 1.75z" />
-        <path d="M12.75 10.5l.65 1.5 1.5.65-1.5.65-.65 1.5-.65-1.5-1.5-.65 1.5-.65.65-1.5z" />
-      </svg>
+      <IoCode size={13} />
     ),
   },
-  {
-    id: "editor",
-    label: "Editor",
-    icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M5.5 3.5L1.5 8l4 4.5M10.5 3.5l4 4.5-4 4.5" />
-      </svg>
-    ),
-  },
+
   {
     id: "files",
     label: "Files & Save",
@@ -712,9 +704,6 @@ return (
                         </option>
                       ))}
                     </select>
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
-                      <path d="M4 6l4 4 4-4" />
-                    </svg>
                   </div>
                 </Row>
                 {(aiSpec.note || aiNeedsKey) && (

@@ -1,10 +1,14 @@
 @import "tailwindcss";
 :root {
-  --bg-base: #0e0e0e;        /* app background */
-  --bg-panel: #131313;       /* sidebars, panels */
-  --bg-elevated: #1a1a1a;    /* cards, inputs, popovers */
-  --bg-active: #232323;      /* selected rows, pressed states */
+  --bg-base: #1f1f1e;        /* app background (VS Code Dark Modern editor tone) */
+  --bg-panel: #181818;       /* sidebars, panels, chrome */
+  --bg-elevated: #202020;    /* cards, inputs, popovers */
+  --bg-active: #2a2a2a;      /* selected rows, pressed states */
   --bg-input: #313131;       /* text inputs, VS Code Dark Modern style */
+
+  /* IDE window (VS Code Dark Modern) */
+  --bg-chrome: #181818;      /* title bar, activity bar, sidebar, panel, status bar */
+  --bg-editor: #1f1f1e;      /* editor surface + active tab */
 
   --border: rgba(255, 255, 255, 0.07);
   --border-strong: rgba(255, 255, 255, 0.13);
@@ -108,6 +112,29 @@ select:focus-visible {
 }
 
 /* ---------------------------------------------------------------------------
+ * xterm.js — integrate the terminal into the panel (VS Code style):
+ * transparent viewport over the panel background, thin quiet scrollbar.
+ * ------------------------------------------------------------------------- */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 120, 0.28) transparent;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.25);
+  border-radius: 999px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.45);
+}
+
+/* ---------------------------------------------------------------------------
  * Motion primitives — quiet, fast, professional.
  * ------------------------------------------------------------------------- */
 @keyframes msg-in {
@@ -119,6 +146,27 @@ select:focus-visible {
     opacity: 1;
     transform: none;
   }
+}
+
+/* Soft single-dot "agent is working" pulse — replaces playful bounce dots. */
+@keyframes thinking-pulse {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+}
+
+.thinking-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #8a8a8a;
+  animation: thinking-pulse 1.1s ease-in-out infinite;
 }
 
 .msg-in {
