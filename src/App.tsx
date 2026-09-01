@@ -66,6 +66,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
+import { IoAlert, IoCopyOutline, IoThumbsDownOutline, IoThumbsUpOutline} from "react-icons/io5";
 
 type JsonDict = Record<string, unknown>;
 
@@ -148,8 +149,6 @@ function deriveTitle(messages: Message[]): string {
   return text.length > 50 ? text.slice(0, 50) + "…" : text;
 }
 
-/** localStorage key shared between the chat window and the IDE window so both
- *  operate on the same workspace folder (the IDE window persists it). */
 const SHARED_WS_KEY = "neo.ide.workspaceRoot";
 
 /** Icon button for the VS Code-style activity bar rail. */
@@ -212,7 +211,8 @@ function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
 }
 
-/** Small ghost icon-button used in the assistant message action row. */
+/** Small ghost icon-button used in the assistant message action row.
+ *  Shows a transient checkmark after a click instead of any dialog. */
 function MessageAction({
   label,
   onClick,
@@ -222,15 +222,30 @@ function MessageAction({
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const [done, setDone] = useState(false);
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        onClick();
+        setDone(true);
+        window.setTimeout(() => setDone(false), 1200);
+      }}
       title={label}
       aria-label={label}
-      className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition-colors hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+      className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+        done
+          ? "text-emerald-400/80"
+          : "text-[#6b6b6b] hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+      }`}
     >
-      {children}
+      {done ? (
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 8.5l3.2 3L13 4.5" />
+        </svg>
+      ) : (
+        children
+      )}
     </button>
   );
 }
@@ -265,8 +280,9 @@ export default function App() {
     id: string;
     resolve: (approved: boolean) => void;
   } | null>(null);
-  // Cap the number of tool rounds to avoid runaway loops.
-  const MAX_TOOL_ROUNDS = 12;
+  // Cap the number of tool-executing rounds to avoid runaway loops. Rounds
+  // where the model only streams prose (no tool calls) don't count.
+  const MAX_TOOL_ROUNDS = 30;
 
   // The active streaming request's abort controller, so we can cancel it.
   const streamControllerRef = useRef<AbortController | null>(null);
@@ -1177,6 +1193,10 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
       let nudgeCount = 0;
       let failStreak = 0;
       let lastFailSig = "";
+      // Per-turn cache of read-only tool results. Weak models frequently
+      // re-emit identical read calls in later rounds; serving them from cache
+      // skips redundant filesystem work. Cleared whenever a mutating tool runs.
+      const readOnlyCache = new Map<string, { ok: boolean; output: string }>();
 
       while (!abortCtrl.signal.aborted) {
         const round = await streamRound(agentHistory, agentic, abortCtrl.signal, promptSuffix);
@@ -1213,13 +1233,11 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         }
 
         // If the model produced no tool calls, we're done.
-        if (calls.length === 0 || toolRounds >= MAX_TOOL_ROUNDS) {
+        if (calls.length === 0) {
           // Recovery: weak local models often DESCRIBE tool calls in prose
           // ("Here is the JSON function call that would...") without actually
           // emitting one. Nudge them to emit a real block instead of ending.
           if (
-            calls.length === 0 &&
-            toolRounds < MAX_TOOL_ROUNDS &&
             nudgeCount < 2 &&
             /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|\bcall\s+(read|list|get|search)_)/i.test(raw)
           ) {
@@ -1231,11 +1249,18 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             });
             continue;
           }
-          if (toolRounds >= MAX_TOOL_ROUNDS && calls.length > 0) {
-            setError("Reached the maximum number of agentic tool turns. Stopping.");
-          }
           break;
         }
+
+        // Plain prose rounds (thinking out loud between calls) don't consume
+        // the budget — only rounds that actually execute tools do.
+        if (toolRounds >= MAX_TOOL_ROUNDS) {
+          setError(
+            "Neo used all of its tool turns for this request and paused. Send a follow-up message to continue where it left off."
+          );
+          break;
+        }
+        toolRounds++;
 
         const activityIds = new Map<string, string>();
         const planned: AgenticActivityType[] = calls.map(({ call }) => {
@@ -1280,12 +1305,15 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         );
         if (readOnly.length > 0) {
           readOnly.forEach(({ key }) => {
+            if (readOnlyCache.has(key)) return; // cached — no spinner needed
             const id = activityIds.get(key);
             if (id) patchActivity(id, { status: "running" });
           });
           await Promise.all(
             readOnly.map(async ({ call, key }) => {
-              const result = await runToolCall(call);
+              const cached = readOnlyCache.get(key);
+              const result = cached ?? (await runToolCall(call));
+              if (!cached) readOnlyCache.set(key, result);
               resultsByKey.set(key, result);
               ranTools++;
               const id = activityIds.get(key);
@@ -1345,6 +1373,8 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           }
 
           patchActivity(id, { status: "running" });
+          // A mutation invalidates every cached read-only result.
+          readOnlyCache.clear();
           const result = await runToolCall(call);
           resultsByKey.set(key, result);
           if (result.ok) ranTools++;
@@ -1645,46 +1675,31 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             >
               {messages.length === 0 ? (
                 <div className="relative flex min-h-full items-center justify-center px-6">
-                  {/* Soft radial glow behind the hero */}
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-[36rem] max-w-full -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.06]"
-                    style={{ background: "radial-gradient(closest-side, var(--accent), transparent)" }}
-                  />
                   <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
-                    <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.09] bg-white/[0.03]">
-                      <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#ececec" strokeWidth="1.1" strokeLinejoin="round">
+                    <div className="mx-auto mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.04]">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#d4d4d4" strokeWidth="1.1" strokeLinejoin="round">
                         <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
                         <path d="M8 1v7m0 0l6-3.5M8 8L2 4.5" opacity="0.5" />
                       </svg>
                     </div>
-                    <h1 className="text-[28px] font-semibold tracking-tight text-[#ececec]">
+                    <h1 className="text-[20px] font-semibold tracking-[-0.01em] text-[#ececec]">
                       Welcome
-                  </h1>
-                  
-                    {/* <p className="mx-auto mt-3 max-w-md text-[13px] leading-6 text-[#6b6b6b]">
+                    </h1>
+                    <p className="mx-auto mt-3 max-w-md text-[13px] leading-6 text-[#6b6b6b]">
                       Ask questions, explore ideas, or work through code — Neo can read and edit files in your workspace.
-                    </p> */}
+                    </p>
 
                     {/* Action cards */}
-                    {/*<div className="mx-auto mt-8 grid max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-2">*/}
-                      {/* <button
+                    <div className="mx-auto mt-8 grid max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-2">
+                      <button
                         type="button"
                         onClick={() => {
-                          setIdeOpen(true);
-                          void pickWorkspaceFolder();
+                          void launchIdeWindow();
                         }}
-                        className="group flex items-start gap-3 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3.5 py-3 transition hover:border-white/[0.18] hover:bg-white/[0.05]"
+                        className="group rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.04]"
                       >
-                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] text-zinc-400 transition group-hover:text-[#ececec]">
-                          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
-                            <path d="M1.75 13V3.75A.75.75 0 012.5 3h3l1.5 1.75h6a.75.75 0 01.75.75V13a.75.75 0 01-.75.75h-10.5A.75.75 0 011.75 13z" />
-                          </svg>
-                        </span>
-                        <span>
-                          <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
-                          <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">Browse and edit files in a real workspace</span>
-                        </span>
+                        <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
+                        <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">Browse and edit files in a real workspace</span>
                       </button>
                       {[
                         {
@@ -1707,23 +1722,17 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           key={card.label}
                           type="button"
                           onClick={() => setMessage(card.prompt)}
-                          className="group flex items-start gap-3 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3.5 py-3 transition hover:border-white/[0.18] hover:bg-white/[0.05]"
+                          className="group rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.04]"
                         >
-                          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] text-zinc-400 transition group-hover:text-[#ececec]">
-                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M8 6l-5 6 5 6M16 6l5 6-5 6" transform="translate(0 -1.4) scale(0.95)" />
-                            </svg>
-                          </span>
                           <span>
                             <span className="block text-[12.5px] font-medium text-[#d4d4d4]">{card.label}</span>
                             <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">{card.desc}</span>
                           </span>
                         </button>
-                      ))} */}
-                    </div>
-
-                    {/* Shortcut hints removed along with the inline editor UI. */}
+                      ))} 
+                    </div> 
                   </div>
+                </div>
               ) : (
                 <div className="mx-auto w-full max-w-3xl px-6 py-8">
                   <div className="space-y-7">
@@ -1731,27 +1740,26 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <div key={index} className="msg-in">
                         {msg.role === "user" ? (
                           <div className="flex justify-end">
-                            <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-(--accent)/25 bg-(--accent)/[0.08] px-3.5 py-2.5 text-[13px] leading-6 text-[#ececec]">
+                            <div className="max-w-[85%] whitespace-pre-wrap rounded-md border border-white/[0.06] bg-white/[0.04] px-3.5 py-2.5 text-[13px] leading-6 text-[#e4e4e4]">
                               {msg.content}
                             </div>
                           </div>
                         ) : isLoading &&
                           index === messages.length - 1 &&
                           msg.content.trim().length === 0 ? (
-                          <div className="flex items-center gap-1.5 py-2">
-                            <span className="h-1 w-1 animate-bounce rounded-full bg-[#6b6b6b] [animation-delay:0ms]" />
-                            <span className="h-1 w-1 animate-bounce rounded-full bg-[#6b6b6b] [animation-delay:150ms]" />
-                            <span className="h-1 w-1 animate-bounce rounded-full bg-[#6b6b6b] [animation-delay:300ms]" />
+                          <div className="flex items-center gap-2 py-2">
+                            <span className="thinking-dot" />
+                            <span className="text-[11px] text-[#6b6b6b]">Working…</span>
                           </div>
                         ) : (
                           <div className="group/msg min-w-0">
                             <div className="mb-1.5 flex items-center gap-1.5">
-                              <span className="flex h-4.5 w-4.5 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03]">
+                              <span className="flex h-4.5 w-4.5 items-center justify-center rounded-md bg-white/[0.04]">
                                 <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#ececec" strokeWidth="1.4" strokeLinejoin="round">
                                   <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
                                 </svg>
                               </span>
-                              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                              <span className="text-[10px] font-medium tracking-[0.06em] text-zinc-500">
                                 Neo
                               </span>
                             </div>
@@ -1764,28 +1772,20 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                             <div className="mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100">
                               <MessageAction
                                 label="Copy"
-                                onClick={() => void navigator.clipboard.writeText(msg.content)}
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(msg.content);
+                                }}
                               >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                                </svg>
+                                <IoCopyOutline size={13} />
                               </MessageAction>
                               <MessageAction label="Good response" onClick={() => sendFeedback("good")}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
-                                </svg>
+                                <IoThumbsUpOutline size={13} />
                               </MessageAction>
                               <MessageAction label="Bad response" onClick={() => sendFeedback("bad")}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" />
-                                </svg>
+                                <IoThumbsDownOutline size={13} />
                               </MessageAction>
                               <MessageAction label="Report an issue" onClick={() => sendFeedback("report")}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                  <circle cx="12" cy="12" r="10" />
-                                  <path d="M12 16v-4M12 8h.01" />
-                                </svg>
+                                <IoAlert size={13} />
                               </MessageAction>
                             </div>
                           </div>
@@ -1821,20 +1821,20 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
                     <span
                       title={`The agent will receive this file's contents automatically`}
-                      className="inline-flex items-center gap-1 rounded-full border border-(--accent)/30 bg-(--accent)/10 px-2 py-0.5 text-[10.5px] font-medium text-[#8ab4ff]"
+                      className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[11px] text-[#a3a3a3]"
                     >
-                      <span className="h-1 w-1 rounded-full bg-(--accent)" />
-                      Attached: {activeEditorPath.split(/[\\/]/).pop()}
+                      <span className="h-1 w-1 rounded-full bg-[#5a5a5a]" />
+                      {activeEditorPath.split(/[\\/]/).pop()}
                     </span>
                   </div>
                 ) : (
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
-                    <span className="text-[10.5px] text-[#6b6b6b]">
-                      No file attached — open one in the editor and it will be sent to the agent automatically
+                    <span className="text-[11px] text-[#6b6b6b]">
+                      No file attached — open one in the editor and it's sent to the agent automatically
                     </span>
                   </div>
                 )}
-                <div className="relative overflow-hidden rounded-xl border border-white/[0.09] bg-[var(--bg-elevated)] shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-200 focus-within:border-(--accent)/40 focus-within:shadow-[0_0_0_3px_var(--accent-soft),0_8px_32px_rgba(0,0,0,0.4)]">
+                <div className="relative rounded-lg border border-white/[0.08] bg-[var(--bg-panel)] transition-colors duration-150 focus-within:border-white/[0.16]">
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
@@ -1880,7 +1880,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <button
                         type="submit"
                         disabled={!message.trim() || isLoading}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-(--accent) text-white shadow-[0_1px_6px_var(--accent-soft)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555] disabled:shadow-none"
+                        className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8e8e8] text-[#141414] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
                         title="Send message"
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1890,8 +1890,9 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     )}
                   </div>
                 </div>
-                <div className="mt-1.5 text-center text-[10px] text-[#4a4a4a]">
-                  AI can make mistakes. Verify important information.
+                <div className="mt-1.5 flex items-center justify-between px-1 text-[10.5px] text-[#4a4a4a]">
+                  <span>Enter to send · Shift+Enter for a new line</span>
+                  <span>AI can make mistakes — verify important info.</span>
                 </div>
               </form>
             </div>
@@ -1923,8 +1924,6 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         <StatusBar
           historySidebarOpen={historySidebarOpen}
           onToggleHistorySidebar={() => setHistorySidebarOpen((v) => !v)}
-          terminalOpen={onOpenTerminal}
-          onToggleTerminal={() => setOpenTerminal((v) => !v)}
           workspaceName={workspaceRoot?.split(/[\\/]/).filter(Boolean).pop() ?? null}
           editorStats={
             statusExtensionsOn

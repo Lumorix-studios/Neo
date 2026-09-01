@@ -105,7 +105,7 @@ export default function TopMenu({
             <img
               src="/app-icon.png"
               alt="Neo"
-              className="h-5 w-5 rounded-md shadow-[0_0_12px_var(--accent-soft)]"
+              className="h-5 w-5 rounded-md"
             />
             <span
               aria-hidden
@@ -157,8 +157,6 @@ export default function TopMenu({
             </div>
           ))}
         </div>
-
-        {/* Cursor-style "IDE →" launcher: full editor in its own window */}
         {onOpenIdeWindow && (
           <button
             type="button"
@@ -173,8 +171,6 @@ export default function TopMenu({
           </button>
         )}
       </div>
-
-      {/* Center: command-center pill, VS Code title-bar style */}
       {onOpenCommandPalette && (
         <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-[35px] items-center justify-center lg:flex">
           <button
@@ -191,8 +187,6 @@ export default function TopMenu({
           </button>
         </div>
       )}
-
-      {/* Right: optional slot */}
       {right && <div className="flex items-center gap-2">{right}</div>}
     </nav>
   );
