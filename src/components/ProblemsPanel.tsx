@@ -1,8 +1,4 @@
-/**
- * Problems panel: runs a real TypeScript diagnostic scan (`tsc --noEmit`) over
- * the workspace and lists the findings grouped by file. Clicking a finding
- * jumps to that exact file + line in the editor.
- */
+
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IoAlertCircle, IoRefresh } from "react-icons/io5";

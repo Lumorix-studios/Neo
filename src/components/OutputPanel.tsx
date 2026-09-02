@@ -1,7 +1,4 @@
-/**
- * Output panel: live stream of everything the app's tooling logs — git
- * operations, problem scans, debug-console evaluations, port scans.
- */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IoBan } from "react-icons/io5";
 import {
