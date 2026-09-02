@@ -1,8 +1,4 @@
-/**
- * One xterm instance bound to a backend PTY session (id-based). The parent
- * BottomPanel owns terminal ids and keeps instances mounted (hidden) so their
- * scrollback survives tab switches.
- */
+
 import { useEffect, useRef } from "react";
 import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -17,11 +13,8 @@ export interface TerminalPrefs {
 }
 
 interface TerminalViewProps {
-  /** Backend PTY session id (from `terminal_create`). */
   id: number;
-  /** Whether this instance is the visible tab (drives fitting). */
   active: boolean;
-  /** User-configurable terminal preferences (from Settings → Terminal). */
   prefs?: TerminalPrefs;
 }
 
@@ -47,11 +40,8 @@ export default function TerminalView({ id, active, prefs }: TerminalViewProps) {
       fontSize: prefs?.fontSize ?? 12.5,
       lineHeight: 1.2,
       scrollback: prefs?.scrollback ?? 1000,
-      // NOTE: xterm's theme is resolved outside CSS — CSS variables like
-      // var(--bg-panel) silently fail and fall back to black, which reads as
-      // a harsh black rectangle against the #131313 panel. Use literal hex.
       theme: {
-        background: "#181818",
+        background: "#262626",
         foreground: "#d4d4d4",
         cursor: "#cccccc",
         cursorAccent: "#181818",
