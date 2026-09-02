@@ -1,7 +1,4 @@
-/**
- * Tiny publish/subscribe log bus feeding the Output panel. Any feature can
- * push timestamped lines to a named channel and the panel renders them live.
- */
+
 export type LogChannel =
   | "Git"
   | "Problems"
