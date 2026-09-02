@@ -1,19 +1,4 @@
-/**
- * Extension library (VS Code-style marketplace).
- *
- * Every bundled extension is REAL — installing one activates actual behavior
- * in the app:
- *  - Prettier registers a "Format Document" command + Format-on-Save (the real
- *    Prettier engine, lazily loaded from `extensionsRuntime`).
- *  - Markdown Preview Enhanced contributes a live "Preview" tab to the dock.
- *  - Word Count / TODO Inspector pin live stats to the status bar.
- *  - Theme extensions register palettes with the theme engine in uiSettings.
- *
- * Icons are authentic brand glyphs from Simple Icons (`react-icons/si`) with
- * their real brand colours — the same pipeline used by FileIcon. Theme
- * extensions render their palette as a swatch, like the VS Code marketplace.
- * Install state persists to localStorage (`neo.extensions.v1`).
- */
+
 import type { IconType } from "react-icons";
 import { SiMarkdown, SiPrettier } from "react-icons/si";
 import { IoList, IoStatsChart } from "react-icons/io5";

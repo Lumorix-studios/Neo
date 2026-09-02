@@ -291,14 +291,6 @@ export default function App() {
   const mountedRef = useRef(true);
   // Whether the user is scrolled near the bottom (auto-follow).
   const autoScrollRef = useRef(true);
-
-  // --- Workspace / agent-editor state ---------------------------------------
-  // The chat window renders NO file explorer, code editor, or git panel — all
-  // file browsing and editing lives in the dedicated IDE window. The state
-  // below only backs the agent tools (read_active_file, get_open_files,
-  // formatting) so the AI can inspect and modify files during a chat turn.
-  // Ref indirection so keyboard shortcuts registered below can launch the IDE
-  // window before launchIdeWindow itself is defined further down.
   const launchIdeWindowRef = useRef<() => void>(() => {});
   // Workspace root shared with the IDE window via a persisted localStorage key.
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(() =>
@@ -604,12 +596,6 @@ export default function App() {
     }
   };
 
-  /**
-   * Keep the workspace root in sync with the dedicated IDE window. The IDE
-   * window persists the folder it opens under a shared localStorage key; the
-   * chat re-reads it on focus / storage events so agent tools operate on the
-   * same workspace without the chat rendering any file UI itself.
-   */
   useEffect(() => {
     const syncRoot = () => {
       const root = localStorage.getItem(SHARED_WS_KEY);
@@ -627,12 +613,6 @@ export default function App() {
   /** Max simultaneously open editor tabs (LRU-evicted beyond this). */
   const MAX_OPEN_TABS = 10;
 
-  /**
-   * Open a file (agent tools, git panel, bottom-dock clicks). The chat renders
-   * no editor itself — the file is opened/revealed in the dedicated IDE window
-   * via a Tauri event, while the tab bookkeeping here keeps the agent tools
-   * (read_active_file, get_open_files, Format Document) working.
-   */
   const openFileInEditor = async (path: string, line?: number) => {
     setActiveEditorPath(path);
     try {
@@ -661,11 +641,7 @@ export default function App() {
     }
   };
 
-  /**
-   * Cursor-style "IDE →": open the full IDE in its own native window
-   * (explorer + editor + auto-save + git + terminal). Reuses the same bundle
-   * with ?window=ide so main.tsx mounts IdeWindowApp there.
-   */
+  
   const launchIdeWindow = async () => {
     try {
       const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
@@ -676,7 +652,7 @@ export default function App() {
       }
       const ideWin = new WebviewWindow("ide", {
         url: "index.html?window=ide",
-        title: "Neo IDE",
+        title: "IDE",
         width: 1280,
         height: 820,
         minWidth: 720,

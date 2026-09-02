@@ -1,31 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import { installedThemePresets } from "./extensions";
 export interface UiSettings {
-  /** Active theme preset id (see THEMES). */
+  
   themeId: string;
-  /** Optional hex color overriding the theme's base background. */
+  
   customBackground: string | null;
-  /** Accent color (hex) used for highlights, caret, selection. */
+
   accent: string;
-  /** Editor font size (px). */
   editorFontSize: number;
-  /** Editor line height (px per line). */
   editorLineHeight: number;
-  /** Spaces inserted per indentation level. */
   tabSize: number;
-  /** Soft-wrap long lines in the editor. */
   wordWrap: boolean;
-  /** Show the line-number gutter. */
   showLineNumbers: boolean;
-  /** Automatically save dirty editor tabs after a short delay. */
   autoSave: boolean;
-  /** Debounce (ms) before an auto-save fires. */
   autoSaveDelayMs: number;
-  /** Terminal font size (px). */
   terminalFontSize: number;
-  /** Terminal scrollback buffer (lines). */
   terminalScrollback: number;
-  /** Blink the terminal cursor. */
   terminalCursorBlink: boolean;
 }
 
@@ -154,7 +144,6 @@ function normalizeHex(hex: string): string {
   if (h.length === 3) return `#${h.split("").map((c) => c + c).join("")}`;
   return `#${h}`;
 }
-/** Resolve the concrete CSS variable map for a settings object. */
 export function resolveThemeVars(s: UiSettings): Record<string, string> {
   const extTheme = installedThemePresets().find((t) => t.id === s.themeId);
   const theme = extTheme ?? THEMES.find((t) => t.id === s.themeId) ?? THEMES[0];
@@ -170,7 +159,6 @@ export function resolveThemeVars(s: UiSettings): Record<string, string> {
   };
 }
 
-/** Push the resolved theme onto the document root as CSS custom properties. */
 export function applyUiSettings(s: UiSettings): void {
   const vars = resolveThemeVars(s);
   for (const [k, v] of Object.entries(vars)) {
@@ -206,7 +194,6 @@ export function getRecentFiles(): string[] {
   return readList(RECENT_FILES_KEY);
 }
 
-/** Add a file to recents; returns the updated list for state updates. */
 export function pushRecentFile(path: string): string[] {
   return pushInto(RECENT_FILES_KEY, path);
 }
@@ -219,7 +206,6 @@ export function getRecentFolders(): string[] {
   return readList(RECENT_FOLDERS_KEY);
 }
 
-/** Add a folder to recents; returns the updated list for state updates. */
 export function pushRecentFolder(path: string): string[] {
   return pushInto(RECENT_FOLDERS_KEY, path);
 }
