@@ -1,8 +1,4 @@
-/**
- * Ports panel: lists TCP ports currently listening on this machine
- * (Get-NetTCPConnection on Windows, lsof elsewhere) and lets you open any of
- * them in the browser — handy for dev servers started in the terminal.
- */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
