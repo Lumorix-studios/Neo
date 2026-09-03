@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { IoSettingsOutline } from "react-icons/io5";
 
 interface IdeMenuBarProps {
   hasWorkspace: boolean;
@@ -94,7 +95,9 @@ const GitGlyph = (
     <path d="M5 5.9v4.2M6.9 4.7l2.9 2.1M6.9 11.3l2.9-2.1" />
   </svg>
 );
-
+const Settings = (
+  <IoSettingsOutline size={14} className="shrink-0" />
+)
 
 export default function IdeMenuBar({
   hasWorkspace,
@@ -103,6 +106,7 @@ export default function IdeMenuBar({
   onOpenFiles,
   onCloseAllTabs,
   onToggleTerminal,
+  onOpenSettings,
   onClosePanel,
   canSave,
   onSaveFile,
@@ -129,9 +133,9 @@ export default function IdeMenuBar({
     };
   }, [openMenu]);
 
-  const run = (fn: () => void) => {
+  const run = (fn?: () => void) => {
     setOpenMenu(null);
-    fn();
+    fn?.();
   };
 
   const fileItems: MenuItem[] = [
@@ -154,7 +158,10 @@ export default function IdeMenuBar({
   ];
 
   const viewItems: MenuItem[] = [
+  {label : "Settings", icon : Settings, onSelect: () => run(onOpenSettings) },
+
     {
+
       label: terminalOpen ? "Close Terminal" : "Open Terminal",
       icon: TerminalGlyph,
       checked: terminalOpen,

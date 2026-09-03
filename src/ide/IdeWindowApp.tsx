@@ -5,10 +5,18 @@ import { listen } from "@tauri-apps/api/event";
 import { IoGitBranch, IoGitCommit } from "react-icons/io5";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
-import CodeEditor, {
-  DEFAULT_EDITOR_PREFS,
-  type EditorTab,
-} from "../components/CodeEditor";
+import SettingsPanel, { type SectionId } from "../components/SettingsPanel";
+import type { AISettings } from "../types";
+import { DEFAULT_SETTINGS } from "../types";
+import { loadSettings, saveSettings } from "../store";
+import {
+  applyUiSettings,
+  DEFAULT_UI_SETTINGS,
+  loadUiSettings,
+  saveUiSettings,
+  type UiSettings,
+} from "../uiSettings";
+import CodeEditor, { type EditorTab } from "../components/CodeEditor";
 import BottomPanel, { type PanelTab } from "../components/BottomPanel";
 import GitPanel from "../components/GitPanel";
 
@@ -98,6 +106,63 @@ export default function IdeWindowApp() {
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
   const [revealLine, setRevealLine] = useState<{ path: string; line: number } | null>(null);
   const [recentFiles, setRecentFiles] = useState<string[]>(loadRecents);
+  const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI_SETTINGS);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SectionId | null>(null);
+  const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
+  // Bumped when extensions are installed/toggled so contributed UI re-evaluates.
+  const [, setExtensionTick] = useState(0);
+  const uiSettingsLoadedRef = useRef(false);
+
+  // Load persisted UI + AI settings once on mount (shared with the chat window).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [ui, ai] = await Promise.all([loadUiSettings(), loadSettings()]);
+      if (cancelled) return;
+      setUiSettings(ui);
+      setAiSettings(ai);
+      uiSettingsLoadedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Apply theme/accent CSS variables whenever UI settings change.
+  useEffect(() => {
+    applyUiSettings(uiSettings);
+  }, [uiSettings]);
+
+  // Persist UI settings (debounced, only after the initial load).
+  useEffect(() => {
+    if (!uiSettingsLoadedRef.current) return;
+    const t = setTimeout(() => void saveUiSettings(uiSettings), 250);
+    return () => clearTimeout(t);
+  }, [uiSettings]);
+
+  /** Merge a patch into UI settings (Settings panel writes here). */
+  const updateUiSettings = (patch: Partial<UiSettings>) => {
+    setUiSettings((prev) => ({ ...prev, ...patch }));
+  };
+
+  const handleAiChange = (next: AISettings) => {
+    setAiSettings(next);
+    void saveSettings(next);
+  };
+
+  const handleSelectLocalModel = (modelName: string) => {
+    // Switch to the Ollama provider and set the selected local model.
+    const next: AISettings = {
+      ...aiSettings,
+      provider: "ollama",
+      model: modelName,
+      baseUrl: "http://localhost:11434",
+      apiKey: "",
+    };
+    setAiSettings(next);
+    void saveSettings(next);
+  };
 
   // --- bottom panel (terminal etc.) ----------------------------------------
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -186,7 +251,7 @@ export default function IdeWindowApp() {
     });
   }, []);
 
-  // __PART_B__
+
 
   // Mirror of the open tabs for callbacks that must stay referentially stable
   // (Tauri event listeners, memoized child props, intervals).
@@ -371,18 +436,28 @@ export default function IdeWindowApp() {
       setError(`Failed to create ${name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
-
   const activeDirty =
     editorTabs.find((t) => t.path === activeEditorPath)?.dirty ?? false;
 
-  // Auto-open the terminal panel when a workspace is present.
+  // Auto-save: debounce-save every dirty editor tab after the configured delay.
   useEffect(() => {
-    if (workspaceRoot) setTerminalOpen(true);
+    if (!uiSettings.autoSave) return;
+    const dirty = editorTabs.filter((t) => t.dirty);
+    if (dirty.length === 0) return;
+    const id = window.setTimeout(() => {
+      for (const t of dirty) void saveEditorFile(t.path);
+    }, uiSettings.autoSaveDelayMs);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorTabs, uiSettings.autoSave, uiSettings.autoSaveDelayMs]);
+  useEffect(() => {
+    // Start with the terminal panel closed when a workspace loads.
+    if (workspaceRoot) setTerminalOpen(false);
   }, [workspaceRoot]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-editor)] text-[#d4d4d4]">
-      {/* ── Title bar: menus + workspace + window controls ─────────────── */}
+      {/*Title bar: menus + workspace + window controls*/}
       <header
         data-tauri-drag-region
         className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.02] bg-[var(--bg-chrome)] px-2"
@@ -390,6 +465,10 @@ export default function IdeWindowApp() {
         <IdeMenuBar
           hasWorkspace={!!workspaceRoot}
           terminalOpen={terminalOpen}
+          onOpenSettings={() => {
+            setSettingsSection(null);
+            setSettingsOpen(true);
+          }}
           gitOpen={gitOpen}
           canSave={activeDirty}
           onSaveFile={() => {
@@ -493,7 +572,13 @@ export default function IdeWindowApp() {
           onSave={(p) => void saveEditorFile(p)}
           onCloseAll={closeAllEditorTabs}
           reveal={revealLine}
-          prefs={DEFAULT_EDITOR_PREFS}
+          prefs={{
+            fontSize: uiSettings.editorFontSize,
+            lineHeight: uiSettings.editorLineHeight,
+            tabSize: uiSettings.tabSize,
+            wordWrap: uiSettings.wordWrap,
+            showLineNumbers: uiSettings.showLineNumbers,
+          }}
           onCursorChange={setCursorPos}
           emptyState={{
             hasWorkspace: !!workspaceRoot,
@@ -524,6 +609,23 @@ export default function IdeWindowApp() {
         onClose={() => setTerminalOpen(false)}
         root={workspaceRoot}
         onOpenFile={(p, line) => void openFileInEditor(p, line)}
+        terminalPrefs={{
+          fontSize: uiSettings.terminalFontSize,
+          scrollback: uiSettings.terminalScrollback,
+          cursorBlink: uiSettings.terminalCursorBlink,
+        }}
+      />
+
+      <SettingsPanel
+        open={settingsOpen}
+        settings={uiSettings}
+        onChange={updateUiSettings}
+        aiSettings={aiSettings}
+        onAiChange={handleAiChange}
+        onSelectLocalModel={handleSelectLocalModel}
+        initialSection={settingsSection}
+        onClose={() => setSettingsOpen(false)}
+        onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
       />
 
       {/* ── Status bar (VS Code-style) ──────────────────────────────────── */}
@@ -547,7 +649,7 @@ export default function IdeWindowApp() {
               Ln {cursorPos.line}, Col {cursorPos.col}
             </span>
           )}
-          <span>Spaces: {DEFAULT_EDITOR_PREFS.tabSize}</span>
+          <span>Spaces: {uiSettings.tabSize}</span>
           <span>UTF-8</span>
           <span>LF</span>
           {activeEditorPath && <span>{langLabel(activeEditorPath)}</span>}

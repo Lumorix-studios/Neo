@@ -599,6 +599,7 @@ fn find_ollama_binary() -> Result<String, String> {
             return Ok(cmd.to_string());
         }
     }
+    //hardest lang ive ever learned
 
     Err("Ollama is not installed. Please install Ollama from https://ollama.com to use local models.".to_string())
 }
