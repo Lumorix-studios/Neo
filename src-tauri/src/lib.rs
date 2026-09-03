@@ -11,6 +11,26 @@ use std::time::UNIX_EPOCH;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use tauri::{Emitter, Manager};
 
+/// Windows-only: CREATE_NO_WINDOW stops child processes from flashing or
+/// keeping open a visible OS console window.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Mark a child process as windowless on Windows (no-op on other platforms).
+/// Every background spawn (ollama probes, the ollama server, agent
+/// `run_command`) must go through this or a console window pops up over the
+/// app each time the command runs.
+fn suppress_window(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = cmd;
+    cmd
+}
+
 // Track the spawned Ollama server process so we can stop it later.
 struct ServerState(Mutex<Option<Child>>);
 
@@ -67,11 +87,15 @@ fn check_ollama_installed() -> bool {
         }
     }
 
-    // Also check if `ollama` is on PATH
-    Command::new("ollama")
+    // Also check if `ollama` is on PATH (windowless — this runs on startup
+    // and used to flash a console every time).
+    let mut probe = Command::new("ollama");
+    probe
         .arg("--version")
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    suppress_window(&mut probe);
+    probe
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -104,11 +128,12 @@ fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<bool, Str
     // Find the ollama binary
     let ollama_bin = find_ollama_binary()?;
 
-    // Spawn the server in the background
-    let child = Command::new(&ollama_bin)
-        .arg("serve")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+    // Spawn the server in the background (windowless — the server outlives
+    // the request and must never own a visible console).
+    let mut cmd = Command::new(&ollama_bin);
+    cmd.arg("serve").stdout(Stdio::null()).stderr(Stdio::null());
+    suppress_window(&mut cmd);
+    let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to start Ollama server: {e}"))?;
 
@@ -344,7 +369,7 @@ fn fs_list_dir(path: String) -> Result<Vec<FsEntry>, String> {
 }
 
 
-const SEARCH_RESULT_LIMIT: usize = 200;
+const SEARCH_RESULT_LIMIT: usize = 500;
 
 #[tauri::command]
 fn fs_search_files(path: String, pattern: String, content: Option<bool>) -> Result<Vec<String>, String> {
@@ -428,7 +453,7 @@ async fn run_command(
 ) -> Result<serde_json::Value, String> {
     use std::time::{Duration, Instant};
 
-    const CAP: usize = 32 * 1024;
+    const CAP: usize = 128 * 1024;
     /// Read a stream to a String, capping memory at `max` bytes and never
     /// failing on invalid UTF-8 (PowerShell emits the OEM codepage by default).
     fn drain_capped(mut h: impl Read, max: usize) -> String {
@@ -467,6 +492,9 @@ async fn run_command(
         cmd.current_dir(dir);
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Windowless — otherwise every agent tool call opens a PowerShell
+    // console over the app window.
+    suppress_window(&mut cmd);
 
     let mut child = cmd
         .spawn()
@@ -487,7 +515,7 @@ async fn run_command(
             .unwrap_or_default()
     });
 
-    let timeout = Duration::from_secs(timeout_secs.unwrap_or(60).clamp(1, 300));
+    let timeout = Duration::from_secs(timeout_secs.unwrap_or(120).clamp(1, 900));
     let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -539,8 +567,11 @@ fn fs_rename(path: String, new_path: String) -> Result<bool, String> {
 
 /// Get the path to the ollama binary.
 fn find_ollama_binary() -> Result<String, String> {
-    // Check PATH first
-    if let Ok(output) = Command::new("ollama").arg("--version").output() {
+    // Check PATH first (windowless probe)
+    let mut probe = Command::new("ollama");
+    probe.arg("--version");
+    suppress_window(&mut probe);
+    if let Ok(output) = probe.output() {
         if output.status.success() {
             return Ok("ollama".to_string());
         }
