@@ -385,7 +385,7 @@ export default function IdeWindowApp() {
       {/* ── Title bar: menus + workspace + window controls ─────────────── */}
       <header
         data-tauri-drag-region
-        className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-chrome)] px-2"
+        className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.02] bg-[var(--bg-chrome)] px-2"
       >
         <IdeMenuBar
           hasWorkspace={!!workspaceRoot}
@@ -406,7 +406,7 @@ export default function IdeWindowApp() {
           {workspaceRoot && (
             <span
               data-tauri-drag-region
-              className="max-w-[340px] truncate text-[11.5px] text-[#8a8a93]"
+              className="max-w-[350px] truncate text-[11.5px] text-[#8a8a93]"
               title={workspaceRoot}
             >
               {[
@@ -434,7 +434,7 @@ export default function IdeWindowApp() {
       {/* ── Body: activity rail | explorer | editor | git ──────────────── */}
       <div className="flex min-h-0 flex-1">
         {/* Activity bar — VS Code-style icon rail */}
-        <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-chrome)] py-1">
+        <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.02] bg-[var(--bg-chrome)] py-1">
           <div className="flex w-full flex-col items-center gap-1">
             <RailButton
               active={!explorerCollapsed}
@@ -516,7 +516,7 @@ export default function IdeWindowApp() {
         )}
       </div>
 
-      {/* ── Bottom dock: terminal / problems / output / ports ───────────── */}
+     
       <BottomPanel
         open={terminalOpen}
         tab={panelTab}
