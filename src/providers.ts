@@ -338,7 +338,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       model: s.model,
       system: s.systemPrompt,
       messages: toAnthropicMessages(history),
-      max_tokens: 4096,
+      max_tokens: 8192,
       temperature: s.temperature,
       stream: true,
       ...(opts?.enableTools ? { tools: ANTHROPIC_TOOLS } : {}),

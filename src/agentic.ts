@@ -460,7 +460,7 @@ export async function executeTool(
         const content = await invoke<string>("fs_read_file", { path: String(args.path ?? "") });
         // Smart truncation: keep the model oriented by reporting the file's
         // size and pointing at read_file_range instead of dumping everything.
-        const MAX_READ = 12000;
+        const MAX_READ = 60000;
         if (content.length <= MAX_READ) return { ok: true, output: content };
         const NL_CH = String.fromCharCode(10);
         const totalLines = content.split(NL_CH).length;
@@ -587,7 +587,7 @@ export async function executeTool(
         const timedOut = Boolean(res.timedOut);
         const exitCode = res.exitCode as number | null;
         // Cap streams — massive outputs blow up downstream diff/render paths.
-        const CAP = 6000;
+        const CAP = 24000;
         const cap = (t: string): string =>
           t.length > CAP ? `${t.slice(0, CAP)}\n...[truncated ${t.length - CAP} chars]` : t;
         const stdout = cap(String(res.stdout ?? "").trim());
