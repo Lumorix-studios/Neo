@@ -43,7 +43,7 @@ export default function TopMenu({
 
   const openDocs = async () => {
     try {
-      await openUrl("https://github.com/Lumorix-studios/Neo");
+      await openUrl("https://lumorix-studios.github.io/LumorixStudiosHq/Documentation");
     } catch (error) {
       reportError(error);
     }

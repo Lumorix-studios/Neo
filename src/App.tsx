@@ -1652,21 +1652,9 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               {messages.length === 0 ? (
                 <div className="relative flex min-h-full items-center justify-center px-6">
                   <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
-                    <div className="mx-auto mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.04]">
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#d4d4d4" strokeWidth="1.1" strokeLinejoin="round">
-                        <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
-                        <path d="M8 1v7m0 0l6-3.5M8 8L2 4.5" opacity="0.5" />
-                      </svg>
-                    </div>
-                    <h1 className="text-[20px] font-semibold tracking-[-0.01em] text-[#ececec]">
-                      Welcome
-                    </h1>
-                    <p className="mx-auto mt-3 max-w-md text-[13px] leading-6 text-[#6b6b6b]">
-                      Ask questions, explore ideas, or work through code — Neo can read and edit files in your workspace.
-                    </p>
 
                     {/* Action cards */}
-                    <div className="mx-auto mt-8 grid max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-2">
+                    <div className="mx-22 p-auto mt-8 grid max-w-lg grid-cols-1 gap-5 text-left sm:grid-cols-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -1681,17 +1669,17 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         {
                           label: "Summarize my project",
                           desc: "A quick overview of what's here",
-                          prompt: "Summarize my project",
+                          prompt: "Summarize my project in small details",
                         },
                         {
                           label: "Find and fix bugs",
                           desc: "Scan for issues and apply fixes",
-                          prompt: "Find and fix bugs",
+                          prompt: "Find and fix bugs and make sure they aren't repeated again",
                         },
                         {
                           label: "Write a new feature",
                           desc: "Describe it and Neo builds it",
-                          prompt: "Write a new feature",
+                          prompt: "Write a new feature in my code",
                         },
                       ].map((card) => (
                         <button
@@ -1730,13 +1718,9 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         ) : (
                           <div className="group/msg min-w-0">
                             <div className="mb-1.5 flex items-center gap-1.5">
-                              <span className="flex h-4.5 w-4.5 items-center justify-center rounded-md bg-white/[0.04]">
-                                <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#ececec" strokeWidth="1.4" strokeLinejoin="round">
-                                  <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
-                                </svg>
-                              </span>
+                              
                               <span className="text-[10px] font-medium tracking-[0.06em] text-zinc-500">
-                                Neo
+                                Assistant - 
                               </span>
                             </div>
                             <div className="text-[13.5px] leading-7 text-[#d4d4d4]">
