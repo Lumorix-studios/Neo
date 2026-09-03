@@ -111,10 +111,6 @@ select:focus-visible {
   color: var(--text-muted);
 }
 
-/* ---------------------------------------------------------------------------
- * xterm.js — integrate the terminal into the panel (VS Code style):
- * transparent viewport over the panel background, thin quiet scrollbar.
- * ------------------------------------------------------------------------- */
 .xterm .xterm-viewport {
   background-color: transparent !important;
   scrollbar-width: thin;

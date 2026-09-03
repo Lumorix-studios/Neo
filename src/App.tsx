@@ -79,7 +79,7 @@ interface StreamRoundResult {
   nativeCalls: ToolCall[];
 }
 
-const MAX_TOOL_OUTPUT = 8000;
+const MAX_TOOL_OUTPUT = 24000;
 
 function truncateToolOutput(output: string): string {
   if (output.length <= MAX_TOOL_OUTPUT) return output;
@@ -282,7 +282,7 @@ export default function App() {
   } | null>(null);
   // Cap the number of tool-executing rounds to avoid runaway loops. Rounds
   // where the model only streams prose (no tool calls) don't count.
-  const MAX_TOOL_ROUNDS = 30;
+  const MAX_TOOL_ROUNDS = 75;
 
   // The active streaming request's abort controller, so we can cancel it.
   const streamControllerRef = useRef<AbortController | null>(null);
