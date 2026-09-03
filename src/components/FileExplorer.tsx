@@ -71,9 +71,6 @@ function FolderIcon({ open }: { open: boolean }) {
   );
 }
 
-/* ===========================================================================
- * Component
- * ======================================================================== */
 
 function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, width }: FileExplorerProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({});
@@ -370,25 +367,22 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-chrome)]"
+      className="flex h-full shrink-0 flex-col border-white/[0.07] bg-[var(--bg-chrome)]"
       style={{ width: width ?? 240 }}
     >
       {/* -- Header ------------------------------------------------------- */}
-      <div className="shrink-0 border-b border-white/[0.07]">
+      <div className="shrink-0 border-b border-white/[0.02]">
         {/* VS Code shows the view name above the workspace section. */}
-        <div className="flex h-[22px] items-center pl-4 pr-2 pt-1">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-[#bbbbbb]">
-            Explorer
-          </span>
+        <div className="flex h-[5px] items-center pl-4 pr-2 pt-1">
         </div>
         <div className="flex items-center justify-between pb-1 pl-4 pr-2">
           <span
-            className="min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.08em] text-[#cccccc]"
+            className="min-w-0 truncate text-[8px] font-bold uppercase tracking-[0.08em] text-[#cccccc]"
             title={root}
           >
             {name}
           </span>
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0.2">
             <button
               type="button"
               onClick={onCollapse}
@@ -415,7 +409,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               {newMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNewMenu(false)} />
-                  <div className="absolute left-full top-0 z-50 ml-1 w-40 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl">
+                  <div className="absolute left-full top-0 z-50 ml-1 w-40 overflow-hidden rounded-lg border-white/[0.00] bg-[var(--bg-elevated)] py-1 shadow-xl">
                     <button
                       type="button"
                       onClick={() => {
@@ -425,7 +419,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                       }}
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
                     >
-                      <FileIcon name="file.ts" />
+                      <FileIcon name="" />
                       New File…
                     </button>
                     <button
@@ -502,10 +496,10 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
         </div>
       </div>
 
-      {/* -- Tree --------------------------------------------------------- */}
+      {/* -- Tree */}
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
         {createError && (
-          <p className="mx-0.5 mb-1.5 whitespace-pre-wrap rounded-md border border-[#e5534b]/30 bg-[#e5534b]/10 px-2 py-1 text-[10.5px] leading-4 text-[#e5534b]">
+          <p className="mx-0.5 mb-1.5 whitespace-pre-wrap rounded-md bg-[#e5534b]/10 px-2 py-1 text-[10.5px] leading-4 text-[#e5534b]">
             {createError}
           </p>
         )}
@@ -523,8 +517,8 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
         )}
       </div>
 
-      {/* -- Footer ------------------------------------------------------- */}
-      <div className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.07] px-3 text-[10px] text-[#555555]">
+      {/* -- Footer */}
+      <div className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.02] px-3 text-[10px] text-[#555555]">
         <span>{itemCount} item{itemCount === 1 ? "" : "s"}</span>
         {query && <span className="truncate">filtered</span>}
       </div>
