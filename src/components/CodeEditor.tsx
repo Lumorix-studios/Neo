@@ -901,15 +901,11 @@ export default function CodeEditor({
           </div>
         </>
       ) : (
-        /* ── Empty state — minimal */
+        /*Empty state */
         <div className="relative flex flex-1 items-center justify-center px-6">
           <div className="msg-in flex w-full max-w-[260px] flex-col items-center text-center">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] text-zinc-500">
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 3v5h5M9 13l2 2 4-4M16 3h4v4M7 4H4a1 1 0 00-1 1v15a1 1 0 001 1h16a1 1 0 001-1v-5" />
-              </svg>
-            </div>
-            <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No file open</p>
+           
+            <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No file open</p> 
             <p className="mt-1 text-[11px] leading-5 text-zinc-500">
               Open a file to start editing.
             </p>
@@ -917,7 +913,7 @@ export default function CodeEditor({
               <button
                 type="button"
                 onClick={() => emptyState?.onOpenFiles?.()}
-                className="rounded-md bg-(--accent) px-3 py-1.5 text-[11.5px] font-medium text-white transition hover:brightness-110"
+                className="rounded-md border border-white/[0.1] px-3 py-1.5 text-[11.5px] text-[#d4d4d4] transition hover:bg-white/[0.05]"
               >
                 Open File
               </button>

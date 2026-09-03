@@ -1,8 +1,4 @@
-/**
- * VS Code-style bottom dock: Terminal | Problems | Debug Console | Output |
- * Ports. Resizable by dragging its top edge; terminal instances persist while
- * the dock is open so scrollback survives tab switches.
- */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -118,9 +114,7 @@ export default function BottomPanel({
     });
   }, []);
 
-  // Lazily spawn the first shell when the terminal tab is shown and the
-  // panel is open. Once a spawn fails, we stop auto-retrying (the Retry
-  // button re-attempts manually) so the effect can never loop.
+ 
   useEffect(() => {
     if (!open || tab !== "terminal") return;
     if (termsRef.current.length > 0 || spawning || termError) return;
@@ -159,7 +153,7 @@ export default function BottomPanel({
   return (
     <section
       aria-label="Panel"
-      className="flex shrink-0 flex-col overflow-hidden border-t border-white/[0.07] bg-[var(--bg-chrome)] transition-[height] duration-200 ease-out"
+      className="flex shrink-0 flex-col overflow-hidden border-white/[0.00] bg-[var(--bg-chrome)] transition-[height] duration-200 ease-out"
       style={{ height: open ? height : 0 }}
       aria-hidden={!open}
     >
@@ -178,10 +172,9 @@ export default function BottomPanel({
       </div>
 
       {/* Tab strip + terminal instance controls */}
-      <div className="flex h-8 shrink-0 items-stretch border-b border-white/[0.05]">
-        <div className="flex min-w-0 items-stretch">
-          {/* The Preview tab is contributed at runtime by the Markdown Preview
-              Enhanced extension — it only exists while that extension is on. */}
+      <div className="flex h-8 shrink-0 items-stretch border-white/[0.00]">
+        <div className="flex min-w-0 items-stretch"> {/*Dialed the border color down to reduce blockyness i guess */}
+         
           {[...TABS, ...(preview ? [PREVIEW_TAB] : [])].map((t) => (
             <button
               key={t.id}
