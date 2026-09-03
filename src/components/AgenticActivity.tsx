@@ -90,6 +90,9 @@ export default function AgenticActivity({
 }: AgenticActivityProps) {
   const [closed, setClosed] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<string[]>([]);
+  // The whole feed lives in ONE collapsible group so it never covers the
+  // chat — collapsed by default, expandable on demand.
+  const [groupOpen, setGroupOpen] = useState(false);
 
   // Cursor-style keyboard shortcuts: Enter accepts, Esc rejects. The effect
   // only re-registers when the approval dialog opens/closes or the callbacks
@@ -117,19 +120,37 @@ export default function AgenticActivity({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
-  // Auto-expand rows that carry a diff so edits are visible immediately.
-  useEffect(() => {
-    setExpandedRows((prev) => {
-      const next = [...prev];
-      for (const item of items) {
-        if (item.diff && item.diff.length > 0 && !next.includes(item.id)) next.push(item.id);
-      }
-      return next;
-    });
-  }, [items]);
-
   const visible = items.filter((item) => !isClosed(item.id));
-  if (visible.length === 0 && !pending) return null;
+
+  // Header summary: totals, live status, and cumulative diff stats.
+  const total = visible.length;
+  const activeCount = visible.filter(
+    (i) => i.status === "running" || i.status === "pending"
+  ).length;
+  const failedCount = visible.filter(
+    (i) => i.status === "error" || i.status === "denied"
+  ).length;
+  const totals = visible.reduce(
+    (acc, item) => {
+      if (item.diff && item.diff.length > 0) {
+        const s = diffStats(item.diff);
+        acc.adds += s.adds;
+        acc.dels += s.dels;
+      }
+      return acc;
+    },
+    { adds: 0, dels: 0 }
+  );
+
+  const headerDot = pending
+    ? STATUS_DOT.pending
+    : activeCount > 0
+      ? STATUS_DOT.running
+      : failedCount > 0
+        ? STATUS_DOT.error
+        : STATUS_DOT.done;
+
+  if (total === 0 && !pending) return null;
 
   return (
     <div className="relative z-20 mx-auto w-full max-w-3xl px-5 pt-2">
@@ -171,7 +192,46 @@ export default function AgenticActivity({
           </div>
         )}
 
-        {visible.map((item) => {
+        {total > 0 && (
+          <div className="overflow-hidden rounded-md border border-zinc-800/80 bg-zinc-900/50">
+            {/* Single summary header — the only thing visible when collapsed. */}
+            <div className="group/head flex w-full items-center gap-2 px-3 py-1.5">
+              <button
+                onClick={() => setGroupOpen((v) => !v)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                title={groupOpen ? "Hide agent activity" : "Show agent activity"}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${headerDot}`} />
+                <span className="shrink-0 text-[12px] font-medium text-zinc-300">
+                  Agent activity
+                </span>
+                <span className="shrink-0 text-[11px] text-zinc-600">
+                  {total} tool call{total === 1 ? "" : "s"}
+                  {activeCount > 0 ? ` · ${activeCount} running` : ""}
+                  {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+                </span>
+                {totals.adds + totals.dels > 0 && (
+                  <span className="shrink-0 font-mono text-[10px] tabular-nums">
+                    <span className="text-emerald-400">+{totals.adds}</span>{" "}
+                    <span className="text-red-400">−{totals.dels}</span>
+                  </span>
+                )}
+                <span className="min-w-0 flex-1" />
+                <Chevron open={groupOpen} />
+              </button>
+              <button
+                onClick={() => setClosed(items.map((i) => i.id))}
+                title="Dismiss activity"
+                className="shrink-0 text-[11px] text-zinc-700 opacity-0 transition hover:text-zinc-300 group-hover/head:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Collapsible scrollable list — one row per tool call. */}
+            {groupOpen && (
+              <div className="max-h-72 overflow-y-auto border-t border-zinc-800/80">
+                {visible.map((item) => {
           const open = expandedRows.includes(item.id);
           const hasDetail = !!(item.output || item.error);
           return (
@@ -251,7 +311,11 @@ export default function AgenticActivity({
               )}
             </div>
           );
-        })}
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
