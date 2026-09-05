@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FsEntry } from "../agentic";
 import { FileIcon } from "./FileIcon";
+import { IoFolder, IoFolderOutline } from "react-icons/io5";
 
 const SKIP = new Set([
   "node_modules",
@@ -390,9 +391,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               aria-label="Collapse explorer panel"
               className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
             >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 4L2.5 8 6 12M9.5 4L6 8l3.5 4" />
-              </svg>
+              <IoFolderOutline size = {14}/>
             </button>
             <div className="relative">
               <button
