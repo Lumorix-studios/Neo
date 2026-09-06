@@ -537,7 +537,7 @@ return (
               </button>
             ))}
           </nav>
-          <div className="mt-auto px-2 py-1 text-[10px] text-[var(--text-faint)]">Neo v1.0.4</div>
+          <div className="mt-auto px-2 py-1 text-[10px] text-[var(--text-faint)]">Neo v1.0.7</div>
         </aside>
 
         {/* ── Content */}
@@ -1147,7 +1147,7 @@ return (
                 </div>
 
                 <p className="pt-4 text-[10.5px] text-[var(--text-faint)]">
-                  Made with ♥ by madhusudhan-rgb and contributors.
+                
                 </p>
               </div>
             )}

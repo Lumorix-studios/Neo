@@ -194,7 +194,6 @@ export default function AgenticActivity({
 
         {total > 0 && (
           <div className="overflow-hidden rounded-md border border-zinc-800/80 bg-zinc-900/50">
-            {/* Single summary header — the only thing visible when collapsed. */}
             <div className="group/head flex w-full items-center gap-2 px-3 py-1.5">
               <button
                 onClick={() => setGroupOpen((v) => !v)}
