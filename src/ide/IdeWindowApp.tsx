@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { IoGitBranch, IoGitCommit, IoGitCommitOutline, IoGitCompareSharp, IoSettingsOutline } from "react-icons/io5";
+import { IoGitBranch, IoSettingsOutline } from "react-icons/io5";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
 import SettingsPanel, { type SectionId } from "../components/SettingsPanel";

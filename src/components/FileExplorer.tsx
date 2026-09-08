@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FsEntry } from "../agentic";
 import { FileIcon } from "./FileIcon";
-import { IoFolder, IoFolderOutline } from "react-icons/io5";
+import { IoFolderOutline } from "react-icons/io5";
 
 const SKIP = new Set([
   "node_modules",

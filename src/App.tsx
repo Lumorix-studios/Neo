@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { emit } from "@tauri-apps/api/event";
+import StarBorder from '../components/StarBorder'
 import { invoke } from "@tauri-apps/api/core";
 import TopMenu from "../components/TopMenu";
 import ChatHistorySidebar from "../components/ChatHistorySidebar.tsx";
@@ -54,7 +55,7 @@ import { computeLineDiff } from "./diff";
 import { resolveFsPath } from "./agentic";
 import type { EditorTab } from "./components/CodeEditor";
 /* GitPanel removed — moved to IDE window only */
-
+import BlurText from "../components/BlurText";
 import SettingsPanel, { type SectionId } from "./components/SettingsPanel";
 import {
   applyUiSettings,
@@ -973,7 +974,9 @@ ${promptSuffix}` : ""}`,
 
     return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
   };
-
+  const handleAnimationComplete = () => {
+    console.log('Animation completed!');
+  };
   /** Heuristic: does the user's message look like a file/folder operation? */
   const looksLikeFileRequest = (text: string): boolean => {
     const t = text.toLowerCase();
@@ -1653,18 +1656,41 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 <div className="relative flex min-h-full items-center justify-center px-6">
                   <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
 
+                    {/* Welcome heading */}
+                    <div className=" relative flex items-center justify-center">
+                      <BlurText
+                        text="Ready to start working?"
+                        delay={20}
+                        animateBy="letters"
+                        direction="top"
+                        onAnimationComplete={handleAnimationComplete}
+                        className="text-2xl mb-8"
+                      />
+                    </div>
+
                     {/* Action cards */}
                     <div className="mx-22 p-auto mt-8 grid max-w-lg grid-cols-1 gap-5 text-left sm:grid-cols-2">
-                      <button
+                      <StarBorder
+                        as="button"
                         type="button"
                         onClick={() => {
                           void launchIdeWindow();
                         }}
-                        className="group rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.04]"
+                        color="magenta"
+                        speed="5s"
+                        thickness={1}
+                        backgroundColor="rgba(255, 255, 255, 0.02)"
+                        borderColor="rgba(255, 255, 255, 0.08)"
+                        className="w-full rounded-[12px] transition hover:bg-white/[0.04]"
+                        innerClassName="px-3 py-2.5 text-left"
                       >
-                        <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
-                        <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">Browse and edit files in a real workspace</span>
-                      </button>
+                        
+                         
+                      <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
+                      
+                      <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">Browse and edit files in a real workspace</span>
+                      
+                      </StarBorder>
                       {[
                         {
                           label: "Summarize my project",
@@ -1682,17 +1708,22 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           prompt: "Write a new feature in my code",
                         },
                       ].map((card) => (
-                        <button
+                        <StarBorder
                           key={card.label}
+                          as="button"
                           type="button"
                           onClick={() => setMessage(card.prompt)}
-                          className="group rounded-lg px-3 py-2.5 text-left transition hover:bg-white/[0.04]"
+                          color="magenta"
+                          speed="5s"
+                          thickness={1}
+                          backgroundColor="rgba(255, 255, 255, 0.02)"
+                          borderColor="rgba(255, 255, 255, 0.08)"
+                          className="w-full rounded-[12px] transition hover:bg-white/[0.04]"
+                          innerClassName="px-3 py-2.5 text-left"
                         >
-                          <span>
-                            <span className="block text-[12.5px] font-medium text-[#d4d4d4]">{card.label}</span>
-                            <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">{card.desc}</span>
-                          </span>
-                        </button>
+                          <span className="block text-[12.5px] font-medium text-[#d4d4d4]">{card.label}</span>
+                          <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">{card.desc}</span>
+                        </StarBorder>
                       ))} 
                     </div> 
                   </div>
