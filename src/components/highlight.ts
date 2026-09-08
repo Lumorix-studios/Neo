@@ -1,5 +1,4 @@
-// Language detection, badge metadata and a dependency-free syntax highlighter.
-// Extracted from CodeEditor so component files only export components.
+//kind of like a database for normal syntax highlighting, but not as fancy as a full parser. This is used for
 
 const EXT_LANG: Record<string, string> = {
   ts: "typescript", tsx: "typescript", mts: "typescript",
@@ -299,7 +298,3 @@ export function highlightCode(code: string, lang: string): string {
   flush();
   return out;
 }
-
-/* ---------------------------------------------------------------------------
- * Editor
- * ------------------------------------------------------------------------- */

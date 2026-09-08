@@ -1,7 +1,3 @@
-/**
- * Minimal line-diff engine used to show file edits as +/- changes,
- * VS Code style, inside the agent activity feed.
- */
 
 export interface DiffLine {
   type: "add" | "del" | "ctx";
