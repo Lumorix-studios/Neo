@@ -11,7 +11,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } fro
 import { langOf, highlightCode, commentToken } from "./highlight";
 import { FileIcon } from "./FileIcon";
 import FindReplaceBar from "./FindReplaceBar";
-
+import TextType from '../../components/TextType';
 export interface EditorTab {
   path: string;
   content: string;
@@ -904,11 +904,23 @@ export default function CodeEditor({
         /*Empty state */
         <div className="relative flex flex-1 items-center justify-center px-6">
           <div className="msg-in flex w-full max-w-[260px] flex-col items-center text-center">
-           
-            <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No file open</p> 
+           <TextType 
+              text={["Open a new folder/file to start", "No file open", "Empty"]}
+              typingSpeed={112}
+              pauseDuration={1500}
+              showCursor
+              cursorCharacter="_"
+              texts={["",""]}
+              deletingSpeed={80}
+              variableSpeedEnabled={false}
+              variableSpeedMin={60}
+              variableSpeedMax={120}
+              cursorBlinkDuration={0.8}
+            />
+          {/* <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No file open</p> 
             <p className="mt-1 text-[11px] leading-5 text-zinc-500">
               Open a file to start editing.
-            </p>
+            </p> */}
             <div className="mt-4 flex items-center gap-2">
               <button
                 type="button"
