@@ -67,7 +67,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAlert, IoCopyOutline, IoThumbsDownOutline, IoThumbsUpOutline} from "react-icons/io5";
+import { IoAlertSharp, IoCopyOutline, IoThumbsDownSharp, IoThumbsUpSharp} from "react-icons/io5";
 
 type JsonDict = Record<string, unknown>;
 
@@ -199,6 +199,33 @@ const CONTEXT_LIMITS: Array<[string, number]> = [
   ["grok", 131072],
   ["llama", 8192],
 ];
+
+/** Small stroke icon used on the welcome-screen action cards. */
+function CardIcon({ name }: { name: string }) {
+  const paths: Record<string, string> = {
+    folder:
+      "M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z",
+    chart: "M2.5 13.5v-5M8 13.5V2.5M13.5 13.5v-8",
+    bug: "M8 5.5a2.75 2.75 0 00-2.75 2.75v1.5a2.75 2.75 0 005.5 0v-1.5A2.75 2.75 0 008 5.5zM5.25 8.75H2.5M13.5 8.75h-2.75M8 5.5V3.75M5.9 6.2L4.4 4.7M10.1 6.2l1.5-1.5M6.5 11.5v1.5M9.5 11.5v1.5",
+    sparkle:
+      "M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z",
+  };
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="var(--accent)"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0 opacity-80"
+    >
+      <path d={paths[name] ?? paths.sparkle} />
+    </svg>
+  );
+}
 
 function contextLimitFor(model: string): number {
   const m = model.toLowerCase();
@@ -1656,6 +1683,13 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 <div className="relative flex min-h-full items-center justify-center px-6">
                   <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
 
+                    {/* Emblem */}
+                    <div className="msg-in mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] shadow-[0_0_40px_rgba(76,141,255,0.16)]">
+                      <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.1" strokeLinejoin="round">
+                        <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
+                      </svg>
+                    </div>
+
                     {/* Welcome heading */}
                     <div className=" relative flex items-center justify-center">
                       <BlurText
@@ -1664,12 +1698,48 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         animateBy="letters"
                         direction="top"
                         onAnimationComplete={handleAnimationComplete}
-                        className="text-2xl mb-8"
+                        className="text-2xl mb-3"
                       />
+                    </div>
+                    <p className="mx-auto max-w-md text-[12.5px] leading-5 text-[#8a8a8a]">
+                      Neo is your agentic coding partner — it reads, edits and runs files in your
+                      workspace, with your approval for anything destructive.
+                    </p>
+
+                    {/* Status chips */}
+                    <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                      <span
+                        title={`Provider: ${spec.label}`}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#a3a3a3]"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            settings.apiKey || !spec.needsAuth ? "bg-emerald-500" : "bg-zinc-600"
+                          }`}
+                        />
+                        {settings.model || spec.label}
+                      </span>
+                      <span
+                        title={workspaceRoot ?? undefined}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#a3a3a3]"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
+                        </svg>
+                        {workspaceRoot
+                          ? `${workspaceRoot.split(/[\\/]/).filter(Boolean).pop()} open`
+                          : "No workspace open"}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#a3a3a3]">
+                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinejoin="round">
+                          <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
+                        </svg>
+                        Agent ready
+                      </span>
                     </div>
 
                     {/* Action cards */}
-                    <div className="mx-22 p-auto mt-8 grid max-w-lg grid-cols-1 gap-5 text-left sm:grid-cols-2">
+                    <div className="mx-auto mt-8 grid w-full max-w-lg grid-cols-1 gap-3 text-left sm:grid-cols-2">
                       <StarBorder
                         as="button"
                         type="button"
@@ -1686,7 +1756,10 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       >
                         
                          
-                      <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
+                      <span className="flex items-center gap-2">
+                        <CardIcon name="folder" />
+                        <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
+                      </span>
                       
                       <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">Browse and edit files in a real workspace</span>
                       
@@ -1696,16 +1769,19 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           label: "Summarize my project",
                           desc: "A quick overview of what's here",
                           prompt: "Summarize my project in small details",
+                          icon: "chart",
                         },
                         {
                           label: "Find and fix bugs",
                           desc: "Scan for issues and apply fixes",
                           prompt: "Find and fix bugs and make sure they aren't repeated again",
+                          icon: "bug",
                         },
                         {
                           label: "Write a new feature",
                           desc: "Describe it and Neo builds it",
                           prompt: "Write a new feature in my code",
+                          icon: "sparkle",
                         },
                       ].map((card) => (
                         <StarBorder
@@ -1721,11 +1797,34 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           className="w-full rounded-[12px] transition hover:bg-white/[0.04]"
                           innerClassName="px-3 py-2.5 text-left"
                         >
-                          <span className="block text-[12.5px] font-medium text-[#d4d4d4]">{card.label}</span>
+                          <span className="flex items-center gap-2">
+                            <CardIcon name={card.icon} />
+                            <span className="block text-[12.5px] font-medium text-[#d4d4d4]">{card.label}</span>
+                          </span>
                           <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">{card.desc}</span>
                         </StarBorder>
-                      ))} 
-                    </div> 
+                      ))}
+                    </div>
+
+                    {/* Keyboard shortcuts */}
+                    <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[10.5px] text-[#5a5a5a]">
+                      <span className="flex items-center gap-1.5">
+                        <span className="kbd">Ctrl</span>
+                        <span className="kbd">Shift</span>
+                        <span className="kbd">P</span>
+                        Command palette
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="kbd">Ctrl</span>
+                        <span className="kbd">`</span>
+                        Terminal
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="kbd">Ctrl</span>
+                        <span className="kbd">B</span>
+                        AI settings
+                      </span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1770,13 +1869,13 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                                 <IoCopyOutline size={13} />
                               </MessageAction>
                               <MessageAction label="Good response" onClick={() => sendFeedback("good")}>
-                                <IoThumbsUpOutline size={13} />
+                                <IoThumbsUpSharp size={13} />
                               </MessageAction>
                               <MessageAction label="Bad response" onClick={() => sendFeedback("bad")}>
-                                <IoThumbsDownOutline size={13} />
+                                <IoThumbsDownSharp size={13} />
                               </MessageAction>
                               <MessageAction label="Report an issue" onClick={() => sendFeedback("report")}>
-                                <IoAlert size={13} />
+                                <IoAlertSharp size={13} />
                               </MessageAction>
                             </div>
                           </div>

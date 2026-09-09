@@ -910,11 +910,8 @@ export default function CodeEditor({
               pauseDuration={1500}
               showCursor
               cursorCharacter="_"
-              texts={["",""]}
               deletingSpeed={80}
-              variableSpeedEnabled={false}
-              variableSpeedMin={60}
-              variableSpeedMax={120}
+              variableSpeed={{ min: 60, max: 120 }}
               cursorBlinkDuration={0.8}
             />
           {/* <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No file open</p> 

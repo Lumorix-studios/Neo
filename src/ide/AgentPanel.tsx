@@ -1,0 +1,1000 @@
+/**
+ * AgentPanel — Cursor-style AI agent docked inside the IDE window.
+ *
+ * A self-contained agentic chat: it streams from the configured provider,
+ * executes workspace tools (filesystem reads in parallel, mutations behind an
+ * approval dialog), shows a live activity feed with diffs, and can open files
+ * it creates/edits directly in the editor.
+ */
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import Markdown from "../components/Markdown";
+import AgenticActivity from "../components/AgenticActivity";
+import type { EditorTab } from "../components/CodeEditor";
+import type { AISettings, Message } from "../types";
+import { getProviderSpec, buildAuthHeaders } from "../providers";
+import type { ProviderSpec } from "../providers";
+import {
+  activityId,
+  executeTool,
+  formatToolResult,
+  ingestNativeChunk,
+  isDestructive,
+  isToolName,
+  nativeAccToCalls,
+  parseToolCalls,
+  resolveFsPath,
+  stabilizeStreamingMarkdown,
+  stripToolCalls,
+  agenticSystemPrompt,
+} from "../agentic";
+import type { AgenticActivity as AgenticActivityType } from "../agentic";
+import type { NativeToolAcc, ToolCall } from "../agentic";
+import { computeLineDiff } from "../diff";
+
+type JsonDict = Record<string, unknown>;
+
+/** Newline character (avoids escape-sequence issues in generated code). */
+const NL = String.fromCharCode(10);
+
+/** Tool-execution budget per user request (plain-prose rounds are free). */
+const MAX_TOOL_ROUNDS = 15;
+const MAX_TOOL_OUTPUT = 24000;
+
+function truncateToolOutput(output: string): string {
+  if (output.length <= MAX_TOOL_OUTPUT) return output;
+  const head = Math.floor(MAX_TOOL_OUTPUT * 0.6);
+  const tail = MAX_TOOL_OUTPUT - head;
+  const omitted = output.length - head - tail;
+  return (
+    output.slice(0, head) +
+    `${NL}[... output truncated — ${omitted} characters omitted ...]${NL}` +
+    output.slice(output.length - tail)
+  );
+}
+
+async function platformFetch(url: string, init: RequestInit): Promise<Response> {
+  const win = window as unknown as { __TAURI_INTERNALS__?: unknown };
+  if (win.__TAURI_INTERNALS__) {
+    try {
+      return await tauriFetch(url, init);
+    } catch (e) {
+      throw new Error(
+        `Tauri HTTP request failed: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e }
+      );
+    }
+  }
+  return fetch(url, init);
+}
+
+/** Merge consecutive same-role messages and drop empty assistant bubbles. */
+function sanitizeHistory(msgs: Message[]): Message[] {
+  const out: Message[] = [];
+  for (const m of msgs) {
+    const hasNativeCalls = !!(m.toolCalls && m.toolCalls.length > 0);
+    if (m.role === "assistant" && m.content.trim().length === 0 && !hasNativeCalls) continue;
+    const last = out[out.length - 1];
+    if (
+      last &&
+      last.role === m.role &&
+      !(last.toolCalls && last.toolCalls.length > 0) &&
+      !hasNativeCalls
+    ) {
+      last.content = `${last.content}\n${m.content}`.trim();
+    } else {
+      out.push({ ...m });
+    }
+  }
+  return out;
+}
+
+interface AgentPanelProps {
+  settings: AISettings;
+  workspaceRoot: string | null;
+  editorTabs: EditorTab[];
+  activeEditorPath: string | null;
+  /** Notifies the parent so the status bar can show a live indicator. */
+  onBusyChange?: (busy: boolean) => void;
+  onClose: () => void;
+  onOpenFile: (path: string) => void;
+  onOpenSettings: () => void;
+  /** Nudges the explorer to re-scan after the agent mutated the filesystem. */
+  onFilesChanged: () => void;
+}
+
+export default function AgentPanel({
+  settings,
+  workspaceRoot,
+  editorTabs,
+  activeEditorPath,
+  onBusyChange,
+  onClose,
+  onOpenFile,
+  onOpenSettings,
+  onFilesChanged,
+}: AgentPanelProps) {
+  const spec: ProviderSpec = getProviderSpec(settings);
+  const configured = !spec.needsAuth || !!settings.apiKey.trim();
+
+  // --- chat state ----------------------------------------------------------
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activities, setActivities] = useState<AgenticActivityType[]>([]);
+  const [pendingApproval, setPendingApproval] = useState<AgenticActivityType | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const streamRef = useRef<AbortController | null>(null);
+  const approvalRef = useRef<{ id: string; resolve: (ok: boolean) => void } | null>(null);
+  const streamedRef = useRef("");
+
+  // Live mirrors of props for the async agent loop (no stale closures).
+  const tabsRef = useRef(editorTabs);
+  tabsRef.current = editorTabs;
+  const activeRef = useRef(activeEditorPath);
+  activeRef.current = activeEditorPath;
+  const rootRef = useRef(workspaceRoot);
+  rootRef.current = workspaceRoot;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
+
+  // Keep the feed pinned to the newest content.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, activities, pendingApproval, busy]);
+
+  // Abort any in-flight request when the panel unmounts.
+  useEffect(() => () => streamRef.current?.abort(), []);
+
+  /** Overwrite the trailing assistant bubble (used while streaming). */
+  const setLastAssistant = (content: string) => {
+    streamedRef.current = content;
+    setMessages((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].role === "assistant") {
+          next[i] = { ...next[i], content };
+          return next;
+        }
+      }
+      next.push({ role: "assistant", content });
+      return next;
+    });
+  };
+
+  const removeEmptyAssistant = () => {
+    setMessages((prev) => {
+      const next = [...prev];
+      while (
+        next.length > 0 &&
+        next[next.length - 1].role === "assistant" &&
+        !next[next.length - 1].content.trim()
+      ) {
+        next.pop();
+      }
+      return next;
+    });
+  };
+
+  const requestApproval = (id: string): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      approvalRef.current?.resolve(false); // resolve any stale dialog
+      approvalRef.current = { id, resolve };
+    });
+
+  const handleApprove = (id: string) => {
+    setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, status: "approved" } : a)));
+    approvalRef.current?.resolve(true);
+    approvalRef.current = null;
+  };
+
+  const handleDeny = (_id: string) => {
+    approvalRef.current?.resolve(false);
+    approvalRef.current = null;
+  };
+
+  /**
+   * One streaming round against the provider. Returns the visible text plus
+   * any native tool calls accumulated from SSE chunks (all providers).
+   */
+  const streamRound = async (
+    history: Message[],
+    systemPrompt: string,
+    signal: AbortSignal
+  ): Promise<{ text: string; nativeCalls: ToolCall[] }> => {
+    const s = getProviderSpec(settingsRef.current);
+    const endpoint = s.buildUrl(settingsRef.current);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...buildAuthHeaders(s, settingsRef.current.apiKey),
+    };
+    const effective: AISettings = { ...settingsRef.current, systemPrompt };
+    const body = s.buildBody(effective, history, { enableTools: true });
+
+    let res: Response;
+    try {
+      res = await platformFetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (netErr) {
+      if (signal.aborted) throw new Error("__ABORTED__", { cause: netErr });
+      throw new Error(
+        `Could not connect to ${endpoint}: ${
+          netErr instanceof Error ? netErr.message : String(netErr)
+        }`,
+        { cause: netErr }
+      );
+    }
+    if (signal.aborted) throw new Error("__ABORTED__");
+
+    if (!res.ok) {
+      let detail = `HTTP ${res.status} ${res.statusText}`;
+      try {
+        const text = await res.text();
+        const trimmed = (text || "").trim();
+        if (trimmed.startsWith("<") || trimmed.toLowerCase().includes("<!doctype")) {
+          detail =
+            "The server returned an HTML page (not an API response). Check that the base URL points to a valid AI API endpoint.";
+        } else if (trimmed) {
+          try {
+            const parsed = JSON.parse(trimmed) as JsonDict;
+            const errMsg = parsed?.error as JsonDict | undefined;
+            detail = (errMsg?.message as string) || (parsed?.message as string) || trimmed;
+          } catch {
+            detail = trimmed.length > 400 ? trimmed.slice(0, 400) + "…" : trimmed;
+          }
+        }
+      } catch {
+        /* keep the status-based detail */
+      }
+      let msg = `API error (${res.status}): ${detail}`;
+      if (res.status === 401 || res.status === 403) {
+        msg += ` ${s.authErrorHint(res.status, settingsRef.current)}`;
+      }
+      throw new Error(msg);
+    }
+
+    const nativeAcc: NativeToolAcc[] = [];
+    let round = "";
+    const show = (text: string) =>
+      setLastAssistant(stabilizeStreamingMarkdown(stripToolCalls(text)));
+
+    const bodyStream = res.body;
+    if (!bodyStream) {
+      const data = (await res.json().catch(() => null)) as JsonDict | null;
+      if (data) {
+        ingestNativeChunk(data, nativeAcc);
+        round = s.extractContent(data);
+        if (round) show(round);
+      }
+      return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
+    }
+
+    const reader = bodyStream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const step = await reader.read();
+        if (step.done) break;
+        if (signal.aborted) throw new Error("__ABORTED__");
+        buffer += decoder.decode(step.value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (let line of lines) {
+          line = line.trim();
+          if (!line || line.startsWith(":")) continue;
+          if (line.startsWith("data:")) line = line.slice(5).trim();
+          if (!line || line === "[DONE]") continue;
+          try {
+            const json = JSON.parse(line) as JsonDict;
+            // Accumulate native function-calling chunks so tool-only rounds
+            // are not lost when no text deltas are emitted.
+            ingestNativeChunk(json, nativeAcc);
+            const delta = s.extractDelta(json);
+            if (delta) {
+              round += delta;
+              show(round);
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    // No streamed output at all → try a plain (non-stream) request once.
+    if (!round && nativeAcc.length === 0 && !signal.aborted) {
+      try {
+        const nonStreamBody = {
+          ...(s.buildBody(effective, history, { enableTools: true }) as JsonDict),
+          stream: false,
+        } as JsonDict;
+        const nonStreamUrl = endpoint.includes("streamGenerateContent")
+          ? endpoint.replace("streamGenerateContent", "generateContent")
+          : endpoint;
+        const fallbackRes = await platformFetch(nonStreamUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(nonStreamBody),
+          signal,
+        });
+        if (fallbackRes.ok) {
+          const data = (await fallbackRes.json().catch(() => null)) as JsonDict | null;
+          if (data) {
+            round = s.extractContent(data);
+            ingestNativeChunk(data, nativeAcc);
+            if (round) show(round);
+          }
+        }
+      } catch {
+        /* stream error — keep whatever we have (may be empty) */
+      }
+    }
+
+    return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
+  };
+
+  /** Full agentic run: stream → execute tools → feed results back, looping. */
+  const runAgent = async (userText: string) => {
+    const s = getProviderSpec(settingsRef.current);
+    if (s.needsAuth && !settingsRef.current.apiKey.trim()) {
+      setError(`Configure your ${s.label} API key in AI Settings to use the agent.`);
+      onOpenSettings();
+      return;
+    }
+    if (!settingsRef.current.baseUrl.trim()) {
+      setError("Base URL is empty. Configure it in AI Settings.");
+      onOpenSettings();
+      return;
+    }
+
+    streamRef.current?.abort();
+    setError(null);
+    setActivities([]);
+    setInput("");
+    setBusy(true);
+    streamedRef.current = "";
+
+    // Optimistically render the user message and a streaming assistant bubble.
+    setMessages((prev) => [...prev, { role: "user", content: userText }]);
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+    const abortCtrl = new AbortController();
+    streamRef.current = abortCtrl;
+
+    try {
+      const agentHistory: Message[] = [
+        // messagesRef.current is still the pre-turn snapshot here (the user +
+        // assistant placeholders above have not rendered yet).
+        ...sanitizeHistory(messagesRef.current),
+        { role: "user", content: userText },
+      ];
+
+      // --- Context-aware system prompt (workspace + editor snapshot). -------
+      const root = rootRef.current;
+      const openTabs = tabsRef.current;
+      const active = activeRef.current;
+      const rel = (p: string): string =>
+        root && p.startsWith(root) ? p.slice(root.length).replace(/^[\\/]+/, "") : p;
+      const editor = {
+        openPaths: openTabs.map((t) => t.path),
+        activePath: active,
+        getTabContent: (p: string) => openTabs.find((t) => t.path === p)?.content ?? null,
+      };
+      let systemPrompt = agenticSystemPrompt(root, editor);
+      let userFileNote = "";
+      if (active) {
+        const activeTab = openTabs.find((t) => t.path === active) ?? null;
+        if (activeTab) {
+          const i = Math.max(active.lastIndexOf("\\"), active.lastIndexOf("/"));
+          const dir = i > 0 ? active.slice(0, i) : active;
+          const MAX_INLINE = 8000;
+          const bodyText =
+            activeTab.content.length <= MAX_INLINE
+              ? activeTab.content
+              : `${activeTab.content.slice(0, MAX_INLINE)}\n...[truncated - call read_active_file or read_file for more]`;
+          systemPrompt += `\n\nCurrent contents of ${rel(active)} (folder: ${dir}):\n${bodyText}\n(end of ${rel(active)})`;
+          userFileNote = `(Working file: ${rel(active)} — its complete source is already in your system context above. Start analyzing it immediately; do not ask for it.)`;
+        }
+      } else if (!root) {
+        systemPrompt += "\n\nNo folder is open and no file is active in the IDE.";
+      }
+      if (userFileNote) {
+        const lastMsg = agentHistory[agentHistory.length - 1];
+        if (lastMsg && lastMsg.role === "user") {
+          lastMsg.content = `${lastMsg.content}\n\n${userFileNote}`;
+        }
+      }
+
+      let ranTools = 0;
+      let toolRounds = 0;
+      let nudgeCount = 0;
+      let failStreak = 0;
+      let lastFailSig = "";
+      // Per-turn cache of read-only results; cleared whenever a mutation runs.
+      const readOnlyCache = new Map<string, { ok: boolean; output: string }>();
+      const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
+
+      while (!abortCtrl.signal.aborted) {
+        const round = await streamRound(agentHistory, systemPrompt, abortCtrl.signal);
+        if (abortCtrl.signal.aborted) break;
+        const raw = round.text;
+
+        agentHistory.push({
+          role: "assistant",
+          content: raw,
+          ...(round.nativeCalls.length > 0
+            ? {
+                toolCalls: round.nativeCalls.map((c, i) => ({
+                  id: c.id ?? `call_${toolRounds}_${i}`,
+                  name: c.name,
+                  arguments: c.arguments,
+                })),
+              }
+            : {}),
+        });
+
+        // Collect native + text-markup tool calls, de-duplicated.
+        const calls: { call: ToolCall; native: boolean; key: string }[] = [];
+        const seenKeys = new Set<string>();
+        for (const { call, native } of [
+          ...round.nativeCalls.map((c) => ({ call: c, native: true })),
+          ...parseToolCalls(raw).map((c) => ({ call: c, native: false })),
+        ]) {
+          if (!isToolName(call.name) && !call.name.startsWith("mcp_")) continue;
+          const key = `${call.name}:${JSON.stringify(call.arguments)}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+          calls.push({ call, native, key });
+        }
+
+        // No tool calls → the agent is done talking.
+        if (calls.length === 0) {
+          // Recovery: weak models often DESCRIBE a call without emitting one.
+          if (
+            nudgeCount < 2 &&
+            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>|\b\w+_\w+\(\))/i.test(
+              raw
+            )
+          ) {
+            nudgeCount++;
+            agentHistory.push({
+              role: "user",
+              content:
+                'You described a tool call but did not actually emit one — descriptions do nothing. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n{"name": "list_dir", "arguments": {"path": "."}}\n</tool_call>\nNo prose, no code fences, no examples.',
+            });
+            continue;
+          }
+          break;
+        }
+
+        if (toolRounds >= MAX_TOOL_ROUNDS) {
+          setError(
+            "The agent used all of its tool turns for this request. Send a follow-up message to continue where it left off."
+          );
+          break;
+        }
+        toolRounds++;
+
+        // Plan the activity rows for this round.
+        const activityIds = new Map<string, string>();
+        const planned: AgenticActivityType[] = calls.map(({ call }) => {
+          const id = activityId();
+          activityIds.set(`${call.name}:${JSON.stringify(call.arguments)}`, id);
+          return { id, tool: call.name, args: call.arguments, status: "pending" };
+        });
+        setActivities((prev) => [...prev, ...planned]);
+
+        const patchActivity = (id: string, patch: Partial<AgenticActivityType>) =>
+          setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+
+        const resultsByKey = new Map<string, { ok: boolean; output: string }>();
+        const effRoot = rootRef.current;
+
+        const runToolCall = async (call: ToolCall) =>
+          executeTool(call.name, call.arguments, effRoot, {
+            openPaths: tabsRef.current.map((t) => t.path),
+            activePath: activeRef.current,
+            getTabContent: (p) => tabsRef.current.find((t) => t.path === p)?.content ?? null,
+          });
+
+        // --- Read-only batch (parallel, cache-aware). -------------------------
+        const readOnly = calls.filter(({ call }) => !isDestructive(call.name));
+        readOnly.forEach(({ key }) => {
+          if (readOnlyCache.has(key)) return; // cached — no spinner needed
+          const id = activityIds.get(key);
+          if (id) patchActivity(id, { status: "running" });
+        });
+        await Promise.all(
+          readOnly.map(async ({ call, key }) => {
+            const cached = readOnlyCache.get(key);
+            const result = cached ?? (await runToolCall(call));
+            if (!cached) readOnlyCache.set(key, result);
+            resultsByKey.set(key, result);
+            ranTools++;
+            const id = activityIds.get(key);
+            if (id) {
+              patchActivity(
+                id,
+                result.ok
+                  ? { status: "done", output: result.output.slice(0, 4000) }
+                  : { status: "error", error: result.output.slice(0, 2000) }
+              );
+            }
+          })
+        );
+
+        // --- Mutating batch (sequential, each behind user approval). ---------
+        const mutating = calls.filter(({ call }) => isDestructive(call.name));
+        for (const { call, key } of mutating) {
+          const id = activityIds.get(key);
+          if (!id) continue;
+
+          // Snapshot the file before the change so we can render a diff.
+          let beforeContent: string | null = null;
+          let targetPath = "";
+          if (FILE_MUTATORS.has(call.name) && typeof call.arguments.path === "string") {
+            targetPath = call.arguments.path;
+            try {
+              beforeContent = await invoke<string>("fs_read_file", {
+                path: resolveFsPath(targetPath, effRoot),
+              });
+            } catch {
+              beforeContent = null; // new file
+            }
+          }
+
+          let approved = settingsRef.current.autoApproveTools === true;
+          if (!approved) {
+            setPendingApproval({ id, tool: call.name, args: call.arguments, status: "pending" });
+            approved = await requestApproval(id);
+            setPendingApproval(null);
+          }
+          if (abortCtrl.signal.aborted) break;
+          if (!approved) {
+            patchActivity(id, { status: "denied" });
+            resultsByKey.set(key, {
+              ok: false,
+              output:
+                "User denied approval for this operation. Do not retry it; explain and propose alternatives.",
+            });
+            continue;
+          }
+
+          patchActivity(id, { status: "running" });
+          // A mutation invalidates every cached read-only result.
+          readOnlyCache.clear();
+          const result = await runToolCall(call);
+          resultsByKey.set(key, result);
+          if (result.ok) ranTools++;
+          patchActivity(
+            id,
+            result.ok
+              ? { status: "done", output: result.output.slice(0, 4000) }
+              : { status: "error", error: result.output.slice(0, 2000) }
+          );
+
+          // Reflect mutations in the editor, show a diff, open the file.
+          if (result.ok) {
+            onFilesChanged();
+            if (FILE_MUTATORS.has(call.name) && targetPath) {
+              const absPath = resolveFsPath(targetPath, effRoot);
+              let afterContent = "";
+              try {
+                afterContent = await invoke<string>("fs_read_file", { path: absPath });
+              } catch {
+                afterContent = "";
+              }
+              patchActivity(id, { diff: computeLineDiff(beforeContent ?? "", afterContent) });
+              onOpenFile(absPath);
+            }
+          }
+        }
+
+        // Runaway guard: identical failures across consecutive rounds → stop.
+        const failSig = calls
+          .filter(({ key }) => resultsByKey.get(key)?.ok === false)
+          .map(({ call }) => `${call.name}:${JSON.stringify(call.arguments)}`)
+          .sort()
+          .join("|");
+        if (failSig && failSig === lastFailSig) {
+          failStreak++;
+          if (failStreak >= 3) {
+            setError(
+              "The same tool calls kept failing identically — stopping to avoid an endless loop. Try rephrasing the task or check that the files exist."
+            );
+            break;
+          }
+        } else {
+          lastFailSig = failSig;
+          failStreak = failSig ? 1 : 0;
+        }
+
+        // Route results back in the original call order.
+        const nativeResults: Message[] = [];
+        const resultBlocks: string[] = [];
+        for (const { call, native, key } of calls) {
+          const result = resultsByKey.get(key);
+          if (!result) continue;
+          const output = truncateToolOutput(result.output);
+          if (native) {
+            nativeResults.push({
+              role: "tool",
+              content: output,
+              toolCallId: call.id,
+              toolName: call.name,
+            });
+          } else {
+            resultBlocks.push(formatToolResult({ ...result, output }));
+          }
+        }
+        if (nativeResults.length > 0) agentHistory.push(...nativeResults);
+        if (resultBlocks.length > 0) {
+          agentHistory.push({ role: "user", content: resultBlocks.join(NL + NL) });
+        }
+      }
+
+      // Commit whatever visible text accumulated across all rounds.
+      const finalVisible = streamedRef.current.trim();
+      if (finalVisible) {
+        setLastAssistant(finalVisible);
+      } else if (ranTools > 0) {
+        setLastAssistant(
+          `Done — ${ranTools} file operation${ranTools === 1 ? "" : "s"} completed.`
+        );
+      } else if (!abortCtrl.signal.aborted) {
+        setError(
+          "The agent returned an empty response. Check the model name and endpoint in AI Settings."
+        );
+        removeEmptyAssistant();
+      }
+    } catch (err) {
+      if (abortCtrl.signal.aborted || (err instanceof Error && err.message === "__ABORTED__")) {
+        // User stopped the generation; keep partial output.
+        const partial = stripToolCalls(streamedRef.current).trim();
+        if (partial) setLastAssistant(partial);
+        else removeEmptyAssistant();
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to reach the AI provider.");
+        removeEmptyAssistant();
+      }
+    } finally {
+      setBusy(false);
+      streamRef.current = null;
+      approvalRef.current?.resolve(false);
+      approvalRef.current = null;
+      setPendingApproval(null);
+    }
+  };
+
+  const stopAgent = () => {
+    streamRef.current?.abort();
+    approvalRef.current?.resolve(false);
+  };
+
+  const clearChat = () => {
+    if (busy) return;
+    setMessages([]);
+    setActivities([]);
+    setError(null);
+  };
+
+  const send = (text?: string) => {
+    const trimmed = (text ?? input).trim();
+    if (!trimmed || busy) return;
+    void runAgent(trimmed);
+  };
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    send();
+  };
+
+  // Context-aware starter prompts for the empty state.
+  const suggestions = workspaceRoot
+    ? [
+        {
+          label: "Explain this project",
+          prompt: "Explore this workspace and explain the project structure and what it does.",
+        },
+        {
+          label: "Review the active file",
+          prompt:
+            "Review the active file for bugs and edge cases, then apply the fixes you are confident about.",
+        },
+        {
+          label: "Find TODOs",
+          prompt:
+            "Search this workspace for TODO and FIXME comments and summarize what still needs to be done.",
+        },
+        {
+          label: "Add a README",
+          prompt:
+            "Create a README.md for this project describing its purpose, structure and how to run it.",
+        },
+      ]
+    : [
+        {
+          label: "Plan a feature",
+          prompt:
+            "Help me plan a new feature: break it into files, modules and concrete implementation steps.",
+        },
+        {
+          label: "Debug an error",
+          prompt: "I have an error I can't figure out. Help me debug it step by step.",
+        },
+        {
+          label: "Explain code",
+          prompt: "Explain a piece of code I paste, line by line, in simple terms.",
+        },
+        {
+          label: "Write a script",
+          prompt: "Write a small script that automates a repetitive task on my machine.",
+        },
+      ];
+
+  return (
+    <aside className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-panel)]">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-white/[0.05] px-3">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+        >
+          <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
+        </svg>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a3a3a3]">
+          Agent
+        </span>
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          title="Change model in AI Settings"
+          className="ml-auto flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-1.5 py-[2px] text-[10.5px] text-[#8a8a8a] transition-colors hover:border-white/[0.14] hover:text-[#e8e8e8]"
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              configured ? "bg-emerald-500" : "bg-zinc-600"
+            }`}
+          />
+          <span className="max-w-[150px] truncate">{settings.model || spec.label}</span>
+        </button>
+        {messages.length > 0 && !busy && (
+          <button
+            type="button"
+            onClick={clearChat}
+            title="Clear conversation"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#e8e8e8]"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+              <path d="M2.5 4h11M6.5 4V2.8A.8.8 0 017.3 2h1.4a.8.8 0 01.8.8V4M4 4l.7 8.6a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.6 7v4M9.4 7v4" />
+            </svg>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          title="Close agent panel (Ctrl+I)"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#e8e8e8]"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
+
+      {/* ── Message feed ───────────────────────────────────────────────────── */}
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
+        {messages.length === 0 ? (
+          <div className="flex min-h-full flex-col items-center justify-center px-5 pb-6 text-center">
+            <div className="msg-in flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] shadow-[0_0_36px_rgba(76,141,255,0.14)]">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.2" strokeLinejoin="round">
+                <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
+              </svg>
+            </div>
+            <h2 className="mt-3.5 text-[14.5px] font-medium text-[#e8e8e8]">Neo Agent</h2>
+            <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-[#7a7a7a]">
+              Reads, edits and runs files in your workspace — with your approval for anything
+              destructive.
+            </p>
+            {!configured && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="mt-4 rounded-md border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-[#e8e8e8] transition hover:bg-white/[0.08]"
+              >
+                Configure an API key to start →
+              </button>
+            )}
+            <div className="mt-5 grid w-full max-w-[300px] grid-cols-1 gap-1.5">
+              {suggestions.map((sg) => (
+                <button
+                  key={sg.label}
+                  type="button"
+                  onClick={() => send(sg.prompt)}
+                  disabled={!configured}
+                  className="group flex items-center gap-2 rounded-md border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-left transition hover:border-white/[0.12] hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" className="shrink-0 text-[#6b6b6b] group-hover:text-(--accent)">
+                    <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
+                  </svg>
+                  <span className="text-[11.5px] text-[#b8b8b8] group-hover:text-[#e8e8e8]">
+                    {sg.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 px-3.5 py-4">
+            {messages.map((m, i) =>
+              m.role === "user" ? (
+                <div key={i} className="msg-in flex justify-end">
+                  <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-lg rounded-br-sm border border-white/[0.07] bg-white/[0.055] px-3 py-1.5 text-[12.5px] leading-5 text-[#e8e8e8]">
+                    {m.content}
+                  </div>
+                </div>
+              ) : (
+                <div key={i} className="msg-in">
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinejoin="round">
+                      <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
+                    </svg>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+                      Agent
+                    </span>
+                  </div>
+                  <div className="text-[12.5px] leading-6 text-[#d4d4d4]">
+                    {m.content ? (
+                      <Markdown content={m.content} />
+                    ) : (
+                      <span className="thinking-dot" />
+                    )}
+                    {busy && i === messages.length - 1 && m.content && (
+                      <span className="stream-caret" />
+                    )}
+                  </div>
+                </div>
+              )
+            )}
+            {busy && (
+              <div className="flex items-center gap-2 text-[11px] text-[#6b6b6b]">
+                <span className="thinking-dot" />
+                Working…
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <AgenticActivity
+        items={activities}
+        pending={pendingApproval}
+        onApprove={handleApprove}
+        onDeny={handleDeny}
+      />
+
+      {error && (
+        <div className="shrink-0 px-3 pt-2">
+          <div className="flex items-start justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[11.5px] leading-5 text-red-300">
+            <span className="min-w-0 break-words">{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="shrink-0 text-red-300/60 transition hover:text-red-200"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Composer ───────────────────────────────────────────────────────── */}
+      <form onSubmit={onSubmit} className="shrink-0 border-t border-white/[0.05] p-2.5">
+        {/* Context chips — what the agent can currently see. */}
+        <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-0.5">
+          {workspaceRoot ? (
+            <span
+              title={workspaceRoot}
+              className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[10.5px] text-[#a3a3a3]"
+            >
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
+              </svg>
+              {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
+            </span>
+          ) : (
+            <span className="text-[10.5px] text-[#5a5a5a]">No workspace open</span>
+          )}
+          {activeEditorPath && (
+            <span
+              title="The agent will receive this file's contents automatically"
+              className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[10.5px] text-[#a3a3a3]"
+            >
+              <span className="h-1 w-1 rounded-full bg-(--accent)" />
+              {activeEditorPath.split(/[\\/]/).pop()}
+            </span>
+          )}
+        </div>
+        <div className="relative rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] transition-colors duration-150 focus-within:border-white/[0.16]">
+          <textarea
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
+            disabled={!configured}
+            placeholder={
+              configured
+                ? workspaceRoot
+                  ? "Ask the agent to change something…"
+                  : "Ask anything, or open a folder to enable file tools…"
+                : "Configure an API key to use the agent"
+            }
+            rows={1}
+            spellCheck={false}
+            className="max-h-[140px] min-h-[46px] w-full resize-none bg-transparent px-3 pb-10 pt-2.5 pr-11 text-[12.5px] leading-5 text-[#ececec] outline-none placeholder:text-[#555555] disabled:opacity-60"
+          />
+          <div className="absolute bottom-1.5 right-1.5">
+            {busy ? (
+              <button
+                type="button"
+                onClick={stopAgent}
+                className="flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.08] text-[#ececec] transition hover:bg-white/[0.14]"
+                title="Stop the agent"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim() || !configured}
+                className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8e8e8] text-[#141414] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
+                title="Send to agent"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="mt-1 flex items-center justify-between px-1 text-[10px] text-[#4a4a4a]">
+          <span>Enter to send · Shift+Enter for a new line</span>
+          <span>Destructive actions need approval</span>
+        </div>
+      </form>
+    </aside>
+  );
+}

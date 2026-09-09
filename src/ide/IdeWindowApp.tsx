@@ -19,6 +19,8 @@ import {
 import CodeEditor, { type EditorTab } from "../components/CodeEditor";
 import BottomPanel, { type PanelTab } from "../components/BottomPanel";
 import GitPanel from "../components/GitPanel";
+import AgentPanel from "./AgentPanel";
+import CommandPalette from "../../components/CommandPalette";
 
 /** Icon button for the VS Code-style activity bar rail (same look as chat). */
 function RailButton({
@@ -99,6 +101,47 @@ export default function IdeWindowApp() {
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // --- AI agent panel (docked right, Cursor-style) --------------------------
+  const AGENT_OPEN_KEY = "neo.ide.agentOpen";
+  const [agentOpen, setAgentOpen] = useState(
+    () => localStorage.getItem(AGENT_OPEN_KEY) !== "0"
+  );
+  const [agentBusy, setAgentBusy] = useState(false);
+  const AGENT_WIDTH_KEY = "neo.ide.agentWidth";
+  const [agentWidth, setAgentWidth] = useState(() => {
+    const stored = Number(localStorage.getItem(AGENT_WIDTH_KEY));
+    return Number.isFinite(stored) && stored >= 300 && stored <= 720 ? stored : 400;
+  });
+  const agentDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const onAgentResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    agentDragRef.current = { startX: e.clientX, startWidth: agentWidth };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onAgentResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = agentDragRef.current;
+    if (!drag) return;
+    // Panel sits on the right — dragging left widens it.
+    setAgentWidth(Math.min(720, Math.max(300, drag.startWidth - (e.clientX - drag.startX))));
+  };
+  const onAgentResizeEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    agentDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+  };
+  useEffect(() => {
+    localStorage.setItem(AGENT_OPEN_KEY, agentOpen ? "1" : "0");
+  }, [agentOpen]);
+  useEffect(() => {
+    localStorage.setItem(AGENT_WIDTH_KEY, String(agentWidth));
+  }, [agentWidth]);
+
+  // --- command palette -------------------------------------------------------
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
 
   // --- editor tabs ---------------------------------------------------------
@@ -316,6 +359,43 @@ export default function IdeWindowApp() {
     setActiveEditorPath(null);
   };
 
+  // Fresh mirrors so the global shortcut handler never goes stale.
+  const saveRef = useRef(saveEditorFile);
+  saveRef.current = saveEditorFile;
+  const activePathRef = useRef(activeEditorPath);
+  activePathRef.current = activeEditorPath;
+
+  // ── Global keyboard shortcuts ──────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "p") {
+        // Ctrl+P quick-open and Ctrl+Shift+P share the palette.
+        e.preventDefault();
+        setPaletteOpen(true);
+      } else if (key === "i" && !e.shiftKey) {
+        e.preventDefault();
+        setAgentOpen((v) => !v);
+      } else if (e.shiftKey && key === "e") {
+        e.preventDefault();
+        setExplorerCollapsed((v) => !v);
+      } else if (key === "`") {
+        e.preventDefault();
+        setTerminalOpen((v) => !v);
+      } else if (key === "s" && !e.shiftKey) {
+        e.preventDefault();
+        if (activePathRef.current) void saveRef.current(activePathRef.current);
+      } else if (key === ",") {
+        e.preventDefault();
+        setSettingsSection(null);
+        setSettingsOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // __PART_C__
 
   // --- AUTO-SAVE: persist dirty tabs 800ms after the last keystroke --------
@@ -528,11 +608,50 @@ export default function IdeWindowApp() {
             <RailButton active={gitOpen} title="Git tools" onClick={() => setGitOpen((v) => !v)}>
               <IoGitBranch size={15} />
             </RailButton>
-            <RailButton active = {settingsOpen} title = "Coming soon" onClick={()=> setSettingsOpen((v) => !v)}>
-              <IoSettingsOutline size = {15}/>
+            <RailButton
+              active={agentOpen}
+              title="AI Agent (Ctrl+I)"
+              onClick={() => setAgentOpen((v) => !v)}
+            >
+              <span className="relative">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                >
+                  <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
+                </svg>
+                {agentBusy && (
+                  <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-(--accent) animate-pulse" />
+                )}
+              </span>
+            </RailButton>
+            <RailButton
+              active={settingsOpen}
+              title="Settings (Ctrl+,)"
+              onClick={() => {
+                setSettingsSection(null);
+                setSettingsOpen((v) => !v);
+              }}
+            >
+              <IoSettingsOutline size={15} />
             </RailButton>
           </div>
           <div className="w-full">
+            <RailButton
+              active={paletteOpen}
+              title="Command Palette (Ctrl+Shift+P)"
+              onClick={() => setPaletteOpen(true)}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                <circle cx="7" cy="7" r="4.4" />
+                <path d="M10.4 10.4L14 14" />
+              </svg>
+            </RailButton>
             <RailButton active={terminalOpen} title="Terminal (Ctrl+`)" onClick={() => setTerminalOpen((v) => !v)}>
               <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" />
@@ -602,6 +721,38 @@ export default function IdeWindowApp() {
             }
           />
         )}
+
+        {/* ── AI Agent panel (docked right) ──────────────────────────────── */}
+        {agentOpen && (
+          <>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="Drag to resize agent panel"
+              onPointerDown={onAgentResizeStart}
+              onPointerMove={onAgentResizeMove}
+              onPointerUp={onAgentResizeEnd}
+              onPointerCancel={onAgentResizeEnd}
+              className="w-[3px] shrink-0 cursor-col-resize touch-none select-none bg-transparent transition-colors hover:bg-(--accent)/25 active:bg-(--accent)/40"
+            />
+            <div style={{ width: agentWidth }} className="h-full shrink-0">
+              <AgentPanel
+                settings={aiSettings}
+                workspaceRoot={workspaceRoot}
+                editorTabs={editorTabs}
+                activeEditorPath={activeEditorPath}
+                onBusyChange={setAgentBusy}
+                onClose={() => setAgentOpen(false)}
+                onOpenFile={(p) => void openFileInEditor(p)}
+                onOpenSettings={() => {
+                  setSettingsSection("ai");
+                  setSettingsOpen(true);
+                }}
+                onFilesChanged={() => setExplorerRefreshKey((k) => k + 1)}
+              />
+            </div>
+          </>
+        )}
       </div>
 
      
@@ -631,9 +782,117 @@ export default function IdeWindowApp() {
         onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
       />
 
+      <CommandPalette
+        isOpen={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={[
+          {
+            id: "agent",
+            label: "Toggle AI Agent Panel",
+            category: "Agent",
+            shortcut: "Ctrl+I",
+            action: () => setAgentOpen((v) => !v),
+          },
+          ...recentFiles.map((p) => ({
+            id: `recent-${p}`,
+            label: p.split(/[\\/]/).pop() ?? p,
+            category: "Recent",
+            action: () => void openFileInEditor(p),
+          })),
+          {
+            id: "open-folder",
+            label: "Open Folder…",
+            category: "File",
+            action: () => void pickWorkspaceFolder(),
+          },
+          {
+            id: "open-files",
+            label: "Open Files…",
+            category: "File",
+            action: () => void pickWorkspaceFiles(),
+          },
+          {
+            id: "new-file",
+            label: "New File…",
+            category: "File",
+            action: () => {
+              const name = window.prompt("File name (relative to the workspace root):");
+              if (name) void createFileInWorkspace(name);
+            },
+          },
+          {
+            id: "save",
+            label: "Save File",
+            category: "File",
+            shortcut: "Ctrl+S",
+            action: () => {
+              if (activeEditorPath) void saveEditorFile(activeEditorPath);
+            },
+          },
+          {
+            id: "close-all-tabs",
+            label: "Close All Editor Tabs",
+            category: "File",
+            action: closeAllEditorTabs,
+          },
+          {
+            id: "explorer",
+            label: "Toggle File Explorer",
+            category: "View",
+            shortcut: "Ctrl+Shift+E",
+            action: () => setExplorerCollapsed((v) => !v),
+          },
+          {
+            id: "git",
+            label: "Toggle Git Panel",
+            category: "View",
+            action: () => setGitOpen((v) => !v),
+          },
+          {
+            id: "terminal",
+            label: "Toggle Terminal",
+            category: "View",
+            shortcut: "Ctrl+`",
+            action: () => setTerminalOpen((v) => !v),
+          },
+          {
+            id: "settings",
+            label: "Open Settings",
+            category: "Settings",
+            shortcut: "Ctrl+,",
+            action: () => {
+              setSettingsSection(null);
+              setSettingsOpen(true);
+            },
+          },
+          {
+            id: "ai-settings",
+            label: "Open AI Settings",
+            category: "Settings",
+            action: () => {
+              setSettingsSection("ai");
+              setSettingsOpen(true);
+            },
+          },
+        ]}
+      />
+
       {/* ── Status bar (VS Code-style) ──────────────────────────────────── */}
       <footer className="flex h-[22px] shrink-0 items-center justify-between border-t border-white/[0.07] bg-[var(--bg-chrome)] px-2 text-[11px] text-[#a8a8a8]">
         <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setAgentOpen((v) => !v)}
+            title="AI Agent (Ctrl+I)"
+            className="flex shrink-0 items-center gap-1.5 rounded px-1 transition-colors hover:text-[#e8e8e8]"
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                agentBusy ? "bg-(--accent) animate-pulse" : "bg-zinc-500"
+              }`}
+            />
+            Agent
+          </button>
           {workspaceRoot && (
             <span className="min-w-0 truncate" title={workspaceRoot}>
               {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
