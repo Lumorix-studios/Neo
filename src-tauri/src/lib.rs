@@ -741,6 +741,150 @@ fn terminal_kill(state: tauri::State<'_, TerminalState>, id: u32) {
     }
 }
 
+// ─── MCP stdio transport ────────────────────────────────────────────────────────
+// Persistent stdio sessions for MCP servers run as local commands — the standard
+// MCP stdio transport: one JSON-RPC message per line on stdin/stdout. Each
+// server process is kept alive across calls and torn down on stop/remove.
+
+use std::io::BufRead;
+use std::process::ChildStdin;
+use std::sync::mpsc::{self, Receiver};
+
+struct McpProc {
+    child: Child,
+    stdin: ChildStdin,
+    rx: Receiver<String>,
+}
+
+struct McpState(Mutex<HashMap<String, McpProc>>);
+
+#[tauri::command]
+fn mcp_stdio_start(
+    state: tauri::State<'_, McpState>,
+    id: String,
+    command: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    env: Option<HashMap<String, String>>,
+) -> Result<(), String> {
+    // Tear down any previous process registered under this id.
+    {
+        let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+        if let Some(mut old) = guard.remove(&id) {
+            let _ = old.child.kill();
+            let _ = old.child.wait();
+        }
+    }
+
+    let mut cmd = Command::new(&command);
+    cmd.args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    if let Some(dir) = &cwd {
+        let p = PathBuf::from(dir);
+        if p.is_dir() {
+            cmd.current_dir(&p);
+        }
+    }
+    if let Some(vars) = &env {
+        for (k, v) in vars {
+            cmd.env(k, v);
+        }
+    }
+    suppress_window(&mut cmd);
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start MCP server \"{command}\": {e}"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Failed to open MCP server stdin".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to open MCP server stdout".to_string())?;
+
+    // Reader thread: pushes complete lines into a channel with a bounded
+    // backlog so a chatty server can't grow memory without bound.
+    let (tx, rx) = mpsc::sync_channel::<String>(512);
+    thread::spawn(move || {
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let trimmed = line.trim_end_matches(['\r', '\n']).to_string();
+                    if trimmed.is_empty() || tx.send(trimmed).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    state
+        .0
+        .lock()
+        .map_err(|e| format!("State lock error: {e}"))?
+        .insert(id, McpProc { child, stdin, rx });
+    Ok(())
+}
+
+/// Write one JSON-RPC line into the server's stdin.
+#[tauri::command]
+fn mcp_stdio_send(
+    state: tauri::State<'_, McpState>,
+    id: String,
+    line: String,
+) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+    let session = guard
+        .get_mut(&id)
+        .ok_or_else(|| format!("MCP stdio session {id} is not running"))?;
+    session
+        .stdin
+        .write_all(line.as_bytes())
+        .and_then(|_| session.stdin.write_all(b"\n"))
+        .and_then(|_| session.stdin.flush())
+        .map_err(|e| format!("Failed to write to MCP server: {e}"))
+}
+
+/// Read the next stdout line from the server, waiting up to `timeout_ms`.
+/// Returns `None` on timeout (the caller re-polls until its own deadline).
+#[tauri::command]
+fn mcp_stdio_read(
+    state: tauri::State<'_, McpState>,
+    id: String,
+    timeout_ms: u64,
+) -> Result<Option<String>, String> {
+    let guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+    let session = guard
+        .get(&id)
+        .ok_or_else(|| format!("MCP stdio session {id} is not running"))?;
+    match session
+        .rx
+        .recv_timeout(std::time::Duration::from_millis(timeout_ms))
+    {
+        Ok(line) => Ok(Some(line)),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Kill and forget a stdio MCP server process.
+#[tauri::command]
+fn mcp_stdio_stop(state: tauri::State<'_, McpState>, id: String) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+    if let Some(mut session) = guard.remove(&id) {
+        let _ = session.child.kill();
+        let _ = session.child.wait();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -749,6 +893,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .manage(ServerState(Mutex::new(None)))
         .manage(TerminalState::default())
+        .manage(McpState(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             save_state,
             load_state,
@@ -774,7 +919,11 @@ pub fn run() {
             terminal_create,
             terminal_write,
             terminal_resize,
-            terminal_kill
+            terminal_kill,
+            mcp_stdio_start,
+            mcp_stdio_send,
+            mcp_stdio_read,
+            mcp_stdio_stop
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

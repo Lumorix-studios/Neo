@@ -13,7 +13,15 @@ import {
 } from "../uiSettings";
 import type { AISettings, ProviderId } from "../types";
 import { PROVIDER_OPTIONS, providerById } from "../providers";
-import { loadMcpServers, saveMcpServers, makeServerId, type McpServerConfig } from "../mcp";
+import {
+  loadMcpServers,
+  saveMcpServers,
+  makeServerId,
+  listMcpTools,
+  stopStdio,
+  describeServer,
+  type McpServerConfig,
+} from "../mcp";
 import {
   EXTENSIONS,
   loadExtensionState,
@@ -408,7 +416,14 @@ export default function SettingsPanel({
   const [showLocalModels, setShowLocalModels] = useState(false);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>(() => loadMcpServers());
   const [mcpName, setMcpName] = useState("");
+  const [mcpTransport, setMcpTransport] = useState<"http" | "stdio">("http");
   const [mcpUrl, setMcpUrl] = useState("");
+  const [mcpHeaders, setMcpHeaders] = useState("");
+  const [mcpCommand, setMcpCommand] = useState("");
+  const [mcpArgs, setMcpArgs] = useState("");
+  const [mcpEnv, setMcpEnv] = useState("");
+  const [mcpError, setMcpError] = useState("");
+  const [mcpTest, setMcpTest] = useState<Record<string, string>>({});
   // --- Extensions marketplace state ---
   const [extState, setExtState] = useState<ExtensionState>(() => loadExtensionState());
   const [extQuery, setExtQuery] = useState("");
@@ -452,15 +467,78 @@ export default function SettingsPanel({
   const aiSpec = providerById(aiSettings.provider);
   const aiNeedsKey = aiSpec.needsAuth;
 
+  /** Parse a JSON object field (headers / env); null + inline error on failure. */
+  const parseJsonObject = (raw: string, label: string): Record<string, string> | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return {};
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("expected a JSON object");
+      }
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = String(v);
+      }
+      return out;
+    } catch (e) {
+      setMcpError(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  };
+
   const addMcpServer = () => {
     const name = mcpName.trim();
-    const url = mcpUrl.trim();
-    if (!name || !url) return;
-    const next = [...mcpServers, { id: makeServerId(), name, url, enabled: true }];
+    if (!name) return;
+    setMcpError("");
+    let server: McpServerConfig;
+    if (mcpTransport === "http") {
+      const url = mcpUrl.trim();
+      if (!url) {
+        setMcpError("URL is required for Streamable-HTTP servers.");
+        return;
+      }
+      const headers = parseJsonObject(mcpHeaders, "Headers");
+      if (headers === null) return;
+      server = {
+        id: makeServerId(),
+        name,
+        enabled: true,
+        transport: "http",
+        url,
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+      };
+    } else {
+      const command = mcpCommand.trim();
+      if (!command) {
+        setMcpError("Command is required for stdio servers.");
+        return;
+      }
+      const env = parseJsonObject(mcpEnv, "Env");
+      if (env === null) return;
+      // Split args on whitespace, honouring double-quoted values.
+      const args = (mcpArgs.match(/(?:[^\s"]+|"[^"]*")+/g) ?? []).map((a) =>
+        a.replace(/^"|"$/g, "")
+      );
+      server = {
+        id: makeServerId(),
+        name,
+        enabled: true,
+        transport: "stdio",
+        command,
+        args,
+        env: Object.keys(env).length > 0 ? env : undefined,
+      };
+    }
+    const next = [...mcpServers, server];
     setMcpServers(next);
     saveMcpServers(next);
     setMcpName("");
     setMcpUrl("");
+    setMcpHeaders("");
+    setMcpCommand("");
+    setMcpArgs("");
+    setMcpEnv("");
   };
 
   const toggleMcpServer = (id: string) => {
@@ -470,9 +548,28 @@ export default function SettingsPanel({
   };
 
   const removeMcpServer = (id: string) => {
+    const target = mcpServers.find((s) => s.id === id);
+    if (target?.transport === "stdio") void stopStdio(id);
     const next = mcpServers.filter((s) => s.id !== id);
     setMcpServers(next);
     saveMcpServers(next);
+  };
+
+  /** Live connectivity check: handshake + tools/list. */
+  const testMcpServer = async (s: McpServerConfig) => {
+    setMcpTest((prev) => ({ ...prev, [s.id]: "…" }));
+    try {
+      const tools = await listMcpTools(s);
+      setMcpTest((prev) => ({
+        ...prev,
+        [s.id]: `${tools.length} tool${tools.length === 1 ? "" : "s"}`,
+      }));
+    } catch (e) {
+      setMcpTest((prev) => ({
+        ...prev,
+        [s.id]: `✕ ${e instanceof Error ? e.message : String(e)}`,
+      }));
+    }
   };
 
   useEffect(() => {
@@ -785,7 +882,8 @@ return (
                 <div className="flex flex-col gap-2 pb-2">
                   {mcpServers.length === 0 && (
                     <p className="text-[11px] leading-4 text-[var(--text-muted)]">
-                      Connect Streamable-HTTP MCP servers to extend the agent with external tools.
+                      Connect MCP servers to extend the agent with external tools — remote
+                      Streamable-HTTP endpoints or local stdio commands.
                     </p>
                   )}
                   {mcpServers.map((s) => (
@@ -805,11 +903,29 @@ return (
                         />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <div className={`truncate text-[12px] font-medium ${s.enabled ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
-                          {s.name}
+                        <div className="flex items-center gap-1.5">
+                          <span className={`truncate text-[12px] font-medium ${s.enabled ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
+                            {s.name}
+                          </span>
+                          <span className="shrink-0 rounded border border-white/[0.09] px-1 py-px text-[9px] uppercase tracking-wide text-[var(--text-faint)]">
+                            {s.transport}
+                          </span>
                         </div>
-                        <div className="truncate text-[10px] text-[var(--text-faint)]">{s.url}</div>
+                        <div className="truncate text-[10px] text-[var(--text-faint)]">{describeServer(s)}</div>
+                        {mcpTest[s.id] && (
+                          <div className={`truncate text-[10px] ${mcpTest[s.id].startsWith("✕") ? "text-red-400/80" : "text-emerald-400/80"}`}>
+                            {mcpTest[s.id]}
+                          </div>
+                        )}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => void testMcpServer(s)}
+                        title="Handshake + list tools"
+                        className="shrink-0 rounded border border-white/[0.09] px-2 py-1 text-[10.5px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                      >
+                        Test
+                      </button>
                       <button
                         type="button"
                         onClick={() => removeMcpServer(s.id)}
@@ -822,29 +938,87 @@ return (
                       </button>
                     </div>
                   ))}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={mcpName}
-                      onChange={(e) => setMcpName(e.target.value)}
-                      placeholder="Server name (e.g. filesystem)"
-                      spellCheck={false}
-                      className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
-                    />
-                    <input
-                      type="text"
-                      value={mcpUrl}
-                      onChange={(e) => setMcpUrl(e.target.value)}
-                      placeholder="http://localhost:3000/mcp"
-                      spellCheck={false}
-                      onKeyDown={(e) => e.key === "Enter" && addMcpServer()}
-                      className="min-w-0 flex-[1.4] rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
-                    />
+                  {/* Transport picker */}
+                  <div className="flex items-center gap-1 self-start rounded-md border border-white/[0.08] bg-white/[0.03] p-0.5">
+                    {(["http", "stdio"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setMcpTransport(t)}
+                        className={`rounded px-2.5 py-1 text-[11px] transition ${
+                          mcpTransport === t
+                            ? "bg-white/[0.09] text-[var(--text-primary)]"
+                            : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                        }`}
+                      >
+                        {t === "http" ? "HTTP endpoint" : "Local command"}
+                      </button>
+                    ))}
                   </div>
+                  <input
+                    type="text"
+                    value={mcpName}
+                    onChange={(e) => setMcpName(e.target.value)}
+                    placeholder="Server name (e.g. filesystem)"
+                    spellCheck={false}
+                    className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                  />
+                  {mcpTransport === "http" ? (
+                    <>
+                      <input
+                        type="text"
+                        value={mcpUrl}
+                        onChange={(e) => setMcpUrl(e.target.value)}
+                        placeholder="http://localhost:3000/mcp"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                      />
+                      <input
+                        type="text"
+                        value={mcpHeaders}
+                        onChange={(e) => setMcpHeaders(e.target.value)}
+                        placeholder='Headers JSON (optional) — e.g. {"Authorization": "Bearer <your token>"}'
+                        spellCheck={false}
+                        className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={mcpCommand}
+                          onChange={(e) => setMcpCommand(e.target.value)}
+                          placeholder="Command (e.g. npx)"
+                          spellCheck={false}
+                          className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                        />
+                        <input
+                          type="text"
+                          value={mcpArgs}
+                          onChange={(e) => setMcpArgs(e.target.value)}
+                          placeholder='Args (e.g. -y @modelcontextprotocol/server-filesystem C:\projects)'
+                          spellCheck={false}
+                          className="min-w-0 flex-[1.6] rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={mcpEnv}
+                        onChange={(e) => setMcpEnv(e.target.value)}
+                        placeholder='Env JSON (optional) — e.g. {"API_TOKEN": "<your token>"}'
+                        spellCheck={false}
+                        className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                      />
+                    </>
+                  )}
+                  {mcpError && (
+                    <p className="text-[10.5px] leading-4 text-red-400/90">{mcpError}</p>
+                  )}
                   <button
                     type="button"
                     onClick={addMcpServer}
-                    disabled={!mcpName.trim() || !mcpUrl.trim()}
+                    disabled={!mcpName.trim()}
                     className="self-start rounded-md border border-white/[0.09] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Add Server

@@ -32,6 +32,12 @@ import {
 import type { AgenticActivity as AgenticActivityType } from "../agentic";
 import type { NativeToolAcc, ToolCall } from "../agentic";
 import { computeLineDiff } from "../diff";
+import {
+  loadMcpServers,
+  listMcpTools,
+  callMcpTool,
+  type McpServerConfig,
+} from "../mcp";
 
 type JsonDict = Record<string, unknown>;
 
@@ -125,6 +131,15 @@ export default function AgentPanel({
   const [error, setError] = useState<string | null>(null);
   const [activities, setActivities] = useState<AgenticActivityType[]>([]);
   const [pendingApproval, setPendingApproval] = useState<AgenticActivityType | null>(null);
+  /** chat = plain Q&A · agent = tool-using · orchestrator = plan → execute steps. */
+  const [mode, setMode] = useState<"chat" | "agent" | "orchestrator">("agent");
+  /** Orchestrator plan steps with live status. */
+  const [plan, setPlan] = useState<
+    Array<{ title: string; detail: string; status: "pending" | "running" | "done" | "error" }>
+  | null>(null);
+  const [mcpServerCount, setMcpServerCount] = useState(
+    () => loadMcpServers().filter((s) => s.enabled).length
+  );
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<AbortController | null>(null);
@@ -133,19 +148,29 @@ export default function AgentPanel({
 
   // Live mirrors of props for the async agent loop (no stale closures).
   const tabsRef = useRef(editorTabs);
-  tabsRef.current = editorTabs;
   const activeRef = useRef(activeEditorPath);
-  activeRef.current = activeEditorPath;
   const rootRef = useRef(workspaceRoot);
-  rootRef.current = workspaceRoot;
   const settingsRef = useRef(settings);
-  settingsRef.current = settings;
   const messagesRef = useRef<Message[]>([]);
-  messagesRef.current = messages;
+  useEffect(() => {
+    tabsRef.current = editorTabs;
+    activeRef.current = activeEditorPath;
+    rootRef.current = workspaceRoot;
+    settingsRef.current = settings;
+    messagesRef.current = messages;
+  });
 
   useEffect(() => {
     onBusyChange?.(busy);
   }, [busy, onBusyChange]);
+
+  // Pick up MCP server changes made in Settings (cheap localStorage read).
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setMcpServerCount(loadMcpServers().filter((s) => s.enabled).length);
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // Keep the feed pinned to the newest content.
   useEffect(() => {
@@ -210,7 +235,8 @@ export default function AgentPanel({
   const streamRound = async (
     history: Message[],
     systemPrompt: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    enableTools = true
   ): Promise<{ text: string; nativeCalls: ToolCall[] }> => {
     const s = getProviderSpec(settingsRef.current);
     const endpoint = s.buildUrl(settingsRef.current);
@@ -219,7 +245,7 @@ export default function AgentPanel({
       ...buildAuthHeaders(s, settingsRef.current.apiKey),
     };
     const effective: AISettings = { ...settingsRef.current, systemPrompt };
-    const body = s.buildBody(effective, history, { enableTools: true });
+    const body = s.buildBody(effective, history, { enableTools });
 
     let res: Response;
     try {
@@ -322,7 +348,7 @@ export default function AgentPanel({
     if (!round && nativeAcc.length === 0 && !signal.aborted) {
       try {
         const nonStreamBody = {
-          ...(s.buildBody(effective, history, { enableTools: true }) as JsonDict),
+          ...(s.buildBody(effective, history, { enableTools }) as JsonDict),
           stream: false,
         } as JsonDict;
         const nonStreamUrl = endpoint.includes("streamGenerateContent")
@@ -350,86 +376,136 @@ export default function AgentPanel({
     return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
   };
 
-  /** Full agentic run: stream → execute tools → feed results back, looping. */
-  const runAgent = async (userText: string) => {
+  /** Fail fast if the provider isn't configured. */
+  const ensureProviderReady = (): boolean => {
     const s = getProviderSpec(settingsRef.current);
     if (s.needsAuth && !settingsRef.current.apiKey.trim()) {
       setError(`Configure your ${s.label} API key in AI Settings to use the agent.`);
       onOpenSettings();
-      return;
+      return false;
     }
     if (!settingsRef.current.baseUrl.trim()) {
       setError("Base URL is empty. Configure it in AI Settings.");
       onOpenSettings();
-      return;
+      return false;
     }
+    return true;
+  };
 
-    streamRef.current?.abort();
-    setError(null);
-    setActivities([]);
-    setInput("");
-    setBusy(true);
-    streamedRef.current = "";
+  /** Orchestrator: how the planner must shape its reply. */
+  const ORCHESTRATOR_PLANNER_PROMPT = `You are the ORCHESTRATOR of a coding agent team. Break the user's goal into concrete, independently executable steps (at most 6).
 
-    // Optimistically render the user message and a streaming assistant bubble.
-    setMessages((prev) => [...prev, { role: "user", content: userText }]);
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+Respond with ONLY a JSON array — no prose, no code fences, no examples:
+[{"title": "Short step title", "detail": "Precise instruction for the coding agent, including file paths where relevant"}]
 
-    const abortCtrl = new AbortController();
-    streamRef.current = abortCtrl;
+Rules:
+- Every step must be verifiable on its own.
+- Later steps may build on earlier ones.
+- Order steps so each has everything it needs when it starts.`;
 
+  /** Parse the planner's JSON array of steps out of its reply. */
+  const parsePlan = (text: string): { title: string; detail: string }[] | null => {
+    const start = text.indexOf("[");
+    const end = text.lastIndexOf("]");
+    if (start === -1 || end <= start) return null;
     try {
-      const agentHistory: Message[] = [
-        // messagesRef.current is still the pre-turn snapshot here (the user +
-        // assistant placeholders above have not rendered yet).
-        ...sanitizeHistory(messagesRef.current),
-        { role: "user", content: userText },
-      ];
+      const arr = JSON.parse(text.slice(start, end + 1)) as unknown;
+      if (!Array.isArray(arr)) return null;
+      const steps = (arr as Record<string, unknown>[])
+        .filter((s) => typeof s?.title === "string" && (s.title as string).trim().length > 0)
+        .slice(0, 8)
+        .map((s) => ({ title: String(s.title), detail: String(s.detail ?? "") }));
+      return steps.length > 0 ? steps : null;
+    } catch {
+      return null;
+    }
+  };
 
-      // --- Context-aware system prompt (workspace + editor snapshot). -------
-      const root = rootRef.current;
-      const openTabs = tabsRef.current;
-      const active = activeRef.current;
-      const rel = (p: string): string =>
-        root && p.startsWith(root) ? p.slice(root.length).replace(/^[\\/]+/, "") : p;
-      const editor = {
-        openPaths: openTabs.map((t) => t.path),
-        activePath: active,
-        getTabContent: (p: string) => openTabs.find((t) => t.path === p)?.content ?? null,
-      };
-      let systemPrompt = agenticSystemPrompt(root, editor);
-      let userFileNote = "";
-      if (active) {
-        const activeTab = openTabs.find((t) => t.path === active) ?? null;
-        if (activeTab) {
-          const i = Math.max(active.lastIndexOf("\\"), active.lastIndexOf("/"));
-          const dir = i > 0 ? active.slice(0, i) : active;
-          const MAX_INLINE = 8000;
-          const bodyText =
-            activeTab.content.length <= MAX_INLINE
-              ? activeTab.content
-              : `${activeTab.content.slice(0, MAX_INLINE)}\n...[truncated - call read_active_file or read_file for more]`;
-          systemPrompt += `\n\nCurrent contents of ${rel(active)} (folder: ${dir}):\n${bodyText}\n(end of ${rel(active)})`;
-          userFileNote = `(Working file: ${rel(active)} — its complete source is already in your system context above. Start analyzing it immediately; do not ask for it.)`;
+  /** Collect MCP tools from all enabled servers (offline servers are skipped). */
+  const collectMcpTools = async (): Promise<
+    Map<string, { server: McpServerConfig; tool: string }>
+  > => {
+    const map = new Map<string, { server: McpServerConfig; tool: string }>();
+    const servers = loadMcpServers().filter((s) => s.enabled);
+    await Promise.all(
+      servers.map(async (s) => {
+        try {
+          for (const t of await listMcpTools(s)) {
+            map.set(`mcp_${s.name}_${t.name}`, { server: s, tool: t.name });
+          }
+        } catch {
+          /* server offline — skip silently */
         }
-      } else if (!root) {
-        systemPrompt += "\n\nNo folder is open and no file is active in the IDE.";
-      }
-      if (userFileNote) {
-        const lastMsg = agentHistory[agentHistory.length - 1];
-        if (lastMsg && lastMsg.role === "user") {
-          lastMsg.content = `${lastMsg.content}\n\n${userFileNote}`;
-        }
-      }
+      })
+    );
+    return map;
+  };
 
-      let ranTools = 0;
-      let toolRounds = 0;
-      let nudgeCount = 0;
-      let failStreak = 0;
-      let lastFailSig = "";
-      // Per-turn cache of read-only results; cleared whenever a mutation runs.
-      const readOnlyCache = new Map<string, { ok: boolean; output: string }>();
-      const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
+  /** Agentic system prompt: workspace + editor snapshot + MCP tool roster. */
+  const buildAgentPrompt = async (): Promise<{
+    systemPrompt: string;
+    userFileNote: string;
+    mcpTools: Map<string, { server: McpServerConfig; tool: string }>;
+  }> => {
+    const root = rootRef.current;
+    const openTabs = tabsRef.current;
+    const active = activeRef.current;
+    const rel = (p: string): string =>
+      root && p.startsWith(root) ? p.slice(root.length).replace(/^[\\/]+/, "") : p;
+    const editor = {
+      openPaths: openTabs.map((t) => t.path),
+      activePath: active,
+      getTabContent: (p: string) => openTabs.find((t) => t.path === p)?.content ?? null,
+    };
+    let systemPrompt = agenticSystemPrompt(root, editor);
+    let userFileNote = "";
+    if (active) {
+      const activeTab = openTabs.find((t) => t.path === active) ?? null;
+      if (activeTab) {
+        const i = Math.max(active.lastIndexOf("\\"), active.lastIndexOf("/"));
+        const dir = i > 0 ? active.slice(0, i) : active;
+        const MAX_INLINE = 8000;
+        const bodyText =
+          activeTab.content.length <= MAX_INLINE
+            ? activeTab.content
+            : `${activeTab.content.slice(0, MAX_INLINE)}\n...[truncated - call read_active_file or read_file for more]`;
+        systemPrompt += `\n\nCurrent contents of ${rel(active)} (folder: ${dir}):\n${bodyText}\n(end of ${rel(active)})`;
+        userFileNote = `(Working file: ${rel(active)} — its complete source is already in your system context above. Start analyzing it immediately; do not ask for it.)`;
+      }
+    } else if (!root) {
+      systemPrompt += "\n\nNo folder is open and no file is active in the IDE.";
+    }
+    const mcpTools = await collectMcpTools();
+    if (mcpTools.size > 0) {
+      systemPrompt += `\n\nMCP tools available (invoke via tool-call markup using the FULL name):\n${[
+        ...mcpTools.keys(),
+      ]
+        .map((k) => `- ${k}`)
+        .join(NL)}`;
+    }
+    return { systemPrompt, userFileNote, mcpTools };
+  };
+
+  /**
+   * Core tool loop shared by Agent and Orchestrator modes: stream a round,
+   * execute any tool calls (read-only in parallel, mutations behind approval),
+   * feed results back, and repeat until the model stops calling tools.
+   * Returns the number of tools executed.
+   */
+  const runLoop = async (
+    agentHistory: Message[],
+    systemPrompt: string,
+    mcpTools: Map<string, { server: McpServerConfig; tool: string }>,
+    abortCtrl: AbortController
+  ): Promise<number> => {
+    let ranTools = 0;
+    let toolRounds = 0;
+    let nudgeCount = 0;
+    let failStreak = 0;
+    let lastFailSig = "";
+    // Per-turn cache of read-only results; cleared whenever a mutation runs.
+    const readOnlyCache = new Map<string, { ok: boolean; output: string }>();
+    const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
 
       while (!abortCtrl.signal.aborted) {
         const round = await streamRound(agentHistory, systemPrompt, abortCtrl.signal);
@@ -507,15 +583,26 @@ export default function AgentPanel({
         const resultsByKey = new Map<string, { ok: boolean; output: string }>();
         const effRoot = rootRef.current;
 
-        const runToolCall = async (call: ToolCall) =>
-          executeTool(call.name, call.arguments, effRoot, {
+        const isMcp = (name: string) => name.startsWith("mcp_");
+
+        /** Execute one call — built-in filesystem/command tools or MCP tools. */
+        const runToolCall = async (call: ToolCall) => {
+          if (isMcp(call.name)) {
+            const entry = mcpTools.get(call.name);
+            if (!entry) return { ok: false, output: `Unknown MCP tool: ${call.name}` };
+            return callMcpTool(entry.server, entry.tool, call.arguments);
+          }
+          return executeTool(call.name, call.arguments, effRoot, {
             openPaths: tabsRef.current.map((t) => t.path),
             activePath: activeRef.current,
             getTabContent: (p) => tabsRef.current.find((t) => t.path === p)?.content ?? null,
           });
+        };
 
-        // --- Read-only batch (parallel, cache-aware). -------------------------
-        const readOnly = calls.filter(({ call }) => !isDestructive(call.name));
+        // --- Read-only batch (parallel, cache-aware). MCP needs approval. -----
+        const readOnly = calls.filter(
+          ({ call }) => !isDestructive(call.name) && !isMcp(call.name)
+        );
         readOnly.forEach(({ key }) => {
           if (readOnlyCache.has(key)) return; // cached — no spinner needed
           const id = activityIds.get(key);
@@ -541,7 +628,7 @@ export default function AgentPanel({
         );
 
         // --- Mutating batch (sequential, each behind user approval). ---------
-        const mutating = calls.filter(({ call }) => isDestructive(call.name));
+        const mutating = calls.filter(({ call }) => isDestructive(call.name) || isMcp(call.name));
         for (const { call, key } of mutating) {
           const id = activityIds.get(key);
           if (!id) continue;
@@ -650,6 +737,59 @@ export default function AgentPanel({
         }
       }
 
+      return ranTools;
+  };
+
+  /** One agentic run — chat (plain Q&A) or agent (full tool loop). */
+  const runAgent = async (userText: string, runMode: "chat" | "agent" = "agent") => {
+    if (!ensureProviderReady()) return;
+
+    streamRef.current?.abort();
+    setError(null);
+    setActivities([]);
+    setPlan(null);
+    setInput("");
+    setBusy(true);
+    streamedRef.current = "";
+
+    // Optimistically render the user message and a streaming assistant bubble.
+    setMessages((prev) => [...prev, { role: "user", content: userText }]);
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+    const abortCtrl = new AbortController();
+    streamRef.current = abortCtrl;
+
+    try {
+      const agentHistory: Message[] = [
+        // messagesRef.current is still the pre-turn snapshot here (the user +
+        // assistant placeholders above have not rendered yet).
+        ...sanitizeHistory(messagesRef.current),
+        { role: "user", content: userText },
+      ];
+
+      if (runMode === "chat") {
+        // Plain Q&A: no tools, no activity feed — one streamed round.
+        await streamRound(agentHistory, settingsRef.current.systemPrompt, abortCtrl.signal, false);
+        const finalText = streamedRef.current.trim();
+        if (finalText) setLastAssistant(finalText);
+        else if (!abortCtrl.signal.aborted) {
+          setError(
+            "The model returned an empty response. Check the model name and endpoint in AI Settings."
+          );
+          removeEmptyAssistant();
+        }
+        return;
+      }
+
+      const { systemPrompt, userFileNote, mcpTools } = await buildAgentPrompt();
+      if (userFileNote) {
+        const lastMsg = agentHistory[agentHistory.length - 1];
+        if (lastMsg && lastMsg.role === "user") {
+          lastMsg.content = `${lastMsg.content}\n\n${userFileNote}`;
+        }
+      }
+      const ranTools = await runLoop(agentHistory, systemPrompt, mcpTools, abortCtrl);
+
       // Commit whatever visible text accumulated across all rounds.
       const finalVisible = streamedRef.current.trim();
       if (finalVisible) {
@@ -683,6 +823,129 @@ export default function AgentPanel({
     }
   };
 
+  /**
+   * Orchestrator mode: plan the goal into steps, execute each step as its own
+   * tool-using run (each with fresh focus but shared conversation context),
+   * then synthesize a final summary.
+   */
+  const runOrchestrator = async (userText: string) => {
+    if (!ensureProviderReady()) return;
+
+    streamRef.current?.abort();
+    setError(null);
+    setActivities([]);
+    setPlan(null);
+    setInput("");
+    setBusy(true);
+    streamedRef.current = "";
+
+    setMessages((prev) => [...prev, { role: "user", content: userText }]);
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+    const abortCtrl = new AbortController();
+    streamRef.current = abortCtrl;
+
+    try {
+      const agentHistory: Message[] = [
+        ...sanitizeHistory(messagesRef.current),
+        { role: "user", content: userText },
+      ];
+      const { systemPrompt, userFileNote, mcpTools } = await buildAgentPrompt();
+      if (userFileNote) {
+        const lastMsg = agentHistory[agentHistory.length - 1];
+        if (lastMsg && lastMsg.role === "user") {
+          lastMsg.content = `${lastMsg.content}\n\n${userFileNote}`;
+        }
+      }
+
+      // ── Phase 1 — plan ─────────────────────────────────────────────────────
+      const planRound = await streamRound(
+        agentHistory,
+        `${systemPrompt}\n\n${ORCHESTRATOR_PLANNER_PROMPT}`,
+        abortCtrl.signal,
+        false
+      );
+      if (abortCtrl.signal.aborted) return;
+      const steps = parsePlan(planRound.text);
+      if (!steps) {
+        setError(
+          "The orchestrator could not produce a valid plan. Try phrasing the goal as a concrete task, or switch to Agent mode."
+        );
+        removeEmptyAssistant();
+        return;
+      }
+      setPlan(steps.map((s) => ({ ...s, status: "pending" as const })));
+      agentHistory.push({
+        role: "assistant",
+        content: `Plan:\n${steps.map((s, i) => `${i + 1}. ${s.title} — ${s.detail}`).join(NL)}`,
+      });
+
+      // ── Phase 2 — execute each step with its own tool loop ────────────────
+      for (let i = 0; i < steps.length; i++) {
+        if (abortCtrl.signal.aborted) break;
+        setPlan((prev) =>
+          prev ? prev.map((p, j) => (j === i ? { ...p, status: "running" } : p)) : prev
+        );
+        streamedRef.current = "";
+        const stepMsg = `Execute step ${i + 1} of ${steps.length}: ${steps[i].title}.\n${
+          steps[i].detail
+        }\nWhen the step is complete, reply with a one-sentence summary of what changed.`;
+        setMessages((prev) => [...prev, { role: "user", content: stepMsg }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+        agentHistory.push({ role: "user", content: stepMsg });
+        try {
+          await runLoop(agentHistory, systemPrompt, mcpTools, abortCtrl);
+          setPlan((prev) =>
+            prev ? prev.map((p, j) => (j === i ? { ...p, status: "done" } : p)) : prev
+          );
+          const summary = streamedRef.current.trim();
+          if (summary) agentHistory.push({ role: "assistant", content: summary });
+        } catch (err) {
+          if (abortCtrl.signal.aborted) break;
+          setPlan((prev) =>
+            prev ? prev.map((p, j) => (j === i ? { ...p, status: "error" } : p)) : prev
+          );
+          agentHistory.push({
+            role: "user",
+            content: `Step ${i + 1} failed: ${
+              err instanceof Error ? err.message : String(err)
+            }. Continue with the next step.`,
+          });
+        }
+      }
+
+      // ── Phase 3 — synthesis ────────────────────────────────────────────────
+      if (!abortCtrl.signal.aborted) {
+        streamedRef.current = "";
+        setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+        agentHistory.push({
+          role: "user",
+          content:
+            "All steps are finished. Write a concise final summary of what was accomplished, which files changed, and anything the user should verify.",
+        });
+        await streamRound(agentHistory, systemPrompt, abortCtrl.signal, false);
+        const finalText = streamedRef.current.trim();
+        if (finalText) setLastAssistant(finalText);
+        else removeEmptyAssistant();
+      }
+    } catch (err) {
+      if (abortCtrl.signal.aborted || (err instanceof Error && err.message === "__ABORTED__")) {
+        const partial = stripToolCalls(streamedRef.current).trim();
+        if (partial) setLastAssistant(partial);
+        else removeEmptyAssistant();
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to reach the AI provider.");
+        removeEmptyAssistant();
+      }
+    } finally {
+      setBusy(false);
+      streamRef.current = null;
+      approvalRef.current?.resolve(false);
+      approvalRef.current = null;
+      setPendingApproval(null);
+    }
+  };
+
   const stopAgent = () => {
     streamRef.current?.abort();
     approvalRef.current?.resolve(false);
@@ -698,7 +961,8 @@ export default function AgentPanel({
   const send = (text?: string) => {
     const trimmed = (text ?? input).trim();
     if (!trimmed || busy) return;
-    void runAgent(trimmed);
+    if (mode === "orchestrator") void runOrchestrator(trimmed);
+    else void runAgent(trimmed, mode === "chat" ? "chat" : "agent");
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -804,11 +1068,37 @@ export default function AgentPanel({
         </button>
       </div>
 
+      {/* ── Mode switcher ──────────────────────────────────────────────────── */}
+      <div className="flex shrink-0 items-center gap-1 border-b border-white/[0.05] px-2.5 py-1.5">
+        {(
+          [
+            ["chat", "Chat", "Plain conversation — no file tools"],
+            ["agent", "Agent", "Reads, edits and runs files with your approval"],
+            ["orchestrator", "Orchestrator", "Plans the goal into steps, then executes each one"],
+          ] as const
+        ).map(([m, label, tip]) => (
+          <button
+            key={m}
+            type="button"
+            disabled={busy}
+            onClick={() => setMode(m)}
+            title={tip}
+            className={`rounded-md px-2.5 py-1 text-[11px] transition disabled:opacity-50 ${
+              mode === m
+                ? "bg-white/[0.08] font-medium text-[#e8e8e8]"
+                : "text-[#7a7a7a] hover:bg-white/[0.04] hover:text-[#c9c9c9]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ── Message feed ───────────────────────────────────────────────────── */}
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-5 pb-6 text-center">
-            <div className="msg-in flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] shadow-[0_0_36px_rgba(76,141,255,0.14)]">
+            <div className="msg-in flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03]">
               <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.2" strokeLinejoin="round">
                 <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
               </svg>
@@ -888,6 +1178,52 @@ export default function AgentPanel({
         )}
       </div>
 
+      {/* ── Orchestrator plan ──────────────────────────────────────────────── */}
+      {plan && (
+        <div className="shrink-0 px-3 pb-1">
+          <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.02]">
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8a8a8a]">
+                Plan
+              </span>
+              <button
+                type="button"
+                onClick={() => setPlan(null)}
+                title="Dismiss plan"
+                className="text-[10px] text-[#5a5a5a] transition hover:text-[#c9c9c9]"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-3 py-1.5">
+              {plan.map((s, i) => (
+                <div key={i} className="flex items-start gap-2 py-0.5">
+                  <span
+                    className={`mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full ${
+                      s.status === "running"
+                        ? "animate-pulse bg-blue-400"
+                        : s.status === "done"
+                          ? "bg-emerald-500"
+                          : s.status === "error"
+                            ? "bg-red-400"
+                            : "bg-zinc-600"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[11.5px] font-medium leading-5 text-[#d4d4d4]">
+                      {i + 1}. {s.title}
+                    </p>
+                    {s.detail && (
+                      <p className="text-[10.5px] leading-4 text-[#6b6b6b]">{s.detail}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <AgenticActivity
         items={activities}
         pending={pendingApproval}
@@ -936,6 +1272,22 @@ export default function AgentPanel({
               <span className="h-1 w-1 rounded-full bg-(--accent)" />
               {activeEditorPath.split(/[\\/]/).pop()}
             </span>
+          )}
+          {mcpServerCount > 0 && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              title={`${mcpServerCount} MCP server${mcpServerCount === 1 ? "" : "s"} connected — click to manage`}
+              className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[10.5px] text-[#a3a3a3] transition-colors hover:border-white/[0.14] hover:text-[#e8e8e8]"
+            >
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="5" height="5" rx="1" />
+                <rect x="9" y="2" width="5" height="5" rx="1" />
+                <rect x="2" y="9" width="5" height="5" rx="1" />
+                <rect x="9" y="9" width="5" height="5" rx="1" />
+              </svg>
+              {mcpServerCount} MCP
+            </button>
           )}
         </div>
         <div className="relative rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] transition-colors duration-150 focus-within:border-white/[0.16]">
