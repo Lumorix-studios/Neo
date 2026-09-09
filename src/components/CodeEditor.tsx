@@ -152,6 +152,7 @@ export default function CodeEditor({
   activePath,
   onSelect,
   onClose,
+  onCloseAll,
   onChange,
   onSave,
   reveal,
@@ -674,7 +675,11 @@ export default function CodeEditor({
                 }`}
               >
                 {selected && (
-                  <span className="absolute inset-x-0 top-0 h-[1px] bg-[#0078d4]" />
+                  <>
+                    <span className="absolute inset-x-0 top-0 h-[2px] bg-(--accent)" />
+                    {/* Merge the active tab into the editor surface (VS Code-style). */}
+                    <span className="absolute inset-x-0 -bottom-px h-px bg-[var(--bg-editor)]" />
+                  </>
                 )}
                 <button
                   type="button"
@@ -709,6 +714,22 @@ export default function CodeEditor({
           })}
         </div>
 
+        {/* Tab strip actions */}
+        <div className="flex shrink-0 items-center gap-0.5 px-1.5">
+          {tabs.length > 0 && onCloseAll && (
+            <button
+              type="button"
+              onClick={onCloseAll}
+              title="Close all tabs"
+              aria-label="Close all tabs"
+              className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 4h10M5.5 4V2.9A.9.9 0 016.4 2h3.2a.9.9 0 01.9.9V4M6.5 6.5v5M9.5 6.5v5M4.2 4l.6 8.4a1 1 0 001 .9h4.4a1 1 0 001-.9L11.8 4" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {active ? (
