@@ -17,6 +17,12 @@ interface TopMenuProps {
   onOpenIdeWindow?: () => void;
   /** Optional right-aligned slot (model pill, actions) rendered in the title bar. */
   right?: ReactNode;
+  /** Trigger a deep project analysis by the agent. */
+  onAnalyzeProject?: () => void;
+  /** Trigger a session save/export. */
+  onSaveSession?: () => void;
+  /** Pin a file to the agent's context. */
+  onPinFile?: (path: string) => void;
 }
 
 interface MenuDef {
@@ -35,6 +41,9 @@ export default function TopMenu({
   onOpenSettings,
   onOpenCommandPalette,
   onOpenIdeWindow,
+  onAnalyzeProject,
+  onSaveSession,
+  onPinFile,
   right,
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);

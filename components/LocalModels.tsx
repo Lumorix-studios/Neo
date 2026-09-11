@@ -25,7 +25,8 @@ import {
 
 interface Props {
   onClose: () => void;
-  onSelectModel: (modelName: string) => void;
+  /** Returns an error message, or null on success (may be async). */
+  onSelectModel: (modelName: string) => void | Promise<string | null>;
   selectedModel: string;
 }
 
@@ -76,10 +77,18 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
     setStarting(true);
     setError(null);
     try {
-      const ok = await startOllamaServer();
-      if (ok) {
+      const status = await startOllamaServer();
+      if (status?.running) {
         setRunning(true);
-        setSuccess("Ollama server started successfully.");
+        if (status.alreadyRunning && !status.owned) {
+          // Port 11434 was already served by an external Ollama — we reused
+          // it instead of spawning a duplicate that would die on bind.
+          setSuccess(
+            "Connected to an existing Ollama server on port 11434 (started outside this app). Stop won't kill it."
+          );
+        } else {
+          setSuccess("Ollama server started successfully.");
+        }
         const modelList = await listLocalModels();
         setModels(modelList);
       } else {
@@ -89,7 +98,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
       setError(e instanceof Error ? e.message : "Failed to start the Ollama server.");
     } finally {
       setStarting(false);
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccess(null), 4000);
     }
   };
 
@@ -97,15 +106,26 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
     setStopping(true);
     setError(null);
     try {
-      await stopOllamaServer();
-      setRunning(false);
-      setModels([]);
-      setSuccess("Ollama server stopped.");
+      const status = await stopOllamaServer();
+      if (status?.stopped) {
+        setRunning(false);
+        setModels([]);
+        setSuccess("Ollama server stopped.");
+      } else if (status?.stillRunningExternal) {
+        // A server started outside the app is listening — we never touch it.
+        setSuccess(
+          "This Ollama server was started outside the app, so it was left running. Stop it from its own window or tray icon."
+        );
+      } else {
+        setError("No Ollama server is running.");
+        setRunning(false);
+        setModels([]);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to stop the Ollama server.");
     } finally {
       setStopping(false);
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccess(null), 4000);
     }
   };
 
@@ -154,10 +174,16 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
     }
   };
 
-  const handleSelect = (name: string) => {
-    onSelectModel(name);
-    setSuccess(`Model "${name}" selected.`);
-    setTimeout(() => setSuccess(null), 2000);
+  const handleSelect = async (name: string) => {
+    const err = await onSelectModel(name);
+    if (err) {
+      setError(
+        `Model "${name}" selected, but the Ollama server isn't reachable: ${err}`
+      );
+    } else {
+      setSuccess(`Model "${name}" selected.`);
+      setTimeout(() => setSuccess(null), 2000);
+    }
   };
 
   return (
@@ -343,7 +369,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                     >
                       <button
                         type="button"
-                        onClick={() => handleSelect(model.name)}
+                        onClick={() => void handleSelect(model.name)}
                         className="flex min-w-0 flex-1 items-center gap-2 text-left"
                       >
                         <span

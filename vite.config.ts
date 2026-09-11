@@ -13,9 +13,8 @@ export default defineConfig({
   clearScreen: false,
   server: {
     // Must match `build.devUrl` in src-tauri/tauri.conf.json.
-    // strictPort: fail loudly instead of silently hopping to another port
-    // (a drifted port makes the Tauri webview load nothing -> white screen).
+    // strictPort: false allows Vite to automatically pick the next available port if 5173 is taken.
     port: 5173,
-    strictPort: true,
+    strictPort: false,
   },
 })
