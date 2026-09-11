@@ -34,6 +34,72 @@ fn suppress_window(cmd: &mut Command) -> &mut Command {
 // Track the spawned Ollama server process so we can stop it later.
 struct ServerState(Mutex<Option<Child>>);
 
+/// Result of `start_ollama_server`. Tells the UI exactly what happened so it
+/// never claims "started" when the port was actually served by something else
+/// (the Ollama tray app, another tool, or an orphan from a previous session).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OllamaStartStatus {
+    /// An Ollama server is reachable on port 11434.
+    running: bool,
+    /// It was already running before this call — we did not spawn a process.
+    already_running: bool,
+    /// True when the running server belongs to this app session. If false the
+    /// server was started outside the app and "Stop" must not kill it.
+    owned: bool,
+}
+
+/// Result of `stop_ollama_server`.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OllamaStopStatus {
+    /// A server owned by this app was stopped.
+    stopped: bool,
+    /// A server is still listening on 11434 but was started outside the app.
+    still_running_external: bool,
+}
+
+/// True when an Ollama server answers on port 11434.
+fn ollama_port_responds() -> bool {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_millis(1500))
+        .build()
+        .ok();
+    if let Some(c) = client {
+        if let Ok(resp) = c.get("http://127.0.0.1:11434/api/version").send() {
+            return resp.status().is_success();
+        }
+    }
+    false
+}
+
+/// Drop a dead child handle from `ServerState`, reporting whether a live
+/// child is still tracked. The stored child can die at any time (e.g. it
+/// failed to bind because another program held port 11434) — a stale handle
+/// would make "stop" silently do nothing and "start" spawn duplicates.
+fn prune_dead_child(state: &ServerState) -> bool {
+    let Ok(mut guard) = state.0.lock() else {
+        return false;
+    };
+    match guard.as_mut() {
+        Some(child) => match child.try_wait() {
+            // Exited already — drop the stale handle.
+            Ok(Some(_)) => {
+                *guard = None;
+                false
+            }
+            // Still running — we own the live server.
+            Ok(None) => true,
+            // Can't tell — treat as dead so a fresh server gets spawned.
+            Err(_) => {
+                *guard = None;
+                false
+            }
+        },
+        None => false,
+    }
+}
+
 #[tauri::command]
 fn save_state(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
     let dir = data_dir(&app)?;
@@ -104,25 +170,30 @@ fn check_ollama_installed() -> bool {
 /// Check if the Ollama server is currently running (port 11434).
 #[tauri::command]
 fn check_ollama_running() -> bool {
-    // Try a quick HTTP request to the Ollama API
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_millis(1500))
-        .build()
-        .ok();
-    if let Some(c) = client {
-        if let Ok(resp) = c.get("http://127.0.0.1:11434/api/version").send() {
-            return resp.status().is_success();
-        }
-    }
-    false
+    ollama_port_responds()
 }
 
 /// Start the Ollama server as a background process.
+///
+/// Never blindly spawns a duplicate: if something already serves Ollama on
+/// port 11434 the app connects to it and reports it as external (so "Stop"
+/// won't kill a server it doesn't own). When we do spawn, we wait until the
+/// server actually answers — `ollama serve` exits immediately when the port
+/// is taken by a non-Ollama program, and reporting "started" in that case
+/// broke every model call that followed.
 #[tauri::command]
-fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<bool, String> {
-    // If already running, nothing to do.
-    if check_ollama_running() {
-        return Ok(true);
+fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaStartStatus, String> {
+    // Drop a stale handle if the previously-spawned child already died.
+    let owned = prune_dead_child(&state);
+
+    // If an Ollama server is already up, reuse it — spawning a second one
+    // would die with "bind: address already in use" and corrupt our state.
+    if ollama_port_responds() {
+        return Ok(OllamaStartStatus {
+            running: true,
+            already_running: true,
+            owned,
+        });
     }
 
     // Find the ollama binary
@@ -138,24 +209,93 @@ fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<bool, Str
         .map_err(|e| format!("Failed to start Ollama server: {e}"))?;
 
     // Store the child process so we can stop it later
-    let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-    *guard = Some(child);
+    {
+        let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+        *guard = Some(child);
+    }
 
-    Ok(true)
+    // Wait (up to ~15s) for the server to bind and answer. Bail out early if
+    // the process dies — that's how "address already in use" manifests.
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_millis(1500))
+        .build()
+        .ok();
+    for _ in 0..30 {
+        thread::sleep(std::time::Duration::from_millis(500));
+        if let Some(c) = &client {
+            if let Ok(resp) = c.get("http://127.0.0.1:11434/api/version").send() {
+                if resp.status().is_success() {
+                    return Ok(OllamaStartStatus {
+                        running: true,
+                        already_running: false,
+                        owned: true,
+                    });
+                }
+            }
+        }
+        let died = {
+            let mut guard = state
+                .0
+                .lock()
+                .map_err(|e| format!("State lock error: {e}"))?;
+            match guard.as_mut() {
+                Some(child) => matches!(child.try_wait(), Ok(Some(_)) | Err(_)),
+                None => true,
+            }
+        };
+        if died {
+            // Clean up the dead handle so the next start isn't confused.
+            prune_dead_child(&state);
+            return Err(
+                "The Ollama server exited right after starting. Port 11434 is likely used by \
+                 another program (check with: netstat -ano | findstr 11434), or the Ollama \
+                 install is broken."
+                    .into(),
+            );
+        }
+    }
+
+    // Server didn't come up in time — kill it and report the failure honestly.
+    {
+        let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+    Err("The Ollama server did not respond on port 11434 within 15 seconds.".into())
 }
 
-/// Stop the Ollama server process we started.
+/// Stop the Ollama server process we started. A server started outside the
+/// app is never touched — the UI tells the user to stop it themselves.
 #[tauri::command]
-fn stop_ollama_server(state: tauri::State<'_, ServerState>) -> Result<bool, String> {
+fn stop_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaStopStatus, String> {
     let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
         let _ = child.wait();
-        Ok(true)
-    } else {
-        // If we didn't start it, try to kill via `ollama stop` or just report not running
-        Ok(false)
+        drop(guard);
+        // Report accurately once the port is actually released.
+        for _ in 0..10 {
+            if !ollama_port_responds() {
+                return Ok(OllamaStopStatus {
+                    stopped: true,
+                    still_running_external: false,
+                });
+            }
+            thread::sleep(std::time::Duration::from_millis(300));
+        }
+        return Ok(OllamaStopStatus {
+            stopped: true,
+            still_running_external: false,
+        });
     }
+    // We don't own a server. If one is still listening, it's external.
+    let still_running_external = ollama_port_responds();
+    Ok(OllamaStopStatus {
+        stopped: false,
+        still_running_external,
+    })
 }
 
 /// List installed local models via the Ollama API.
@@ -935,6 +1075,22 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // When the app exits, stop the Ollama server we spawned. Without
+            // this the server outlives the window as an orphan, keeps holding
+            // port 11434, and the next launch silently "adopts" a process it
+            // can't control — which is exactly the overlap bug.
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<ServerState>();
+                let lock = state.0.lock();
+                if let Ok(mut guard) = lock {
+                    if let Some(mut child) = guard.take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                }
+            }
+        });
 }

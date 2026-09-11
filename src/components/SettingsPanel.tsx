@@ -13,15 +13,18 @@ import {
 } from "../uiSettings";
 import type { AISettings, ProviderId } from "../types";
 import { PROVIDER_OPTIONS, providerById } from "../providers";
-import {
-  loadMcpServers,
-  saveMcpServers,
-  makeServerId,
-  listMcpTools,
-  stopStdio,
-  describeServer,
-  type McpServerConfig,
+import { 
+  loadMcpServers, 
+  saveMcpServers, 
+  makeServerId, 
+  listMcpTools, 
+  stopStdio, 
+  describeServer, 
+  type McpServerConfig 
 } from "../mcp";
+import { 
+  findAvailableOllamaPort 
+} from "../serverManager";
 import {
   EXTENSIONS,
   loadExtensionState,
@@ -59,8 +62,9 @@ interface SettingsPanelProps {
   aiSettings: AISettings;
   /** Replace the AI settings and persist. */
   onAiChange: (next: AISettings) => void;
-  /** User picked a local (Ollama) model from the Local Models browser. */
-  onSelectLocalModel: (modelName: string) => void;
+  /** User picked a local (Ollama) model from the Local Models browser.
+   * Returns an error message (e.g. server not reachable), or null on success. */
+  onSelectLocalModel: (modelName: string) => void | Promise<string | null>;
   /** Section to show when the panel opens (defaults to "appearance"). */
   initialSection?: SectionId | null;
   onClose: () => void;
@@ -429,6 +433,9 @@ export default function SettingsPanel({
   const [extQuery, setExtQuery] = useState("");
   const [extCategory, setExtCategory] = useState<ExtensionCategory | "All" | "Installed">("All");
 
+  const [isCheckingPorts, setIsCheckingPorts] = useState(false);
+  const [discoveredPort, setDiscoveredPort] = useState<string | null>(null);
+
   useEffect(() => {
     if (open) {
       setBgDraft(settings.customBackground ?? resolveThemeVars(settings)["--bg-base"]);
@@ -778,9 +785,11 @@ return (
                 <div className="h-full">
                   <LocalModels
                     onClose={() => setShowLocalModels(false)}
-                    onSelectModel={(modelName) => {
-                      onSelectLocalModel(modelName);
-                      setShowLocalModels(false);
+                    onSelectModel={async (modelName) => {
+                      // Only close the browser when the model is usable.
+                      const err = (await onSelectLocalModel(modelName)) ?? null;
+                      if (!err) setShowLocalModels(false);
+                      return err;
                     }}
                     selectedModel={aiSettings.model}
                   />
@@ -810,14 +819,41 @@ return (
                   </p>
                 )}
                 <Row title="Local models" description="Browse, pull and run models locally with Ollama.">
-                  <button
-                    type="button"
-                    onClick={() => setShowLocalModels(true)}
-                    className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
-                  >
-                    Browse
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowLocalModels(true)}
+                      className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                    >
+                      Browse
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsCheckingPorts(true);
+                        const port = await findAvailableOllamaPort();
+                        if (port) {
+                          setDiscoveredPort(port);
+                          updateAi("baseUrl", port);
+                        } else {
+                          setDiscoveredPort("None found");
+                        }
+                        setIsCheckingPorts(false);
+                      }}
+                      disabled={isCheckingPorts}
+                      className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)] disabled:opacity-50"
+                    >
+                      {isCheckingPorts ? "Scanning..." : "Auto-Detect Server"}
+                    </button>
+                  </div>
                 </Row>
+                {discoveredPort && (
+                  <p className="mb-3 text-[10px] text-emerald-400/80">
+                    {discoveredPort === "None found" 
+                      ? "✕ No Ollama server found on ports 11434-11439." 
+                      : `✓ Connected to server at ${discoveredPort}`}
+                  </p>
+                )}
                 <SectionTitle>Connection</SectionTitle>
                 <Row title="API endpoint" description="Base URL used for chat requests.">
                   <input

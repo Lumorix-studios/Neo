@@ -51,34 +51,33 @@
   }
 }
 :root {
-  --bg-base: #1f1f1e;        /* app background (VS Code Dark Modern editor tone) */
-  --bg-panel: #181818;       /* sidebars, panels, chrome */
-  --bg-elevated: #202020;    /* cards, inputs, popovers */
-  --bg-active: #2a2a2a;      /* selected rows, pressed states */
-  --bg-input: #313131;       /* text inputs, VS Code Dark Modern style */
+  --bg-base: #0d0d0d;        /* Deep black-grey */
+  --bg-panel: #121212;       /* Slightly lighter for sidebars */
+  --bg-elevated: #1a1a1a;    /* Popovers/Inputs */
+  --bg-active: #222222;      /* Hover/Selected */
+  --bg-input: #161616;       /* Input backgrounds */
 
-  /* IDE window (VS Code Dark Modern) */
-  --bg-chrome: #181818;      /* title bar, activity bar, sidebar, panel, status bar */
-  --bg-editor: #1f1f1e;      /* editor surface + active tab */
+  --bg-chrome: #0a0a0a;      /* Activity bar/Title bar */
+  --bg-editor: #0d0d0d;
 
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.13);
+  --border: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.1);
 
-  --text-primary: #ececec;
-  --text-secondary: #a3a3a3;
-  --text-muted: #6b6b6b;
-  --text-faint: #4a4a4a;
+  --text-primary: #e5e5e5;
+  --text-secondary: #a1a1a1;
+  --text-muted: #666666;
+  --text-faint: #444444;
 
-  --accent: #4c8dff;
-  --accent-soft: rgba(76, 141, 255, 0.12);
+  --accent: #3b82f6;         /* Clean, professional blue */
+  --accent-soft: rgba(59, 130, 246, 0.1);
 
-  --danger: #f87171;
-  --success: #34d399;
-  --warning: #fbbf24;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
 
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 }
 
 body {
@@ -265,5 +264,5 @@ select:focus-visible {
   top: 0;
   height: 24px;
   z-index: 10;
-  background: linear-gradient(to bottom, var(--bg-base), transparent);
+  background: var(--bg-base);
 }

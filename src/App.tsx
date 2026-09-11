@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { emit } from "@tauri-apps/api/event";
-import StarBorder from '../components/StarBorder'
 import { invoke } from "@tauri-apps/api/core";
+import StarBorder from "../components/StarBorder";
 import TopMenu from "../components/TopMenu";
 import ChatHistorySidebar from "../components/ChatHistorySidebar.tsx";
 import InfoPanel from "../components/InfoPanel";
@@ -43,6 +43,7 @@ import {
   type NativeToolAcc,
   type ToolCall,
 } from "./agentic";
+import { getProjectContext } from "./projectIndex";
 import type { AgenticActivity as AgenticActivityType } from "./agentic";
 import type { FsEntry } from "./agentic";
 import {
@@ -54,6 +55,7 @@ import {
 import { computeLineDiff } from "./diff";
 import { resolveFsPath } from "./agentic";
 import type { EditorTab } from "./components/CodeEditor";
+import { ensureOllamaReady } from "./localModels";
 /* GitPanel removed — moved to IDE window only */
 import BlurText from "../components/BlurText";
 import SettingsPanel, { type SectionId } from "./components/SettingsPanel";
@@ -67,20 +69,22 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAlertSharp, IoCopyOutline, IoThumbsDownSharp, IoThumbsUpSharp} from "react-icons/io5";
+import { IoAlertSharp, IoCopyOutline, IoThumbsDownSharp, IoThumbsUpSharp, IoFlashOutline, IoBugOutline, IoSend } from "react-icons/io5";
+import { shortPath } from "./utils";
 
 type JsonDict = Record<string, unknown>;
 
 /** Newline character (avoids escape-sequence issues in generated code). */
 const NL = String.fromCharCode(10);
 
+/* Quick-Action presets removed as requested */
+
+
 /** Result of one streaming round: visible text + any native tool calls. */
 interface StreamRoundResult {
   text: string;
   nativeCalls: ToolCall[];
 }
-
-const MAX_TOOL_OUTPUT = 24000;
 
 function truncateToolOutput(output: string): string {
   if (output.length <= MAX_TOOL_OUTPUT) return output;
@@ -93,6 +97,9 @@ function truncateToolOutput(output: string): string {
     output.slice(output.length - tail)
   );
 }
+
+const MAX_TOOL_OUTPUT = 24000;
+
 
 async function platformFetch(url: string, init: RequestInit): Promise<Response> {
   const win = window as unknown as { __TAURI_INTERNALS__?: unknown };
@@ -220,7 +227,7 @@ function CardIcon({ name }: { name: string }) {
       strokeWidth="1.2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="shrink-0 opacity-80"
+      className="shrink-0 opacity-60"
     >
       <path d={paths[name] ?? paths.sparkle} />
     </svg>
@@ -537,7 +544,13 @@ export default function App() {
     }
   };
 
-  const handleSelectLocalModel = (modelName: string) => {
+  const handleSelectLocalModel = async (modelName: string): Promise<string | null> => {
+    // Make sure an Ollama server is actually up before switching to it. This
+    // reuses the app's own server or an external one already on port 11434,
+    // or starts a fresh one — instead of silently pointing chat at a server
+    // that may have died (the old overlap bug).
+    const serverErr = await ensureOllamaReady();
+
     // Switch to the Ollama provider and set the selected local model.
     const next: AISettings = {
       ...settings,
@@ -545,6 +558,7 @@ export default function App() {
       model: modelName,
       baseUrl: "http://localhost:11434",
       apiKey: "",
+      // Clear any potentially conflicting system prompts when switching to a local tool-model
     };
     setSettings(next);
     void saveSettings(next);
@@ -555,6 +569,8 @@ export default function App() {
         prev.map((s) => (s.id === activeSessionId ? { ...s, settings: next } : s))
       );
     }
+
+    return serverErr;
   };
 
   const handleScroll = () => {
@@ -1099,26 +1115,23 @@ ${promptSuffix}` : ""}`,
       /\b(fix|edit|refactor|improve|clean up|optimi[sz]e|document|comment|extend|complete|implement|rewrite|convert|debug|add)\b/i.test(
         trimmed
       ) && (activeEditorAtSend !== null || workspaceRoot !== null);
-    const agentic = looksLikeFileRequest(trimmed) || looksLikeEditTask;
+    // FORCE AGENTIC MODE: For debugging, we enable tools for every request.
+    const agentic = true;
 
-    // Build the agent's environment suffix: a one-shot workspace view so it
-    // starts oriented, plus any MCP tools exposed by enabled servers.
+    // Build the agent's environment suffix: a high-level project map,
+    // open tabs, and any MCP tools exposed by enabled servers.
     let promptSuffix = "";
     if (agentic && workspaceRoot) {
       try {
-        const entries = await invoke<FsEntry[]>("fs_list_dir", { path: workspaceRoot });
-        // Cap the listing — dumping hundreds of entries (e.g. a Downloads
-        // folder) drowns small models and sends them narrating random files
-        // instead of doing the task.
-        const names = entries.map((e) => (e.is_dir ? `${e.name}/` : e.name));
-        const shown = names.slice(0, 25);
-        const more = names.length - shown.length;
-        const listing =
-          shown.join(", ") +
-          (more > 0 ? ` … (+${more} more — use list_dir/search_files rather than guessing)` : "");
-        promptSuffix += `Workspace root: ${workspaceRoot}\nTop-level entries (${names.length} total): ${listing}`;
+        const projectMap = await getProjectContext(workspaceRoot);
+        promptSuffix += `${projectMap}\n\n`;
       } catch {
-        /* ignore — the agent can list it itself */
+        /* fallback to simple listing if indexing fails */
+        try {
+          const entries = await invoke<FsEntry[]>("fs_list_dir", { path: workspaceRoot });
+          const names = entries.map((e) => (e.is_dir ? `${e.name}/` : e.name));
+          promptSuffix += `Workspace root: ${workspaceRoot}\nEntries: ${names.slice(0, 25).join(", ")}\n`;
+        } catch {}
       }
     }
 
@@ -1290,19 +1303,14 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             return i > 0 ? a.slice(0, i) : null;
           })();
 
-        /** Execute one call — built-in filesystem/command tools or MCP tools. */
         const runToolCall = async (call: ToolCall) => {
-          if (call.name.startsWith("mcp_")) {
-            const entry = mcpTools.get(call.name);
-            if (!entry) return { ok: false, output: `Unknown MCP tool: ${call.name}` };
-            return callMcpTool(entry.server, entry.tool, call.arguments);
-          }
-          return executeTool(call.name, call.arguments, effRoot, {
+          const editor = {
             openPaths: editorTabsRef.current.map((t) => t.path),
             activePath: activeEditorRef.current,
-            getTabContent: (p) =>
+            getTabContent: (p: string) =>
               editorTabsRef.current.find((t) => t.path === p)?.content ?? null,
-          });
+          };
+          return runToolCallWithHealing(call, effRoot, editor, readOnlyCache);
         };
 
         // --- Read-only batch (parallel). MCP tools always need approval. ---
@@ -1674,6 +1682,27 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           />
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-base)]">
             <div className="fade-top" aria-hidden />
+            
+            {/* --- CONTEXT STRIP --- */}
+            <div className="flex items-center gap-3 px-5 py-1.5 bg-black/20 border-b border-zinc-800/30 overflow-x-auto whitespace-nowrap no-scrollbar">
+              <div className="flex items-center gap-1.5 text-zinc-600">
+                <span className="text-[10px] uppercase tracking-wider font-bold">Context:</span>
+              </div>
+              {workspaceRoot && (
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-mono">
+                  <span>📁</span> {shortPath(workspaceRoot)}
+                </div>
+              )}
+              {activeEditorPath && (
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-mono">
+                  <span>📄</span> {shortPath(activeEditorPath)}
+                </div>
+              )}
+              {!workspaceRoot && !activeEditorPath && (
+                <span className="text-zinc-700 text-[10px] italic">No active workspace</span>
+              )}
+            </div>
+
             <div
               ref={scrollRef}
               onScroll={handleScroll}
@@ -1924,7 +1953,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     </span>
                   </div>
                 )}
-                <div className="relative rounded-lg border border-white/[0.08] bg-[var(--bg-panel)] transition-colors duration-150 focus-within:border-white/[0.16]">
+                <div className="relative rounded-lg border border-white/[0.08] bg-[var(--bg-panel)] transition-colors duration-150 focus-within:border-blue-500/50 shadow-2xl">
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
@@ -1937,7 +1966,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     disabled={isLoading}
                     placeholder={
                       settings.apiKey || !spec.needsAuth
-                        ? "Send a message…"
+                        ? "Ask the agent to fix, refactor, or build..."
                         : "Configure your API key in Settings to start chatting"
                     }
                     rows={1}
@@ -1970,12 +1999,10 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <button
                         type="submit"
                         disabled={!message.trim() || isLoading}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8e8e8] text-[#141414] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
+                        className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
                         title="Send message"
                       >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 19V5M5 12l7-7 7 7" />
-                        </svg>
+                        <IoSend size={14} />
                       </button>
                     )}
                   </div>
