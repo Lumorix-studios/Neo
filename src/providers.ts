@@ -15,6 +15,7 @@
  */
 import type { AISettings, Message, NativeToolCall, ProviderId } from "./types";
 import { ANTHROPIC_TOOLS, GEMINI_FUNCTION_DECLARATIONS, OPENAI_TOOLS } from "./agentic";
+import { checkServerHealth, findAvailableOllamaPort } from "./serverManager";
 
 export interface ProviderSpec {
   id: ProviderId;
@@ -403,7 +404,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     label: "Ollama",
     note: "Self-hosted local model runner. No API key needed.",
     defaultBaseUrl: "http://localhost:11434",
-    defaultModel: "llama3.2:latest",
+    defaultModel: "qwen2.5-coder",
     needsAuth: false,
     authHeader: null,
     authScheme: "bearer",
@@ -467,12 +468,12 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
  * saved by an older version of the app).
  */
 export function getProviderSpec(settings: AISettings): ProviderSpec {
-  return PROVIDERS[settings.provider] ?? PROVIDERS.openai;
+  return PROVIDERS[settings.provider] ?? PROVIDERS.ollama;
 }
 
-/** Pick a provider by id, falling back to `openai` for unknown ids. */
+/** Pick a provider by id, falling back to `ollama` for unknown ids. */
 export function providerById(id: ProviderId): ProviderSpec {
-  return PROVIDERS[id] ?? PROVIDERS.openai;
+  return PROVIDERS[id] ?? PROVIDERS.ollama;
 }
 
 /** List of providers suitable for a `<select>`. */

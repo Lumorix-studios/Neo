@@ -1,0 +1,91 @@
+/**
+ * ProjectIndex maintains a structural map of the workspace to provide the AI 
+ * with high-level architectural context without needing to read every file.
+ */
+
+export interface ProjectNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: ProjectNode[];
+  symbols?: string[]; // Functions, Classes, Interfaces
+}
+
+export interface ProjectMap {
+  root: string;
+  nodes: ProjectNode[];
+  lastUpdated: number;
+}
+
+export async function generateProjectMap(root: string): Promise<ProjectMap> {
+  const nodes: ProjectNode[] = [];
+  
+  try {
+    // In a real Tauri app, we'd use a recursive fs_list_dir.
+    // For now, we implement the logic that the Agent will use to "index" the project.
+    const entries = await invoke<any>("fs_list_dir", { path: root });
+    
+    for (const entry of entries) {
+      nodes.push({
+        name: entry.name,
+        path: entry.path,
+        type: entry.is_dir ? 'directory' : 'file',
+        symbols: entry.is_dir ? [] : await extractSymbols(entry.path),
+      });
+    }
+  } catch (e) {
+    console.error("Indexing failed", e);
+  }
+
+  return {
+    root,
+    nodes,
+    lastUpdated: Date.now(),
+  };
+}
+
+async function extractSymbols(path: string): Promise<string[]> {
+  try {
+    const content = await invoke<string>("fs_read_file", { path });
+    const symbols: string[] = [];
+    
+    // Simple regex for JS/TS/Rust symbols (Class, Function, Interface, Const)
+    const patterns = [
+      /class\s+([a-zA-Z_]\w*)/g,
+      /function\s+([a-zA-Z_]\w*)/g,
+      /interface\s+([a-zA-Z_]\w*)/g,
+      /const\s+([a-zA-Z_]\w*)\s*=\s*\(/g, // Arrow functions
+      /pub\s+fn\s+([a-zA-Z_]\w*)/g,       // Rust
+    ];
+
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        symbols.push(match[1]);
+      }
+    }
+    return [...new Set(symbols)];
+  } catch {
+    return [];
+  }
+}
+
+// Use a singleton to hold the map in memory for the session
+let currentMap: ProjectMap | null = null;
+
+export async function getProjectContext(root: string): Promise<string> {
+  if (!currentMap || currentMap.root !== root) {
+    currentMap = await generateProjectMap(root);
+  }
+
+  let output = "PROJECT ARCHITECTURE MAP:\n";
+  currentMap.nodes.forEach(node => {
+    const typeIcon = node.type === 'directory' ? '[D]' : '[F]';
+    const symbols = node.symbols && node.symbols.length > 0 
+      ? ` (Symbols: ${node.symbols.slice(0, 5).join(', ')}${node.symbols.length > 5 ? '...' : ''})` 
+      : '';
+    output += `${typeIcon} ${node.name}${symbols}\n`;
+  });
+
+  return output;
+}

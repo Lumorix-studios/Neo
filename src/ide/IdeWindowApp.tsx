@@ -21,6 +21,7 @@ import BottomPanel, { type PanelTab } from "../components/BottomPanel";
 import GitPanel from "../components/GitPanel";
 import AgentPanel from "./AgentPanel";
 import CommandPalette from "../../components/CommandPalette";
+import { ensureOllamaReady } from "../localModels";
 
 /** Icon button for the VS Code-style activity bar rail (same look as chat). */
 function RailButton({
@@ -194,7 +195,13 @@ export default function IdeWindowApp() {
     void saveSettings(next);
   };
 
-  const handleSelectLocalModel = (modelName: string) => {
+  const handleSelectLocalModel = async (modelName: string): Promise<string | null> => {
+    // Make sure an Ollama server is actually up before switching to it. This
+    // reuses the app's own server or an external one already on port 11434,
+    // or starts a fresh one — instead of silently pointing chat at a server
+    // that may have died (the old overlap bug).
+    const serverErr = await ensureOllamaReady();
+
     // Switch to the Ollama provider and set the selected local model.
     const next: AISettings = {
       ...aiSettings,
@@ -205,6 +212,8 @@ export default function IdeWindowApp() {
     };
     setAiSettings(next);
     void saveSettings(next);
+
+    return serverErr;
   };
 
   // --- bottom panel (terminal etc.) ----------------------------------------

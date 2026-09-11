@@ -20,6 +20,24 @@ export interface LocalModelStatus {
   running: boolean;
 }
 
+/** Result of `start_ollama_server` from the Rust backend. */
+export interface OllamaStartStatus {
+  /** An Ollama server is reachable on port 11434. */
+  running: boolean;
+  /** It was already running before this call — no process was spawned. */
+  alreadyRunning: boolean;
+  /** True when the server belongs to this app session (safe to Stop). */
+  owned: boolean;
+}
+
+/** Result of `stop_ollama_server` from the Rust backend. */
+export interface OllamaStopStatus {
+  /** A server owned by this app was stopped. */
+  stopped: boolean;
+  /** A server is still listening but was started outside the app. */
+  stillRunningExternal: boolean;
+}
+
 function inTauri(): boolean {
   const win = window as unknown as { __TAURI_INTERNALS__?: unknown };
   return !!win.__TAURI_INTERNALS__;
@@ -51,25 +69,34 @@ export async function checkOllamaRunning(): Promise<boolean> {
 
 /**
  * Start the Ollama server as a background process.
+ *
+ * Returns the backend's status: whether a server is running, whether it was
+ * already running before this call, and whether it is owned by the app. An
+ * external server (started by the Ollama tray app, another tool, or an old
+ * session) is *reused*, never duplicated, and reported as not owned.
  */
-export async function startOllamaServer(): Promise<boolean> {
-  if (!inTauri()) return false;
+export async function startOllamaServer(): Promise<OllamaStartStatus | null> {
+  if (!inTauri()) return null;
   try {
-    return await invoke<boolean>("start_ollama_server");
-  } catch {
-    return false;
+    return await invoke<OllamaStartStatus>("start_ollama_server");
+  } catch (e) {
+    // Surface the backend message (e.g. "port 11434 is used by another
+    // program") instead of swallowing it behind a boolean.
+    throw e instanceof Error ? e : new Error(String(e));
   }
 }
 
 /**
- * Stop the Ollama server process we started.
+ * Stop the Ollama server process started by the app. Reports
+ * `stillRunningExternal` when a server started outside the app keeps
+ * listening — the UI should tell the user to stop it from its own tray.
  */
-export async function stopOllamaServer(): Promise<boolean> {
-  if (!inTauri()) return false;
+export async function stopOllamaServer(): Promise<OllamaStopStatus | null> {
+  if (!inTauri()) return null;
   try {
-    return await invoke<boolean>("stop_ollama_server");
+    return await invoke<OllamaStopStatus>("stop_ollama_server");
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -119,6 +146,25 @@ export async function getLocalModelStatus(): Promise<LocalModelStatus> {
     checkOllamaRunning(),
   ]);
   return { installed, running };
+}
+
+/**
+ * Make sure an Ollama server is reachable before a local model is used.
+ *
+ * This is the guard for the "switch model while the app is open" flow: it
+ * reuses any server already on port 11434 (the app's own or an external one),
+ * starts a fresh one if none is up, and returns `null` on success or a
+ * human-readable error message on failure.
+ */
+export async function ensureOllamaReady(): Promise<string | null> {
+  if (await checkOllamaRunning()) return null;
+  try {
+    const status = await startOllamaServer();
+    if (status?.running) return null;
+    return "The Ollama server could not be started.";
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
 }
 
 /**
