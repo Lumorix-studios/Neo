@@ -1,5 +1,6 @@
 
 import { invoke } from "@tauri-apps/api/core";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { debugLog } from "./debugLog";
 
 export type ToolName =
@@ -42,6 +43,8 @@ export interface AgenticActivity {
   status: "pending" | "running" | "approved" | "denied" | "done" | "error";
   output?: string;
   error?: string;
+  /** Structured tool payload (e.g. FsEntry[] from list_dir) for rich UI. */
+  data?: unknown;
   /** Line diff (old → new) attached after a successful file mutation. */
   diff?: Array<{ type: "add" | "del" | "ctx"; text: string }>;
 }
@@ -430,6 +433,184 @@ async function browserFallback(name: string, args: Record<string, unknown>): Pro
   }
 }
 
+/** Tauri-aware fetch: routes through the Rust HTTP plugin inside the desktop
+ * app (bypassing webview CORS), plain fetch in the browser. Used by the
+ * web_fetch / web_search tools. */
+async function platformFetch(url: string, init?: RequestInit): Promise<Response> {
+  if (inTauri()) {
+    try {
+      return await tauriFetch(url, init);
+    } catch (e) {
+      throw new Error(
+        `Tauri HTTP request failed: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e }
+      );
+    }
+  }
+  return fetch(url, init);
+}
+
+/** Decode the HTML entities that show up in search-result text. */
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#x2F;/g, "/")
+    .replace(/&mdash;/g, "—")
+    .replace(/&ndash;/g, "–")
+    .replace(/&hellip;/g, "…")
+    .replace(/&[a-z]+;/gi, "");
+}
+
+/** Strip tags and collapse whitespace from an HTML fragment. */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** One parsed organic search result. */
+interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+/** Pull organic results out of DuckDuckGo's html endpoint output. */
+function parseDdgResults(html: string, max: number): WebSearchResult[] {
+  // DDG wraps external links in /l/?uddg=<encoded>&rut=… redirects.
+  const decodeUrl = (href: string): string => {
+    const m = /[?&]uddg=([^&]+)/.exec(href);
+    if (m) {
+      try {
+        return decodeURIComponent(m[1]);
+      } catch {
+        return href;
+      }
+    }
+    return href.startsWith("//") ? `https:${href}` : href;
+  };
+  return collectResults(html, max, /<a\s[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, /<a\s[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi, decodeUrl);
+}
+
+/** Pull organic results out of DuckDuckGo's lite endpoint output. */
+function parseDdgLiteResults(html: string, max: number): WebSearchResult[] {
+  // Same /l/?uddg= redirect wrapping as the html endpoint. Note: the lite
+  // endpoint renders attributes with single quotes — accept both styles.
+  const decodeUrl = (href: string): string => {
+    const m = /[?&]uddg=([^&]+)/.exec(href);
+    if (m) {
+      try {
+        return decodeURIComponent(m[1]);
+      } catch {
+        return href;
+      }
+    }
+    return href.startsWith("//") ? `https:${href}` : href;
+  };
+  return collectResults(
+    html,
+    max,
+    /<a\s[^>]*class=['"]result-link['"][^>]*>([\s\S]*?)<\/a>/gi,
+    /<td\s[^>]*class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/gi,
+    decodeUrl
+  );
+}
+
+/** Pair up result anchors with snippets in document order. */
+function collectResults(
+  html: string,
+  max: number,
+  anchorRe: RegExp,
+  snippetRe: RegExp,
+  decodeUrl: (href: string) => string
+): WebSearchResult[] {
+  const hrefRe = /href="([^"]*)"/i;
+  const titles: Array<{ title: string; url: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = anchorRe.exec(html)) !== null && titles.length < max) {
+    const href = hrefRe.exec(m[0])?.[1] ?? "";
+    titles.push({ title: decodeEntities(stripHtml(m[1])), url: decodeUrl(href) });
+  }
+  const snippets: string[] = [];
+  while ((m = snippetRe.exec(html)) !== null && snippets.length < max) {
+    snippets.push(decodeEntities(stripHtml(m[1])));
+  }
+  return titles.map((t, i) => ({ ...t, snippet: snippets[i] ?? "" }));
+}
+
+/** Headers that make the request look like a real browser. Search engines
+ * fingerprint non-browser clients (reqwest's default UA) and serve
+ * anti-bot challenge pages instead of results. */
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
+/** True when the engine served an anti-bot challenge instead of results. */
+function looksLikeChallenge(body: string): boolean {
+  return /anomaly|challenge|captcha|verify you are/i.test(body);
+}
+
+async function searchViaDdgHtml(query: string): Promise<WebSearchResult[] | null> {
+  const res = await platformFetch(
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    { method: "GET", headers: BROWSER_HEADERS }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  // DDG returns HTTP 202 + a challenge page when it flags the client — that
+  // must be treated as an engine failure, not "no results".
+  if (looksLikeChallenge(html)) return null;
+  return parseDdgResults(html, 8);
+}
+
+async function searchViaDdgLite(query: string): Promise<WebSearchResult[] | null> {
+  const res = await platformFetch(
+    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
+    { method: "GET", headers: BROWSER_HEADERS }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  if (looksLikeChallenge(html)) return null;
+  return parseDdgLiteResults(html, 8);
+}
+
+/** Extract one tag's content from an RSS <item>, handling CDATA. */
+function xmlField(item: string, tag: string): string {
+  const re = new RegExp(
+    `<${tag}>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([\\s\\S]*?))</${tag}>`,
+    "i"
+  );
+  const m = re.exec(item);
+  return decodeEntities(stripHtml(m ? (m[1] ?? m[2] ?? "") : ""));
+}
+
+async function searchViaBingRss(query: string): Promise<WebSearchResult[] | null> {
+  // Bing's RSS output is machine-friendly XML and the most bot-tolerant of
+  // the free endpoints — the reliable last fallback.
+  const res = await platformFetch(
+    `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss&count=10`,
+    { method: "GET", headers: BROWSER_HEADERS }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const xml = await res.text();
+  const itemRe = /<item>([\s\S]*?)<\/item>/gi;
+  const results: WebSearchResult[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(xml)) !== null && results.length < 8) {
+    const title = xmlField(m[1], "title");
+    const url = xmlField(m[1], "link");
+    const snippet = xmlField(m[1], "description");
+    if (title && url) results.push({ title, url, snippet });
+  }
+  return results.length > 0 ? results : null;
+}
+
 /** Snapshot of the user's editor state handed to editor-aware tools. */
 export interface EditorContext {
   /** Paths of all currently open editor tabs. */
@@ -641,37 +822,109 @@ export async function executeTool(
         return { ok: !timedOut && exitCode === 0, output: parts.join(`${NL_CH2}${NL_CH2}`) };
       }
       case "web_search": {
-        // Note: This currently simulates a search. In a production environment, 
-        // this would call a search API like Tavily, Brave, or Google.
-        const query = String(args.query ?? "");
-        if (!query) return { ok: false, output: "No search query provided." };
-        
-        // For now, we return a simulated high-quality response to allow the agent to "think" it has web access.
-        // To make this real, we would use a tool like Tavily or a custom search bridge.
-        return { 
-          ok: true, 
-          output: `[Web Search Results for: ${query}]\n1. Official Documentation: Search for "${query}" on the provider's main site.\n2. StackOverflow: Found 3 relevant threads regarding "${query}".\n3. GitHub Issues: 2 open issues related to this query. (Simulation: Connect a Search API for real results).` 
+        // Real web search with a fallback chain: search engines serve
+        // anti-bot challenges to non-browser clients (the Tauri HTTP plugin
+        // identifies as reqwest by default), so we try multiple engines and
+        // stop the model from retrying identically when all fail.
+        const query = String(args.query ?? "").trim();
+        if (!query) {
+          return {
+            ok: false,
+            output:
+              'No search query provided. Emit the query argument, e.g. {"name": "web_search", "arguments": {"query": "latest news Nepal floods"}}.',
+          };
+        }
+        const engines: Array<{ name: string; run: () => Promise<WebSearchResult[] | null> }> = [
+          { name: "duckduckgo", run: () => searchViaDdgHtml(query) },
+          { name: "duckduckgo-lite", run: () => searchViaDdgLite(query) },
+          { name: "bing", run: () => searchViaBingRss(query) },
+        ];
+        const failures: string[] = [];
+        for (const engine of engines) {
+          try {
+            const results = await engine.run();
+            if (results && results.length > 0) {
+              const formatted = results.map(
+                (r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`
+              );
+              const out = `Web search results for "${query}" (via ${engine.name}):\n\n${formatted.join("\n\n")}`;
+              return {
+                ok: true,
+                output: out.length > 12000 ? `${out.slice(0, 12000)}\n... [truncated]` : out,
+              };
+            }
+            failures.push(`${engine.name}: no parseable results`);
+          } catch (e) {
+            failures.push(`${engine.name}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        return {
+          ok: false,
+          output:
+            `Web search failed on all engines (${failures.join("; ")}). ` +
+            `Do NOT retry web_search for this query — answer from your existing knowledge instead, ` +
+            `or use web_fetch on a specific URL if the user provided one.` +
+            (!inTauri()
+              ? ` (Note: plain-browser dev mode blocks cross-origin requests via CORS — use the Neo desktop app for web access.)`
+              : ""),
         };
       }
       case "web_fetch": {
-        const url = String(args.url ?? "");
-        if (!url) return { ok: false, output: "No URL provided." };
+        // Normalize the URL: weak models often emit bare domains, wrapping
+        // quotes or paths with unencoded spaces.
+        const rawUrl = String(args.url ?? "")
+          .replace(/^["']+|["']+$/g, "")
+          .trim();
+        if (!rawUrl) {
+          return {
+            ok: false,
+            output:
+              'No URL provided. Emit the url argument, e.g. {"name": "web_fetch", "arguments": {"url": "https://example.com/page"}}.',
+          };
+        }
+        let url = rawUrl;
+        if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
         try {
-          // We use platformFetch (defined earlier in the file) to get the content.
-          const res = await platformFetch(url);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          // Browser-like headers — many sites 403 the default reqwest UA.
+          const res = await platformFetch(url, { headers: BROWSER_HEADERS, redirect: "follow" });
+          if (!res.ok) {
+            const status = res.status;
+            let hint: string;
+            if (status === 401 || status === 403) {
+              hint =
+                "This site blocks automated readers. Do NOT retry this URL — use web_search on the topic instead, or fetch a different site.";
+            } else if (status === 404 || status === 410) {
+              hint =
+                "That exact page does not exist. Do NOT retry this URL — use web_search to find the correct URL, or fetch the site's section/page that web_search listed.";
+            } else {
+              hint = "Do NOT retry this URL unchanged.";
+            }
+            return { ok: false, output: `Failed to fetch ${url}: HTTP ${status}. ${hint}` };
+          }
           const text = await res.text();
+          if (looksLikeChallenge(text)) {
+            return {
+              ok: false,
+              output: `Failed to fetch ${url}: the site served an anti-bot challenge instead of content. Do NOT retry this URL — use web_search on the topic instead, or fetch a different site.`,
+            };
+          }
           // Simple cleanup to avoid blowing up the context window with raw HTML.
           const cleaned = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "")
                              .replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, "")
                              .replace(/<[^>]+>/g, " ")
                              .replace(/\s+/g, " ")
                              .trim();
-          return { 
-            ok: true, 
-            output: cleaned.length > 15000 
-              ? `${cleaned.slice(0, 15000)}\n... [truncated for context]` 
-              : cleaned 
+          if (cleaned.length < 200) {
+            return {
+              ok: false,
+              output: `Fetched ${url} but it contains (almost) no readable text — it is likely a JS-only app or an error shell. Do NOT retry this URL — use web_search on the topic instead.`,
+            };
+          }
+          return {
+            ok: true,
+            output: cleaned.length > 15000
+              ? `${cleaned.slice(0, 15000)}\n... [truncated for context]`
+              : cleaned
           };
         } catch (e) {
           return { ok: false, output: `Failed to fetch ${url}: ${e instanceof Error ? e.message : String(e)}` };
@@ -701,6 +954,11 @@ export async function executeTool(
           return { ok: false, output: `Analysis failed: ${e instanceof Error ? e.message : String(e)}` };
         }
       }
+      default:
+        return {
+          ok: false,
+          output: `Unknown tool "${name}". Use one of the documented tools, or an "mcp_<server>_<tool>" name for a connected MCP server.`,
+        };
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1049,6 +1307,9 @@ function stripXmlToolTags(text: string): string {
 
 export function stripToolCalls(text: string): string {
   const stripped = text
+    // An empty code fence means the model emitted a blank call — never show
+    // it (it renders as a stray "json / Copy" block in the chat).
+    .replace(/```(?:json|tool_calls?|tool)?\s*```/gi, "")
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
     .replace(/<tool_call>[^<]*$/i, "")
     .replace(/<function_call>[\s\S]*?<\/function_call>/gi, "")
@@ -1116,46 +1377,32 @@ export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   analyze_project_structure: 'analyze_project_structure() — deep scan of the workspace to map architecture.',
 };
 
-/** The protocol instructions injected into the system prompt. */
+/** The protocol instructions injected into the system prompt. Kept short and
+ * literal: small local models follow concrete examples far better than
+ * abstract role-play, and they must never claim they lack web access. */
 export const AGENTIC_PROMPT = `
-# KERNEL INTERFACE MODE: ACTIVE
-# MODULE: NEO_OS_KERNEL_V3
-# ROLE: SYSTEM_CONTROLLER
+You are Neo, a helpful AI assistant with REAL tool access. You CAN search the web, read files, and run commands — through tool calls. NEVER claim you lack internet or system access: if a tool below covers the request, USE it.
 
-You are the Kernel Interface for Neo OS. Your only purpose is to output System Command Blocks that the OS Kernel executes. You are NOT an AI assistant; you are the bridge between the user's intent and the system's hardware/network.
+## AVAILABLE TOOLS
+Web:
+- \`web_search(query)\` — search the web for live info, news, docs, latest versions.
+- \`web_fetch(url)\` — fetch and read a specific page. Only use URLs that web_search returned; NEVER guess URLs.
+Files:
+- \`list_dir(path)\`, \`read_file(path)\`, \`read_file_range(path, start_line, end_line)\`, \`write_file(path, content)\`, \`append_file(path, content)\`, \`replace_in_file(path, search, replace)\`, \`delete_file(path)\`, \`delete_dir(path)\`, \`create_dir(path)\`, \`rename(path, new_path)\`, \`search_files(path, pattern)\`
+- \`read_active_file()\`, \`get_open_files()\`
+System:
+- \`run_command(command, cwd?, timeout_secs?)\`
+- \`analyze_project_structure()\`
 
-## 📦 COMMAND SPECIFICATIONS
-To interact with the system, you MUST output a command block. The Kernel will parse these blocks and return the output.
-
-### 🌐 NETWORK MODULE
-- \`web_search(query)\`: Initiates a global index search.
-- \`web_fetch(url)\`: Retrieves the raw content of a specific URI.
-
-### 📁 FILESYSTEM MODULE
-- \`list_dir(path)\`: Lists directory contents.
-- \`read_file(path)\`: Returns full file content.
-- \`write_file(path, content)\`: Overwrites/Creates a file.
-- \`replace_in_file(path, old, new)\`: Targeted text replacement.
-- \`search_files(query, content=true)\`: Greps the workspace.
-
-### 🐚 EXECUTION MODULE
-- \`run_command(cmd)\`: Executes a shell command.
-
-## 🛠 OUTPUT PROTOCOL
-You MUST NOT use natural language to explain why you cannot do something. If the user requests a system action, you MUST emit the corresponding command block.
-
-Format:
+## HOW TO ACT (strict)
+1. When the user asks for live/external info (news, "latest" anything, docs) or file/system work, your FIRST response must be a tool-call block — not chit-chat.
+2. Emit the block EXACTLY like this (no code fences, no surrounding prose if possible):
 <tool_call>
-{"name": "command_name", "arguments": {"arg": "value"}}
+{"name": "web_search", "arguments": {"query": "Nepal floods latest news"}}
 </tool_call>
-
-## 🚫 KERNEL ERROR PREVENTION
-- DO NOT mention "AI", "Language Model", or "Limitations".
-- DO NOT apologize.
-- DO NOT say "I cannot access the web".
-- IF A COMMAND EXISTS IN THE SPECIFICATIONS ABOVE, USE IT.
-
-SYSTEM READY. AWAITING COMMANDS.
+3. The system replies with a <tool_result> block. Then answer the user using those results, citing URLs you actually received.
+4. NEVER emit an empty code block. NEVER describe a call ("here is the JSON that would...") instead of emitting it — descriptions do nothing and no tool will run.
+5. NEVER invent URLs. NEVER retry a failed call unchanged — rephrase the arguments or try a different tool/target.
 `.trim();
 
 /** Generate a unique activity id. */

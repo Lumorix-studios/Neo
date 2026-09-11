@@ -15,7 +15,6 @@
  */
 import type { AISettings, Message, NativeToolCall, ProviderId } from "./types";
 import { ANTHROPIC_TOOLS, GEMINI_FUNCTION_DECLARATIONS, OPENAI_TOOLS } from "./agentic";
-import { checkServerHealth, findAvailableOllamaPort } from "./serverManager";
 
 export interface ProviderSpec {
   id: ProviderId;

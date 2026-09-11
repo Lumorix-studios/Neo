@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import StarBorder from "../components/StarBorder";
@@ -69,7 +70,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAlertSharp, IoCopyOutline, IoThumbsDownSharp, IoThumbsUpSharp, IoFlashOutline, IoBugOutline, IoSend } from "react-icons/io5";
+import { IoAlertSharp, IoCopyOutline, IoThumbsDownSharp, IoThumbsUpSharp, IoSend } from "react-icons/io5";
 import { shortPath } from "./utils";
 
 type JsonDict = Record<string, unknown>;
@@ -331,6 +332,40 @@ export default function App() {
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(() =>
     localStorage.getItem(SHARED_WS_KEY)
   );
+  // --- Context menu (top-left): workspace folder list + pinned files ---
+  const [contextEntries, setContextEntries] = useState<FsEntry[]>([]);
+  const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
+
+  // Load the workspace folder listing for the Context menu when the root changes.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!workspaceRoot) {
+        setContextEntries([]);
+        return;
+      }
+      try {
+        const entries = await invoke<FsEntry[]>("fs_list_dir", { path: workspaceRoot });
+        if (cancelled) return;
+        const sorted = [...entries].sort((a, b) =>
+          a.is_dir !== b.is_dir ? (a.is_dir ? -1 : 1) : a.name.localeCompare(b.name)
+        );
+        setContextEntries(sorted.slice(0, 60));
+      } catch {
+        if (!cancelled) setContextEntries([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceRoot]);
+
+  /** Toggle a file's pin in the agent's context (Context menu). */
+  const togglePinFile = (path: string) => {
+    setPinnedPaths((prev) =>
+      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
+    );
+  };
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
   // --- UI settings (Settings tab) ---
@@ -1020,33 +1055,9 @@ ${promptSuffix}` : ""}`,
   const handleAnimationComplete = () => {
     console.log('Animation completed!');
   };
-  /** Heuristic: does the user's message look like a file/folder operation? */
-  const looksLikeFileRequest = (text: string): boolean => {
-    const t = text.toLowerCase();
-    const keywords = [
-      "read file", "read the file", "open file", "open the file",
-      "create file", "create a file", "make file", "make a file",
-      "write file", "write to file", "write a file",
-      "edit file", "edit the file", "update file", "update the file",
-      "delete file", "delete the file", "remove file", "remove the file",
-      "delete folder", "delete directory", "remove folder", "remove directory",
-      "create folder", "create directory", "make folder", "make directory",
-      "list folder", "list directory", "list files", "show files",
-      "search file", "search files", "find file", "find files",
-      "rename file", "rename folder", "move file", "move folder",
-      "append to file", "replace in file",
-      "read the code", "read my code", "look at my code",
-      "show me the code", "show the file", "show me the file",
-      "what's in", "what is in", "whats in",
-      "create a project", "make a project", "build a project",
-      "create component", "make component", "create a component",
-      "file", "folder", "directory", "path",
-    ];
-    return keywords.some((k) => t.includes(k));
-  };
 
-  const sendMessage = async () => {
-    const trimmed = message.trim();
+  const sendMessage = async (overrideText?: string) => {
+    const trimmed = (overrideText ?? message).trim();
     if (!trimmed || isLoading) return;
 
     // --- Fail-fast validation BEFORE touching the in-flight stream. ---
@@ -1107,16 +1118,11 @@ ${promptSuffix}` : ""}`,
       { role: "user", content: trimmed },
     ];
 
-    // Decide whether to enable agentic (file-tool) mode for this request.
-    // Edit-y verbs ("debug", "fix", "refactor"…) qualify when the user has
-    // context to act on — an active editor tab OR an open workspace folder.
-    const activeEditorAtSend = activeEditorRef.current;
-    const looksLikeEditTask =
-      /\b(fix|edit|refactor|improve|clean up|optimi[sz]e|document|comment|extend|complete|implement|rewrite|convert|debug|add)\b/i.test(
-        trimmed
-      ) && (activeEditorAtSend !== null || workspaceRoot !== null);
-    // FORCE AGENTIC MODE: For debugging, we enable tools for every request.
+    // Agentic (file/web-tool) mode is always on: the tool loop only executes
+    // calls the model actually emits, so leaving it enabled is harmless and
+    // keeps web_search / web_fetch available for every request.
     const agentic = true;
+    const activeEditorAtSend = activeEditorRef.current;
 
     // Build the agent's environment suffix: a high-level project map,
     // open tabs, and any MCP tools exposed by enabled servers.
@@ -1131,7 +1137,9 @@ ${promptSuffix}` : ""}`,
           const entries = await invoke<FsEntry[]>("fs_list_dir", { path: workspaceRoot });
           const names = entries.map((e) => (e.is_dir ? `${e.name}/` : e.name));
           promptSuffix += `Workspace root: ${workspaceRoot}\nEntries: ${names.slice(0, 25).join(", ")}\n`;
-        } catch {}
+        } catch {
+          /* no listing available — continue without it */
+        }
       }
     }
 
@@ -1161,6 +1169,30 @@ ${promptSuffix}` : ""}`,
         }
       } else if (workspaceRoot) {
         promptSuffix += `\n\nNo files are currently open in the editor. If the task is ambiguous, use list_dir or search_files to locate the right file before reading.`;
+      }
+
+      // Pinned files (from the Context menu) are injected verbatim so the
+      // agent always has them available without needing to read them.
+      if (pinnedPaths.length > 0) {
+        const MAX_PINNED = 8000;
+        for (const p of pinnedPaths) {
+          const tab = editorTabsRef.current.find((t) => t.path === p);
+          let content: string | null = tab ? tab.content : null;
+          if (content == null) {
+            try {
+              content = await invoke<string>("fs_read_file", { path: p });
+            } catch {
+              content = null; // unreadable (deleted, binary, folder…) — skip
+            }
+          }
+          if (content == null) continue;
+          const capped =
+            content.length <= MAX_PINNED
+              ? content
+              : `${content.slice(0, MAX_PINNED)}\n...[truncated — call read_file for more]`;
+          promptSuffix += `\n\nPINNED FILE ${rel(p)}:\n${capped}\n(end of pinned ${rel(p)})`;
+        }
+        promptSuffix += `\n\nThe PINNED FILE sections above were explicitly attached by the user — treat them as primary context.`;
       }
     }
 
@@ -1212,15 +1244,19 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
       let nudgeCount = 0;
       let failStreak = 0;
       let lastFailSig = "";
+      // Cumulative failures per tool NAME (across rounds). Catches models
+      // that keep failing with *different* arguments (e.g. guessing news
+      // site URLs one after another), which the identical-signature guard
+      // below can never trip.
+      const toolFailCounts = new Map<string, number>();
       // Per-turn cache of read-only tool results. Weak models frequently
       // re-emit identical read calls in later rounds; serving them from cache
       // skips redundant filesystem work. Cleared whenever a mutating tool runs.
-      const readOnlyCache = new Map<string, { ok: boolean; output: string }>();
+      const readOnlyCache = new Map<string, { ok: boolean; output: string; data?: unknown }>();
 
       while (!abortCtrl.signal.aborted) {
         const round = await streamRound(agentHistory, agentic, abortCtrl.signal, promptSuffix);
         if (abortCtrl.signal.aborted) break;
-        toolRounds++;
         const raw = round.text;
         if (raw.trim().length > 0 || round.nativeCalls.length > 0) sawRawOutput = true;
 
@@ -1254,17 +1290,27 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         // If the model produced no tool calls, we're done.
         if (calls.length === 0) {
           // Recovery: weak local models often DESCRIBE tool calls in prose
-          // ("Here is the JSON function call that would...") without actually
-          // emitting one. Nudge them to emit a real block instead of ending.
+          // ("Sure! Let's use the web_search function...") or emit an EMPTY
+          // code fence instead of actually emitting a call. Nudge them to
+          // emit a real block instead of ending.
           if (
             nudgeCount < 2 &&
-            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|\bcall\s+(read|list|get|search)_)/i.test(raw)
+            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files|web_search|web_fetch)\b|web search|search the web|fetch (the |this |that )?url|```|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|\bcall\s+(read|list|get|search)_)/i.test(raw)
           ) {
             nudgeCount++;
+            // Tailor the example to what the user actually asked for: a web
+            // question gets a web_search example (with their own message as
+            // the query so it can be copied verbatim), otherwise list_dir.
+            const wantsWeb =
+              /(search|news|latest|web\b|internet|fetch|url|https?|weather|docs|documentation)/i.test(trimmed) ||
+              /(web_search|web search|search the web|fetch\b)/i.test(raw);
+            const example = wantsWeb
+              ? `{"name": "web_search", "arguments": {"query": ${JSON.stringify(trimmed.slice(0, 140))}}}`
+              : `{"name": "list_dir", "arguments": {"path": "."}}`;
             agentHistory.push({
               role: "user",
               content:
-                'You described a tool call but did not actually emit one — descriptions do nothing. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n{"name": "list_dir", "arguments": {"path": "."}}\n</tool_call>\nNo prose, no code fences, no examples.',
+                `You described a tool call but did not actually emit one — descriptions do nothing. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n${example}\n</tool_call>\nNo prose, no code fences, no examples.`,
             });
             continue;
           }
@@ -1292,7 +1338,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         const patchActivity = (id: string, patch: Partial<AgenticActivityType>) =>
           setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
 
-        const resultsByKey = new Map<string, { ok: boolean; output: string }>();
+        const resultsByKey = new Map<string, { ok: boolean; output: string; data?: unknown }>();
 
         const effRoot =
           workspaceRoot ??
@@ -1303,14 +1349,51 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             return i > 0 ? a.slice(0, i) : null;
           })();
 
-        const runToolCall = async (call: ToolCall) => {
+        const runToolCall = async (call: ToolCall): Promise<{ ok: boolean; output: string; data?: unknown }> => {
+          // Weak local models frequently emit tool calls with EMPTY arguments
+          // (e.g. web_search with no query). Rescue the common cases by
+          // falling back to the user's own message, so one malformed call
+          // doesn't send the model into a retry loop.
+          const args = { ...call.arguments };
+          if (call.name === "web_search" && !String(args.query ?? "").trim()) {
+            args.query = trimmed;
+          } else if (call.name === "search_files" && !String(args.pattern ?? "").trim()) {
+            args.pattern = trimmed;
+          }
+          // MCP tools are dynamic ("mcp_<server>_<tool>") — route them to
+          // their server instead of the built-in executor.
+          if (call.name.startsWith("mcp_")) {
+            const mcp = mcpTools.get(call.name);
+            if (!mcp) {
+              return {
+                ok: false,
+                output: `Unknown MCP tool "${call.name}". It may belong to a server that is offline or disabled.`,
+              };
+            }
+            try {
+              return await callMcpTool(mcp.server, mcp.tool, args);
+            } catch (e) {
+              return {
+                ok: false,
+                output: `MCP tool "${call.name}" failed: ${e instanceof Error ? e.message : String(e)}`,
+              };
+            }
+          }
           const editor = {
             openPaths: editorTabsRef.current.map((t) => t.path),
             activePath: activeEditorRef.current,
             getTabContent: (p: string) =>
               editorTabsRef.current.find((t) => t.path === p)?.content ?? null,
           };
-          return runToolCallWithHealing(call, effRoot, editor, readOnlyCache);
+          try {
+            const result = await executeTool(call.name, args, effRoot, editor);
+            return { ok: result.ok, output: truncateToolOutput(result.output), data: result.data };
+          } catch (e) {
+            return {
+              ok: false,
+              output: `Tool "${call.name}" crashed: ${e instanceof Error ? e.message : String(e)}`,
+            };
+          }
         };
 
         // --- Read-only batch (parallel). MCP tools always need approval. ---
@@ -1335,7 +1418,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 patchActivity(
                   id,
                   result.ok
-                    ? { status: "done", output: result.output }
+                    ? { status: "done", output: result.output, data: result.data }
                     : { status: "error", error: result.output }
                 );
               }
@@ -1445,6 +1528,25 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           failStreak = failSig ? 1 : 0;
         }
 
+        // Per-tool cumulative failure guard (see toolFailCounts above).
+        for (const [key, r] of resultsByKey) {
+          if (!r.ok) {
+            const tool = key.slice(0, key.indexOf(":"));
+            toolFailCounts.set(tool, (toolFailCounts.get(tool) ?? 0) + 1);
+          }
+        }
+        const failing = [...toolFailCounts.entries()].find(([, c]) => c >= 4);
+        if (failing) {
+          agentHistory.push({
+            role: "user",
+            content: `The ${failing[0]} tool has now failed ${failing[1]} times this turn. Stop calling ${failing[0]} entirely — it is not working for these targets. Summarize what you already know and answer the user directly.`,
+          });
+          setError(
+            `The ${failing[0]} tool kept failing (${failing[1]} attempts) — stopped early instead of looping.`
+          );
+          break;
+        }
+
         // Route results back in the original call order.
         const nativeResults: Message[] = [];
         const resultBlocks: string[] = [];
@@ -1520,9 +1622,48 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
     }
   };
 
+  /** Kick off a deep project analysis by the agent (Context menu). */
+  const handleAnalyzeProject = () => {
+    if (!workspaceRoot) {
+      setError("Open a workspace folder first, then run Analyze Project.");
+      return;
+    }
+    void sendMessage(
+      `Analyze the project at "${workspaceRoot}" in depth: identify the stack, entry points, key modules and their roles, and how data flows between them. Use list_dir, read_file and search_files as needed, then summarize the architecture plus anything that looks risky or unfinished.`
+    );
+  };
+
+  /** Export the active chat session as JSON via a save dialog (Context menu). */
+  const handleSaveSession = async () => {
+    try {
+      const path = await saveDialog({
+        title: "Save chat session",
+        defaultPath: `neo-session-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!path) return; // user cancelled
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        workspaceRoot,
+        provider: settings.provider,
+        model: settings.model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        activities,
+      };
+      await invoke("fs_write_file", { path, content: JSON.stringify(payload, null, 2) });
+    } catch (e) {
+      setError(`Failed to save session: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-base)] text-[#ececec] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <TopMenu
+          contextEntries={contextEntries}
+          pinnedPaths={pinnedPaths}
+          onPinFile={togglePinFile}
+          onAnalyzeProject={handleAnalyzeProject}
+          onSaveSession={() => void handleSaveSession()}
           onOpenInfoPanel={() => setInfoPanelOpen(true)}
           onOpenPrivacyPolicy={() => setPrivacyPolicyOpen(true)}
           onOpenTab2={() => setTab2Open(true)}

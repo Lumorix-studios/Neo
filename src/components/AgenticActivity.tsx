@@ -223,9 +223,9 @@ export default function AgenticActivity({
                 <span className="text-[12px] text-zinc-300">
                   {TOOL_LABELS[item.tool as keyof typeof TOOL_LABELS] ?? item.tool}
                 </span>
-                {item.args.path && (
+                {typeof item.args.path === "string" && item.args.path && (
                   <span className="flex-1 truncate font-mono text-[11px] text-zinc-500">
-                    {shortPath(String(item.args.path))}
+                    {shortPath(item.args.path)}
                   </span>
                 )}
                 {hasDetail && <Chevron open={open} />}

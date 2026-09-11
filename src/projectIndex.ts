@@ -3,6 +3,8 @@
  * with high-level architectural context without needing to read every file.
  */
 
+import { invoke } from "@tauri-apps/api/core";
+
 export interface ProjectNode {
   name: string;
   path: string;
@@ -30,7 +32,7 @@ export async function generateProjectMap(root: string): Promise<ProjectMap> {
         name: entry.name,
         path: entry.path,
         type: entry.is_dir ? 'directory' : 'file',
-        symbols: entry.is_dir ? [] : await extractSymbols(entry.path),
+        symbols: entry.is_dir ? [] : await extractSymbols(entry.path, entry.size),
       });
     }
   } catch (e) {
@@ -44,7 +46,19 @@ export async function generateProjectMap(root: string): Promise<ProjectMap> {
   };
 }
 
-async function extractSymbols(path: string): Promise<string[]> {
+/** Extensions worth scanning for symbols (skips binaries like .png/.exe). */
+const TEXT_EXTS = new Set([
+  "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "rs", "go", "c", "h", "cpp",
+  "hpp", "java", "kt", "rb", "php", "md", "markdown", "json", "toml", "yaml",
+  "yml", "html", "css", "scss", "txt", "sh", "bat", "ps1", "sql", "vue", "svelte",
+]);
+/** Don't slurp huge files just for symbols. */
+const MAX_INDEX_BYTES = 512 * 1024;
+
+async function extractSymbols(path: string, size?: number | null): Promise<string[]> {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (!TEXT_EXTS.has(ext)) return []; // binary or unknown type — skip
+  if (typeof size === "number" && size > MAX_INDEX_BYTES) return []; // too big
   try {
     const content = await invoke<string>("fs_read_file", { path });
     const symbols: string[] = [];

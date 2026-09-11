@@ -23,6 +23,10 @@ interface TopMenuProps {
   onSaveSession?: () => void;
   /** Pin a file to the agent's context. */
   onPinFile?: (path: string) => void;
+  /** Workspace folder entries shown in the Context menu. */
+  contextEntries?: { name: string; path: string; is_dir: boolean }[];
+  /** Paths currently pinned to the agent's context. */
+  pinnedPaths?: string[];
 }
 
 interface MenuDef {
@@ -44,6 +48,8 @@ export default function TopMenu({
   onAnalyzeProject,
   onSaveSession,
   onPinFile,
+  contextEntries,
+  pinnedPaths,
   right,
 }: TopMenuProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -58,7 +64,46 @@ export default function TopMenu({
     }
   };
 
+  const pinned = new Set(pinnedPaths ?? []);
+  /** Workspace entries for the Context menu — files are pinnable, folders are informational. */
+  const contextItems: MenuDef["items"] = (contextEntries ?? []).slice(0, 25).map((e) => ({
+    label: `${pinned.has(e.path) ? "📌 " : ""}${e.is_dir ? "📁 " : "📄 "}${e.name}`,
+    action: () => onPinFile?.(e.path),
+    disabled: e.is_dir || !onPinFile,
+  }));
+
   const menus: MenuDef[] = [
+    {
+      label: "Context",
+      items: [
+        {
+          label: "Analyze Project",
+          action: () => onAnalyzeProject?.(),
+          disabled: !onAnalyzeProject,
+        },
+        {
+          label: "Save Session…",
+          action: () => onSaveSession?.(),
+          disabled: !onSaveSession,
+        },
+        ...(contextItems.length > 0
+          ? [
+              {
+                label: "── Workspace files (click to pin) ──",
+                action: () => {},
+                disabled: true,
+              },
+              ...contextItems,
+            ]
+          : [
+              {
+                label: "No folder open — open a workspace to pin files",
+                action: () => {},
+                disabled: true,
+              },
+            ]),
+      ],
+    },
     {
       label: "File",
       items: [
