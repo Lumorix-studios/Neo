@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { IoGitBranch, IoSettingsOutline } from "react-icons/io5";
+import { IoAccessibility, IoAdd, IoChatboxEllipsesOutline, IoCodeSharp, IoGitBranch, IoHelp, IoMagnet, IoSettingsOutline, IoTextOutline } from "react-icons/io5";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
 import SettingsPanel, { type SectionId } from "../components/SettingsPanel";
@@ -623,17 +623,7 @@ export default function IdeWindowApp() {
               onClick={() => setAgentOpen((v) => !v)}
             >
               <span className="relative">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeLinejoin="round"
-                >
-                  <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
-                </svg>
+                <IoChatboxEllipsesOutline/>
                 {agentBusy && (
                   <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-(--accent) animate-pulse" />
                 )}

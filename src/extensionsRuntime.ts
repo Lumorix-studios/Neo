@@ -1,11 +1,4 @@
-/**
- * Extension runtime host — the "activation layer" that makes marketplace
- * extensions actually DO something, the way VS Code activates extensions on
- * a trigger (command, editor save, custom UI...).
- *
- * The real Prettier engine is loaded lazily the first time an extension
- * feature needs it, so it never bloats the initial bundle.
- */
+
 import type { Plugin } from "prettier";
 
 type Standalone = typeof import("prettier/standalone");

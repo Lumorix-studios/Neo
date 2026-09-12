@@ -1365,7 +1365,7 @@ return (
 
           {/* Footer */}
           <footer className="flex h-11 shrink-0 items-center justify-between border-t border-white/[0.06] px-4">
-            <span className="text-[10.5px] text-[var(--text-faint)]">Changes apply and save instantly</span>
+            <span className="text-[10.5px] text-[var(--text-faint)]">Changes apply instantly</span>
             <button
               type="button"
               onClick={() => onChange({ ...DEFAULT_UI_SETTINGS })}

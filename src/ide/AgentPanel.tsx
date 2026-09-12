@@ -1,11 +1,4 @@
-/**
- * AgentPanel — Cursor-style AI agent docked inside the IDE window.
- *
- * A self-contained agentic chat: it streams from the configured provider,
- * executes workspace tools (filesystem reads in parallel, mutations behind an
- * approval dialog), shows a live activity feed with diffs, and can open files
- * it creates/edits directly in the editor.
- */
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
@@ -38,6 +31,7 @@ import {
   callMcpTool,
   type McpServerConfig,
 } from "../mcp";
+import { IoAdd } from "react-icons/io5";
 
 type JsonDict = Record<string, unknown>;
 
@@ -486,12 +480,7 @@ Rules:
     return { systemPrompt, userFileNote, mcpTools };
   };
 
-  /**
-   * Core tool loop shared by Agent and Orchestrator modes: stream a round,
-   * execute any tool calls (read-only in parallel, mutations behind approval),
-   * feed results back, and repeat until the model stops calling tools.
-   * Returns the number of tools executed.
-   */
+  
   const runLoop = async (
     agentHistory: Message[],
     systemPrompt: string,
@@ -1017,17 +1006,7 @@ Rules:
     <aside className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-panel)]">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-white/[0.05] px-3">
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth="1.3"
-          strokeLinejoin="round"
-        >
-          <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
-        </svg>
+        
         <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a3a3a3]">
           Agent
         </span>
@@ -1068,7 +1047,7 @@ Rules:
         </button>
       </div>
 
-      {/* ── Mode switcher ──────────────────────────────────────────────────── */}
+      {/* ── Mode switcher */}
       <div className="flex shrink-0 items-center gap-1 border-b border-white/[0.05] px-2.5 py-1.5">
         {(
           [
@@ -1098,12 +1077,6 @@ Rules:
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-5 pb-6 text-center">
-            <div className="msg-in flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03]">
-              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.2" strokeLinejoin="round">
-                <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
-              </svg>
-            </div>
-            <h2 className="mt-3.5 text-[14.5px] font-medium text-[#e8e8e8]">Neo Agent</h2>
             <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-[#7a7a7a]">
               Reads, edits and runs files in your workspace — with your approval for anything
               destructive.
@@ -1126,9 +1099,7 @@ Rules:
                   disabled={!configured}
                   className="group flex items-center gap-2 rounded-md border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-left transition hover:border-white/[0.12] hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" className="shrink-0 text-[#6b6b6b] group-hover:text-(--accent)">
-                    <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
-                  </svg>
+                  <IoAdd/>
                   <span className="text-[11.5px] text-[#b8b8b8] group-hover:text-[#e8e8e8]">
                     {sg.label}
                   </span>

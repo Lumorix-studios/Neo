@@ -1822,7 +1822,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             onDeleteSession={deleteSession}
           />
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-base)]">
-            <div className="fade-top" aria-hidden />
+            <div className="fade-top" />
             
             {/* --- CONTEXT STRIP --- */}
             <div className="flex items-center gap-3 px-5 py-1.5 bg-black/20 border-b border-zinc-800/30 overflow-x-auto whitespace-nowrap no-scrollbar">
@@ -1854,11 +1854,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
 
                     {/* Emblem */}
-                    <div className="msg-in mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] shadow-[0_0_40px_rgba(76,141,255,0.16)]">
-                      <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.1" strokeLinejoin="round">
-                        <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
-                      </svg>
-                    </div>
+                    
 
                     {/* Welcome heading */}
                     <div className=" relative flex items-center justify-center">
@@ -1871,14 +1867,10 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         className="text-2xl mb-3"
                       />
                     </div>
-                    <p className="mx-auto max-w-md text-[12.5px] leading-5 text-[#8a8a8a]">
-                      Neo is your agentic coding partner — it reads, edits and runs files in your
-                      workspace, with your approval for anything destructive.
-                    </p>
-
+                    
                     {/* Status chips */}
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-                      <span
+                      {/* <span
                         title={`Provider: ${spec.label}`}
                         className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#a3a3a3]"
                       >
@@ -1897,15 +1889,10 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
                         </svg>
                         {workspaceRoot
-                          ? `${workspaceRoot.split(/[\\/]/).filter(Boolean).pop()} open`
+                          ? `${workspaceRoot.split(/[\\/]/).filter(Boolean).pop()} folder/file open`
                           : "No workspace open"}
                       </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#a3a3a3]">
-                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinejoin="round">
-                          <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
-                        </svg>
-                        Agent ready
-                      </span>
+                       */}
                     </div>
 
                     {/* Action cards */}
@@ -2090,7 +2077,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 ) : (
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
                     <span className="text-[11px] text-[#6b6b6b]">
-                      No file attached — open one in the editor and it's sent to the agent automatically
+                      Open file/folder or give the agent the path of file/folder in the editor and it's sent to the agent automatically
                     </span>
                   </div>
                 )}

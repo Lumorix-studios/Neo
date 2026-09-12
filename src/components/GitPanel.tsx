@@ -1,8 +1,4 @@
-/**
- * Source Control side panel (git status / stage / commit / pull / push).
- * All git access shells out to the system `git` CLI via the existing
- * `run_command` Tauri command — no extra backend needed.
- */
+
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { logToBus } from "./logBus";
