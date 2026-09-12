@@ -1822,49 +1822,52 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             onDeleteSession={deleteSession}
           />
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-base)]">
-            <div className="fade-top" />
-            
             {/* --- CONTEXT STRIP --- */}
-            <div className="flex items-center gap-3 px-5 py-1.5 bg-black/20 border-b border-zinc-800/30 overflow-x-auto whitespace-nowrap no-scrollbar">
-              <div className="flex items-center gap-1.5 text-zinc-600">
+            {/* relative z-20 keeps it ABOVE the scroll fade so it stays visible/clickable */}
+            <div
+              className="relative z-20 flex shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-zinc-800/30 bg-black/20 px-5 py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              data-debug="context-strip"
+            >
+              <div className="flex items-center gap-1.5 text-zinc-400">
                 <span className="text-[10px] uppercase tracking-wider font-bold">Context:</span>
               </div>
               {workspaceRoot && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-mono">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-200 text-[10px] font-mono">
                   <span>📁</span> {shortPath(workspaceRoot)}
                 </div>
               )}
               {activeEditorPath && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-mono">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10px] font-mono">
                   <span>📄</span> {shortPath(activeEditorPath)}
                 </div>
               )}
               {!workspaceRoot && !activeEditorPath && (
-                <span className="text-zinc-700 text-[10px] italic">No active workspace</span>
+                <span className="text-zinc-400 text-[10px] italic">No active workspace</span>
               )}
             </div>
 
             <div
               ref={scrollRef}
               onScroll={handleScroll}
-              className="min-h-0 flex-1 overflow-y-auto"
+              className="relative min-h-0 flex-1 overflow-y-auto"
+              data-debug="chat-scroll"
             >
               {messages.length === 0 ? (
                 <div className="relative flex min-h-full items-center justify-center px-6">
-                  <div className="msg-in relative w-full max-w-2xl pb-24 text-center">
+                  <div className="msg-in relative z-0 w-full max-w-2xl pb-24 text-center" data-debug="welcome-wrap">
 
                     {/* Emblem */}
                     
 
                     {/* Welcome heading */}
-                    <div className=" relative flex items-center justify-center">
+                    <div className="relative z-0 flex items-center justify-center" data-debug="welcome-heading">
                       <BlurText
                         text="Ready to start working?"
                         delay={20}
                         animateBy="letters"
                         direction="top"
                         onAnimationComplete={handleAnimationComplete}
-                        className="text-2xl mb-3"
+                        className="mb-3 justify-center text-center text-2xl text-[#e5e5e5]"
                       />
                     </div>
                     
