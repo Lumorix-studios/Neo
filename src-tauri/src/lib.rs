@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread;
 use std::time::UNIX_EPOCH;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
@@ -31,8 +31,23 @@ fn suppress_window(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
-// Track the spawned Ollama server process so we can stop it later.
-struct ServerState(Mutex<Option<Child>>);
+/// A server this app is responsible for stopping.
+enum TrackedServer {
+    /// Spawned by this session: live child handle + PID.
+    Child(Child, u32),
+    /// Orphan from a previous app session, adopted via the PID record. There
+    /// is no child handle, but the process tree can still be killed by PID.
+    Adopted(u32),
+}
+
+/// Track the Ollama server we are responsible for so we can stop it later.
+struct ServerState(Mutex<Option<TrackedServer>>);
+
+/// Set while `start_ollama_server` spawns + waits, so concurrent callers
+/// (the local-models panel and the model-switch guard) can't double-spawn:
+/// the second spawn would overwrite the first one's live child handle with
+/// the dead "bind: address already in use" loser.
+static SERVER_STARTING: AtomicBool = AtomicBool::new(false);
 
 /// Result of `start_ollama_server`. Tells the UI exactly what happened so it
 /// never claims "started" when the port was actually served by something else
@@ -47,6 +62,9 @@ struct OllamaStartStatus {
     /// True when the running server belongs to this app session. If false the
     /// server was started outside the app and "Stop" must not kill it.
     owned: bool,
+    /// True when the server is an orphan left behind by a previous session of
+    /// this app that we re-adopted — "Stop" works on it again.
+    adopted: bool,
 }
 
 /// Result of `stop_ollama_server`.
@@ -73,29 +91,123 @@ fn ollama_port_responds() -> bool {
     false
 }
 
-/// Drop a dead child handle from `ServerState`, reporting whether a live
-/// child is still tracked. The stored child can die at any time (e.g. it
-/// failed to bind because another program held port 11434) — a stale handle
-/// would make "stop" silently do nothing and "start" spawn duplicates.
-fn prune_dead_child(state: &ServerState) -> bool {
+// ---------------------------------------------------------------------------
+// Owned-server bookkeeping
+//
+// The packaged exe can die without a clean exit (crash, Task Manager kill,
+// Windows shutdown). `RunEvent::Exit` never fires in those cases, so the
+// spawned `ollama serve` survives as an orphan holding port 11434. The next
+// session used to see the port up, have no tracked child, and report the
+// server as "external" — leaving the user with a server the app refuses to
+// stop. The PID record file below fixes that: every spawn records its PID,
+// and the next session adopts (and can stop) an orphan that is still ours.
+// ---------------------------------------------------------------------------
+
+/// Where the PID of the server we spawned is recorded (a plain number).
+fn server_record_file(app: &tauri::AppHandle) -> Option<PathBuf> {
+    data_dir(app).ok().map(|d| d.join("ollama_server.pid"))
+}
+
+fn record_pid(app: &tauri::AppHandle, pid: u32) {
+    if let Some(file) = server_record_file(app) {
+        if let Some(dir) = file.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let _ = fs::write(&file, pid.to_string());
+    }
+}
+
+fn recorded_pid(app: &tauri::AppHandle) -> Option<u32> {
+    let file = server_record_file(app)?;
+    fs::read_to_string(file).ok()?.trim().parse::<u32>().ok()
+}
+
+fn clear_pid_record(app: &tauri::AppHandle) {
+    if let Some(file) = server_record_file(app) {
+        let _ = fs::remove_file(file);
+    }
+}
+
+/// True when the PID belongs to a live `ollama` process (windowless probes).
+fn pid_is_ollama(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        let mut probe = Command::new("tasklist");
+        probe.args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]);
+        probe.stdout(Stdio::piped()).stderr(Stdio::null());
+        suppress_window(&mut probe);
+        probe
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("ollama"))
+            .unwrap_or(false)
+    }
+    #[cfg(not(windows))]
+    {
+        let mut probe = Command::new("ps");
+        probe.args(["-p", &pid.to_string(), "-o", "comm="]);
+        probe
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("ollama"))
+            .unwrap_or(false)
+    }
+}
+
+/// Kill a process and, on Windows, its whole child tree. Plain
+/// `Child::kill()` leaves the model-runner children of `ollama serve` behind.
+fn kill_pid_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        let mut killer = Command::new("taskkill");
+        killer.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        killer.stdout(Stdio::null()).stderr(Stdio::null());
+        suppress_window(&mut killer);
+        let _ = killer.status();
+    }
+    #[cfg(not(windows))]
+    {
+        let mut killer = Command::new("kill");
+        killer.arg("-9").arg(pid.to_string());
+        let _ = killer.status();
+    }
+}
+
+/// True when the server's model-list endpoint answers. `/api/version` alone
+/// can be answered by a wedged or orphaned server while every real model
+/// call fails, so "started" must mean this works too.
+fn ollama_models_endpoint_ok(client: &reqwest::blocking::Client) -> bool {
+    client
+        .get("http://127.0.0.1:11434/api/tags")
+        .send()
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
+}
+
+/// Drop dead tracked-server entries, reporting whether a live one remains.
+/// A stored child can die at any time (e.g. it failed to bind because another
+/// program held port 11434) — a stale handle would make "stop" silently do
+/// nothing and "start" spawn duplicates. Adopted PIDs are re-verified too.
+fn refresh_tracked(state: &ServerState) -> bool {
     let Ok(mut guard) = state.0.lock() else {
         return false;
     };
-    match guard.as_mut() {
-        Some(child) => match child.try_wait() {
-            // Exited already — drop the stale handle.
-            Ok(Some(_)) => {
-                *guard = None;
-                false
-            }
+    match guard.take() {
+        Some(TrackedServer::Child(mut child, pid)) => match child.try_wait() {
             // Still running — we own the live server.
-            Ok(None) => true,
-            // Can't tell — treat as dead so a fresh server gets spawned.
-            Err(_) => {
-                *guard = None;
+            Ok(None) => {
+                *guard = Some(TrackedServer::Child(child, pid));
+                true
+            }
+            // Exited already (or can't tell) — drop the stale handle.
+            _ => false,
+        },
+        Some(TrackedServer::Adopted(pid)) => {
+            if pid_is_ollama(pid) {
+                *guard = Some(TrackedServer::Adopted(pid));
+                true
+            } else {
                 false
             }
-        },
+        }
         None => false,
     }
 }
@@ -176,23 +288,90 @@ fn check_ollama_running() -> bool {
 /// Start the Ollama server as a background process.
 ///
 /// Never blindly spawns a duplicate: if something already serves Ollama on
-/// port 11434 the app connects to it and reports it as external (so "Stop"
-/// won't kill a server it doesn't own). When we do spawn, we wait until the
-/// server actually answers — `ollama serve` exits immediately when the port
-/// is taken by a non-Ollama program, and reporting "started" in that case
-/// broke every model call that followed.
+/// port 11434 the app connects to it. That server is either ours (tracked
+/// child → owned), an orphan from a previous session (recognized through the
+/// PID record → adopted, so "Stop" works again), or genuinely external (the
+/// Ollama tray app, another tool → reused but reported as external so "Stop"
+/// won't kill it). When we do spawn, we wait until the server actually
+/// answers both its version and model-list endpoints — `ollama serve` exits
+/// immediately when the port is taken by a non-Ollama program, and reporting
+/// "started" in that case broke every model call that followed.
 #[tauri::command]
-fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaStartStatus, String> {
-    // Drop a stale handle if the previously-spawned child already died.
-    let owned = prune_dead_child(&state);
+fn start_ollama_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ServerState>,
+) -> Result<OllamaStartStatus, String> {
+    // Serialize: two concurrent starts would spawn twice and the second store
+    // would overwrite the first one's live child handle with the dead
+    // "bind: address already in use" loser.
+    if SERVER_STARTING
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        // Another start is in flight — wait for it to settle, then report.
+        for _ in 0..60 {
+            thread::sleep(std::time::Duration::from_millis(250));
+            if !SERVER_STARTING.load(Ordering::Relaxed) {
+                break;
+            }
+        }
+        let owned = refresh_tracked(&state);
+        return Ok(OllamaStartStatus {
+            running: ollama_port_responds(),
+            already_running: true,
+            owned,
+            adopted: false,
+        });
+    }
+    let result = do_start_ollama(&app, &state);
+    SERVER_STARTING.store(false, Ordering::Release);
+    result
+}
+
+fn do_start_ollama(
+    app: &tauri::AppHandle,
+    state: &ServerState,
+) -> Result<OllamaStartStatus, String> {
+    // Drop a stale child handle if the previously-spawned child already died.
+    let owned = refresh_tracked(state);
 
     // If an Ollama server is already up, reuse it — spawning a second one
     // would die with "bind: address already in use" and corrupt our state.
     if ollama_port_responds() {
+        if owned {
+            return Ok(OllamaStartStatus {
+                running: true,
+                already_running: true,
+                owned: true,
+                adopted: false,
+            });
+        }
+        // No live server of ours, yet the port answers. It may be an orphan
+        // left behind by a previous session of this app (the exe can die
+        // without a clean exit). The PID record written when we spawned
+        // tells us — adopt it so "Stop" works again instead of telling the
+        // user to close a server they have no window or tray icon for.
+        if let Some(pid) = recorded_pid(app) {
+            if pid_is_ollama(pid) {
+                if let Ok(mut guard) = state.0.lock() {
+                    *guard = Some(TrackedServer::Adopted(pid));
+                }
+                return Ok(OllamaStartStatus {
+                    running: true,
+                    already_running: true,
+                    owned: true,
+                    adopted: true,
+                });
+            }
+            // Stale record for a process that is gone — clear it.
+            clear_pid_record(app);
+        }
+        // Genuinely external (the Ollama tray app, another tool) — reuse only.
         return Ok(OllamaStartStatus {
             running: true,
             already_running: true,
-            owned,
+            owned: false,
+            adopted: false,
         });
     }
 
@@ -207,11 +386,15 @@ fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaSta
     let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to start Ollama server: {e}"))?;
+    let pid = child.id();
+
+    // Record the PID so a future session can adopt (or stop) this server if
+    // this session dies without a clean exit (crash, Task Manager, shutdown).
+    record_pid(app, pid);
 
     // Store the child process so we can stop it later
-    {
-        let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-        *guard = Some(child);
+    if let Ok(mut guard) = state.0.lock() {
+        *guard = Some(TrackedServer::Child(child, pid));
     }
 
     // Wait (up to ~15s) for the server to bind and answer. Bail out early if
@@ -223,14 +406,21 @@ fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaSta
     for _ in 0..30 {
         thread::sleep(std::time::Duration::from_millis(500));
         if let Some(c) = &client {
-            if let Ok(resp) = c.get("http://127.0.0.1:11434/api/version").send() {
-                if resp.status().is_success() {
-                    return Ok(OllamaStartStatus {
-                        running: true,
-                        already_running: false,
-                        owned: true,
-                    });
-                }
+            let version_ok = c
+                .get("http://127.0.0.1:11434/api/version")
+                .send()
+                .map(|r| r.status().is_success())
+                .unwrap_or(false);
+            // "Started" must mean the server can actually serve models, not
+            // just answer a version ping — a wedged/orphaned server can do
+            // the latter while every model call fails.
+            if version_ok && ollama_models_endpoint_ok(c) {
+                return Ok(OllamaStartStatus {
+                    running: true,
+                    already_running: false,
+                    owned: true,
+                    adopted: false,
+                });
             }
         }
         let died = {
@@ -239,13 +429,19 @@ fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaSta
                 .lock()
                 .map_err(|e| format!("State lock error: {e}"))?;
             match guard.as_mut() {
-                Some(child) => matches!(child.try_wait(), Ok(Some(_)) | Err(_)),
-                None => true,
+                Some(TrackedServer::Child(child, _)) => {
+                    matches!(child.try_wait(), Ok(Some(_)) | Err(_))
+                }
+                _ => true,
             }
         };
         if died {
-            // Clean up the dead handle so the next start isn't confused.
-            prune_dead_child(&state);
+            // Clean up the dead handle + stale record so the next start
+            // isn't confused.
+            if let Ok(mut guard) = state.0.lock() {
+                *guard = None;
+            }
+            clear_pid_record(app);
             return Err(
                 "The Ollama server exited right after starting. Port 11434 is likely used by \
                  another program (check with: netstat -ano | findstr 11434), or the Ollama \
@@ -255,26 +451,51 @@ fn start_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaSta
         }
     }
 
-    // Server didn't come up in time — kill it and report the failure honestly.
+    // Server didn't come up in time — kill it (and its tree) and report the
+    // failure honestly.
     {
         let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-        if let Some(mut child) = guard.take() {
+        if let Some(TrackedServer::Child(mut child, pid)) = guard.take() {
             let _ = child.kill();
             let _ = child.wait();
+            kill_pid_tree(pid);
         }
     }
+    clear_pid_record(app);
     Err("The Ollama server did not respond on port 11434 within 15 seconds.".into())
 }
 
-/// Stop the Ollama server process we started. A server started outside the
-/// app is never touched — the UI tells the user to stop it themselves.
+/// Stop the Ollama server this app is responsible for. A genuinely external
+/// server (Ollama tray app, another tool) is never touched — but an orphan
+/// left behind by a previous session of THIS app is recognized through the
+/// PID record and stopped too, so the user is never stuck with a server the
+/// UI refuses to kill.
 #[tauri::command]
-fn stop_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaStopStatus, String> {
-    let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-    if let Some(mut child) = guard.take() {
-        let _ = child.kill();
-        let _ = child.wait();
-        drop(guard);
+fn stop_ollama_server(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ServerState>,
+) -> Result<OllamaStopStatus, String> {
+    let killed = {
+        let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+        match guard.take() {
+            Some(TrackedServer::Child(mut child, pid)) => {
+                let was_running = matches!(child.try_wait(), Ok(None));
+                let _ = child.kill();
+                let _ = child.wait();
+                // `kill()` doesn't take the process tree with it — the server
+                // keeps model-runner children alive. Reap the whole tree.
+                kill_pid_tree(pid);
+                was_running
+            }
+            Some(TrackedServer::Adopted(pid)) => {
+                kill_pid_tree(pid);
+                true
+            }
+            None => false,
+        }
+    };
+    if killed {
+        clear_pid_record(&app);
         // Report accurately once the port is actually released.
         for _ in 0..10 {
             if !ollama_port_responds() {
@@ -290,7 +511,29 @@ fn stop_ollama_server(state: tauri::State<'_, ServerState>) -> Result<OllamaStop
             still_running_external: false,
         });
     }
-    // We don't own a server. If one is still listening, it's external.
+    // Nothing tracked this session. An orphan from a previous session may
+    // still hold the port — if the PID record names a live ollama process,
+    // it is ours: stop it instead of telling the user to close something
+    // they have no window or tray icon for.
+    if let Some(pid) = recorded_pid(&app) {
+        if pid_is_ollama(pid) {
+            kill_pid_tree(pid);
+            clear_pid_record(&app);
+            for _ in 0..10 {
+                if !ollama_port_responds() {
+                    break;
+                }
+                thread::sleep(std::time::Duration::from_millis(300));
+            }
+            return Ok(OllamaStopStatus {
+                stopped: true,
+                still_running_external: false,
+            });
+        }
+        // Stale record for a process that is gone — clear it.
+        clear_pid_record(&app);
+    }
+    // A server still listening now was truly started outside the app.
     let still_running_external = ollama_port_responds();
     Ok(OllamaStopStatus {
         stopped: false,
@@ -1078,19 +1321,26 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // When the app exits, stop the Ollama server we spawned. Without
-            // this the server outlives the window as an orphan, keeps holding
-            // port 11434, and the next launch silently "adopts" a process it
-            // can't control — which is exactly the overlap bug.
+            // When the app exits, stop the Ollama server we spawned (and any
+            // orphan we adopted). Without this the server outlives the window
+            // as an orphan, keeps holding port 11434, and the next launch
+            // silently "adopts" a process it can't control — which is exactly
+            // the overlap bug. Note: this only runs on a clean exit; a crash
+            // or Task Manager kill is handled by the PID record instead.
             if let tauri::RunEvent::Exit = event {
                 let state = app_handle.state::<ServerState>();
-                let lock = state.0.lock();
-                if let Ok(mut guard) = lock {
-                    if let Some(mut child) = guard.take() {
-                        let _ = child.kill();
-                        let _ = child.wait();
+                if let Ok(mut guard) = state.0.lock() {
+                    match guard.take() {
+                        Some(TrackedServer::Child(mut child, pid)) => {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            kill_pid_tree(pid);
+                        }
+                        Some(TrackedServer::Adopted(pid)) => kill_pid_tree(pid),
+                        None => {}
                     }
                 }
+                clear_pid_record(app_handle);
             }
         });
 }

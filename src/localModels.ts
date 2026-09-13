@@ -28,6 +28,8 @@ export interface OllamaStartStatus {
   alreadyRunning: boolean;
   /** True when the server belongs to this app session (safe to Stop). */
   owned: boolean;
+  /** True when the server is an orphan from a previous session we re-adopted. */
+  adopted: boolean;
 }
 
 /** Result of `stop_ollama_server` from the Rust backend. */

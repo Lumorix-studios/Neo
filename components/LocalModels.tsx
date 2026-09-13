@@ -86,6 +86,12 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
           setSuccess(
             "Connected to an existing Ollama server on port 11434 (started outside this app). Stop won't kill it."
           );
+        } else if (status.adopted) {
+          // The server was an orphan left behind by a previous session — we
+          // re-adopted it, so Stop works on it again.
+          setSuccess(
+            "Re-connected to the Ollama server left running by a previous session. Stop works again."
+          );
         } else {
           setSuccess("Ollama server started successfully.");
         }
