@@ -152,6 +152,65 @@ fn pid_is_ollama(pid: u32) -> bool {
     }
 }
 
+/// PIDs of processes listening on the given TCP port. Used by "Stop" to find
+/// whoever holds port 11434 when nothing of ours is running. Parsing is
+/// locale-proof: only the local-address column (…:port) and the trailing PID
+/// are used, never the state string (which is localized on some Windows).
+fn port_listener_pids(port: u16) -> Vec<u32> {
+    #[cfg(windows)]
+    {
+        let mut probe = Command::new("netstat");
+        probe.args(["-ano", "-p", "tcp"]);
+        probe.stdout(Stdio::piped()).stderr(Stdio::null());
+        suppress_window(&mut probe);
+        let Ok(output) = probe.output() else {
+            return Vec::new();
+        };
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut pids: Vec<u32> = Vec::new();
+        for line in text.lines() {
+            // Columns: Proto  Local  Foreign  State  PID (state may be
+            // localized, so only rely on column count >= 4 + numeric PID).
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() < 4 {
+                continue;
+            }
+            let local = cols[1];
+            let is_our_port = local
+                .rsplit(':')
+                .next()
+                .map(|p| p == port.to_string())
+                .unwrap_or(false);
+            if !is_our_port {
+                continue;
+            }
+            // The PID is the last column on netstat -ano rows.
+            if let Some(last) = cols.last() {
+                if let Ok(pid) = last.parse::<u32>() {
+                    if pid > 0 && !pids.contains(&pid) {
+                        pids.push(pid);
+                    }
+                }
+            }
+        }
+        pids
+    }
+    #[cfg(not(windows))]
+    {
+        let mut probe = Command::new("lsof");
+        probe.args(["-t", &format!("tcp:{port}")]);
+        probe.stdout(Stdio::piped()).stderr(Stdio::null());
+        suppress_window(&mut probe);
+        let Ok(output) = probe.output() else {
+            return Vec::new();
+        };
+        String::from_utf8_lossy(&output.stdout)
+            .split_whitespace()
+            .filter_map(|t| t.parse::<u32>().ok())
+            .collect()
+    }
+}
+
 /// Kill a process and, on Windows, its whole child tree. Plain
 /// `Child::kill()` leaves the model-runner children of `ollama serve` behind.
 fn kill_pid_tree(pid: u32) {
@@ -465,11 +524,12 @@ fn do_start_ollama(
     Err("The Ollama server did not respond on port 11434 within 15 seconds.".into())
 }
 
-/// Stop the Ollama server this app is responsible for. A genuinely external
-/// server (Ollama tray app, another tool) is never touched — but an orphan
-/// left behind by a previous session of THIS app is recognized through the
-/// PID record and stopped too, so the user is never stuck with a server the
-/// UI refuses to kill.
+/// Stop the Ollama server on port 11434. The app's own servers (spawned or
+/// adopted) are stopped directly; any other Ollama process listening on the
+/// port (the Ollama tray app's server, an orphan whose PID record was lost)
+/// is found via netstat and stopped too — "Stop" should never leave an
+/// Ollama server the user cannot reach running. A port held by a process
+/// that is not Ollama is left alone and reported as external.
 #[tauri::command]
 fn stop_ollama_server(
     app: tauri::AppHandle,
@@ -533,7 +593,34 @@ fn stop_ollama_server(
         // Stale record for a process that is gone — clear it.
         clear_pid_record(&app);
     }
-    // A server still listening now was truly started outside the app.
+    // Nothing of ours is running (or the PID record didn't match), yet the
+    // port still answers. Find whoever is listening on 11434 and stop it
+    // when it is an Ollama process — that covers the Ollama tray app's own
+    // server and any orphan whose PID record was lost. The user pressed
+    // "Stop"; leaving a server they cannot reach running helps nobody.
+    // Only a non-Ollama program squatting on the port is left alone.
+    let mut killed_external_ollama = false;
+    for pid in port_listener_pids(11434) {
+        if pid_is_ollama(pid) {
+            kill_pid_tree(pid);
+            killed_external_ollama = true;
+        }
+    }
+    if killed_external_ollama {
+        clear_pid_record(&app);
+        for _ in 0..10 {
+            if !ollama_port_responds() {
+                break;
+            }
+            thread::sleep(std::time::Duration::from_millis(300));
+        }
+        return Ok(OllamaStopStatus {
+            stopped: true,
+            still_running_external: false,
+        });
+    }
+    // A server still listening now was NOT started by Ollama (or could not
+    // be identified) — don't touch processes we can't vouch for.
     let still_running_external = ollama_port_responds();
     Ok(OllamaStopStatus {
         stopped: false,

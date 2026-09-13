@@ -81,10 +81,11 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
       if (status?.running) {
         setRunning(true);
         if (status.alreadyRunning && !status.owned) {
-          // Port 11434 was already served by an external Ollama — we reused
-          // it instead of spawning a duplicate that would die on bind.
+          // Port 11434 was already served by an Ollama started outside this
+          // app — we reuse it instead of spawning a duplicate that would die
+          // on bind. Stop will find and stop it by port ownership.
           setSuccess(
-            "Connected to an existing Ollama server on port 11434 (started outside this app). Stop won't kill it."
+            "Connected to an existing Ollama server on port 11434 (started outside this app). Stop will stop it."
           );
         } else if (status.adopted) {
           // The server was an orphan left behind by a previous session — we
@@ -118,9 +119,10 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
         setModels([]);
         setSuccess("Ollama server stopped.");
       } else if (status?.stillRunningExternal) {
-        // A server started outside the app is listening — we never touch it.
+        // Port 11434 is held by something we could not identify as Ollama,
+        // so we never touch it.
         setSuccess(
-          "This Ollama server was started outside the app, so it was left running. Stop it from its own window or tray icon."
+          "Port 11434 is held by another program the app can't identify as Ollama, so it was left running. Close that program to free the port."
         );
       } else {
         setError("No Ollama server is running.");
