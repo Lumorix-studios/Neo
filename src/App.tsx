@@ -1681,21 +1681,21 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           right={
             <>
               {/* Provider / model pill */}
-              <div className="relative">
+              <div className="relative min-w-0">
                 <button
                   type="button"
                   onClick={() => setModelOpen((v) => !v)}
                   title="Switch AI provider"
-                  className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
+                  className="flex min-w-0 items-center gap-1.5 rounded-md border border-(--border) bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
                 >
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                       settings.apiKey || !spec.needsAuth ? "bg-emerald-500" : "bg-zinc-600"
                     }`}
                   />
-                  <span className="max-w-[160px] truncate">{settings.model || spec.label}</span>
+                  <span className="min-w-0 max-w-[140px] truncate">{settings.model || spec.label}</span>
                   {!settings.apiKey && spec.needsAuth && (
-                    <span className="text-[var(--text-muted)]">(not configured)</span>
+                    <span className="hidden text-[var(--text-muted)] sm:inline">(not configured)</span>
                   )}
                   <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M4 6l4 4 4-4" />

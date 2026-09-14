@@ -147,12 +147,12 @@ export default function TopMenu({
   return (
     <nav
       ref={menuRef}
-      className="relative z-50 flex h-[35px] shrink-0 items-center justify-between border-b border-(--border) bg-[var(--bg-panel)] pl-3 pr-2"
+      className="relative z-50 flex h-[35px] shrink-0 items-center border-b border-(--border) bg-[var(--bg-panel)] pl-3 pr-2"
       data-tauri-drag-region
       onDoubleClick={() => toggleMaximizeWindow()}
     >
       {/* Left: brand + menus */}
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
         <div
           className="mr-1.5 flex items-center gap-2 select-none"
           data-tauri-drag-region
@@ -227,13 +227,16 @@ export default function TopMenu({
           </button>
         )}
       </div>
+      {/* Center: command-palette pill — in-flow between two equal flex columns
+          so it stays truly centered while the left/right groups shrink
+          and truncate with the window width. */}
       {onOpenCommandPalette && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-[35px] items-center justify-center lg:flex">
+        <div className="hidden min-w-0 flex-none items-center justify-center px-2 lg:flex">
           <button
             type="button"
             onClick={onOpenCommandPalette}
             title="Search commands and files (Ctrl+P)"
-            className="pointer-events-auto flex h-[22px] w-[34%] max-w-[320px] items-center justify-center gap-2 rounded-[6px] border border-(--border-strong) bg-(--fill-1) text-[11.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+            className="flex h-[22px] w-[min(28vw,280px)] items-center justify-center gap-2 rounded-[6px] border border-(--border-strong) bg-(--fill-1) text-[11.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <circle cx="7" cy="7" r="4.4" />
@@ -243,8 +246,11 @@ export default function TopMenu({
           </button>
         </div>
       )}
-      {right && <div className="flex items-center gap-2">{right}</div>}
-      <WindowControls />
+      {/* Right: provider/model pill + window controls */}
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+        {right && <div className="flex min-w-0 items-center gap-2">{right}</div>}
+        <WindowControls />
+      </div>
     </nav>
   );
 }
