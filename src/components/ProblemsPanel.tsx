@@ -110,7 +110,7 @@ export default function ProblemsPanel({
     <div className="flex h-full flex-col">
       {/* Toolbar */}
       <div className="flex h-8 shrink-0 items-center justify-between px-3">
-        <div className="flex items-center gap-2 text-[11px] text-[#8a8a93]">
+        <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
           {scanning ? (
             <span className="flex items-center gap-1.5">
               <svg viewBox="0 0 16 16" className="h-3 w-3 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -124,7 +124,7 @@ export default function ProblemsPanel({
                 <IoAlertCircle size={12} /> {errors.length} errors
               </span>
               <span className="text-[#e2b93d]">{warnings.length} warnings</span>
-              {!root && <span className="text-[#6b6b6b]">No workspace open</span>}
+              {!root && <span className="text-[var(--text-muted)]">No workspace open</span>}
             </>
           )}
         </div>
@@ -132,7 +132,7 @@ export default function ProblemsPanel({
           type="button"
           onClick={() => void scan()}
           disabled={scanning || !root}
-          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec] disabled:pointer-events-none disabled:opacity-40"
+          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:pointer-events-none disabled:opacity-40"
         >
           <IoRefresh size={12} />
           Re-scan
@@ -142,18 +142,18 @@ export default function ProblemsPanel({
       {/* Findings */}
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 scrollbar-thin font-mono text-[11.5px]">
         {note && (
-          <p className="mx-1 my-1 whitespace-pre-wrap rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1.5 text-[11px] text-[#6b6b6b]">
+          <p className="mx-1 my-1 whitespace-pre-wrap rounded-md border border-(--border) bg-(--fill-1) px-2 py-1.5 text-[11px] text-[var(--text-muted)]">
             {note}
           </p>
         )}
         {problems.length === 0 && !scanning && !note && (
-          <p className="px-2 py-2 text-[11.5px] text-[#6b6b6b]">
+          <p className="px-2 py-2 text-[11.5px] text-[var(--text-muted)]">
             No problems detected — nice and clean.
           </p>
         )}
         {[...byFile.entries()].map(([file, list]) => (
           <div key={file} className="mb-1">
-            <div className="flex items-center gap-1.5 px-1.5 py-1 text-zinc-400">
+            <div className="flex items-center gap-1.5 px-1.5 py-1 text-[var(--text-secondary)]">
               <IoAlertCircle
                 size={11}
                 className={
@@ -163,7 +163,7 @@ export default function ProblemsPanel({
                 }
               />
               <span className="truncate">{file.split(/[\\/]/).pop()}</span>
-              <span className="shrink-0 truncate text-[10px] text-[#6b6b6b]">
+              <span className="shrink-0 truncate text-[10px] text-[var(--text-muted)]">
                 {file}
               </span>
             </div>
@@ -172,7 +172,7 @@ export default function ProblemsPanel({
                 key={`${p.line}-${i}`}
                 type="button"
                 onClick={() => onOpenFile(p.file, p.line)}
-                className="group flex w-full items-start gap-2 rounded-md py-1 pl-6 pr-3 text-left transition hover:bg-white/[0.05]"
+                className="group flex w-full items-start gap-2 rounded-md py-1 pl-6 pr-3 text-left transition hover:bg-(--fill-2)"
                 title={`Go to ${p.file}:${p.line}`}
               >
                 <span
@@ -182,10 +182,10 @@ export default function ProblemsPanel({
                 >
                   {p.severity === "error" ? "✕" : "⚠"}
                 </span>
-                <span className="min-w-0 flex-1 text-zinc-300">
-                  {p.message} <span className="text-[#6b6b6b]">({p.code})</span>
+                <span className="min-w-0 flex-1 text-[var(--text-primary)]">
+                  {p.message} <span className="text-[var(--text-muted)]">({p.code})</span>
                 </span>
-                <span className="shrink-0 text-[10px] text-[#6b6b6b] group-hover:text-(--accent)">
+                <span className="shrink-0 text-[10px] text-[var(--text-muted)] group-hover:text-(--accent)">
                   [Ln {p.line}, Col {p.col}]
                 </span>
               </button>

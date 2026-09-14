@@ -174,13 +174,18 @@ function isWordChar(c: string): boolean {
   return isWordStart(c) || (c >= "0" && c <= "9");
 }
 
+/**
+ * Token colors are emitted as .tok-* classes backed by --code-* CSS
+ * variables, so syntax highlighting follows the resolved theme (dark
+ * surfaces or bright custom backgrounds) instead of hardcoded hex.
+ */
 const COLORS = {
-  kw: "#c678dd",
-  str: "#98c379",
-  num: "#d19a66",
-  com: "#7f848e",
-  fn: "#61afef",
-  tag: "#e06c75",
+  kw: "tok-kw",
+  str: "tok-str",
+  num: "tok-num",
+  com: "tok-com",
+  fn: "tok-fn",
+  tag: "tok-tag",
 };
 
 /**
@@ -206,7 +211,7 @@ export function highlightCode(code: string, lang: string): string {
   };
   const push = (color: string, text: string, italic = false) => {
     flush();
-    out += `<span style="color:${color};${italic ? "font-style:italic;" : ""}">${escapeHtml(text)}</span>`;
+    out += `<span class="${color}"${italic ? ' style="font-style:italic"' : ""}>${escapeHtml(text)}</span>`;
   };
 
   while (i < n) {

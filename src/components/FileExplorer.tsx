@@ -37,7 +37,7 @@ function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 16 16"
-      className={`h-3 w-3 shrink-0 text-[#6b6b6b] transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+      className={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150 ${open ? "rotate-90" : ""}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.6"
@@ -53,7 +53,7 @@ function FolderIcon({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 16 16"
-      className={`h-4 w-4 shrink-0 transition-colors duration-150 ${open ? "text-zinc-300" : "text-zinc-500 group-hover:text-zinc-400"}`}
+      className={`h-4 w-4 shrink-0 transition-colors duration-150 ${open ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]"}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.2"
@@ -251,7 +251,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
         onBlur={() => void createEntry()}
         placeholder={creating?.kind === "folder" ? "folder name…" : "file name.ts…"}
         spellCheck={false}
-        className="min-w-0 flex-1 rounded border border-(--accent) bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none placeholder-[#555555]"
+        className="min-w-0 flex-1 rounded border border-(--accent) bg-black/40 px-1 py-px text-[12px] text-[var(--text-primary)] outline-none placeholder-[#555555]"
       />
     </div>
   );
@@ -300,10 +300,10 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
             onClick={() => toggle(e)}
             className={`relative flex h-[22px] w-full items-center gap-1.5 rounded-[5px] pr-2 text-left text-[13px] leading-none transition-colors duration-100 ${
               active
-                ? "bg-white/[0.09] text-[#e8e8e8]"
+                ? "bg-(--fill-2) text-[var(--text-primary)]"
                 : e.is_dir
-                  ? "text-[#c9c9c9] hover:bg-white/[0.05]"
-                  : "text-[#c9c9c9] hover:bg-white/[0.05] hover:text-[#e8e8e8]"
+                  ? "text-[var(--text-primary)] hover:bg-(--fill-2)"
+                  : "text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             }`}
             style={{ paddingLeft: 8 + depth * 14 }}
             title={e.path}
@@ -327,7 +327,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                   }
                 }}
                 onBlur={() => void commitRename()}
-                className="min-w-0 flex-1 rounded border border-(--accent) bg-black/40 px-1 py-px text-[12px] text-[#ececec] outline-none"
+                className="min-w-0 flex-1 rounded border border-(--accent) bg-black/40 px-1 py-px text-[12px] text-[var(--text-primary)] outline-none"
               />
             ) : (
               <span className={`truncate ${active ? "font-medium" : ""}`}>
@@ -368,17 +368,17 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col border-white/[0.07] bg-[var(--bg-chrome)]"
+      className="flex h-full shrink-0 flex-col border-(--border) bg-[var(--bg-chrome)]"
       style={{ width: width ?? 240 }}
     >
       {/* -- Header ------------------------------------------------------- */}
-      <div className="shrink-0 border-b border-white/[0.02]">
+      <div className="shrink-0 border-b border-(--border)">
         {/* VS Code shows the view name above the workspace section. */}
         <div className="flex h-[5px] items-center pl-4 pr-2 pt-1">
         </div>
         <div className="flex items-center justify-between pb-1 pl-4 pr-2">
           <span
-            className="min-w-0 truncate text-[8px] font-bold uppercase tracking-[0.08em] text-[#cccccc]"
+            className="min-w-0 truncate text-[8px] font-bold uppercase tracking-[0.08em] text-[var(--text-primary)]"
             title={root}
           >
             {name}
@@ -389,7 +389,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               onClick={onCollapse}
               title="Collapse explorer panel"
               aria-label="Collapse explorer panel"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <IoFolderOutline size = {14}/>
             </button>
@@ -399,7 +399,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                 onClick={() => setNewMenu((v) => !v)}
                 title="New file or folder"
                 aria-label="New file or folder"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
                 <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
                   <path d="M8 3v10M3 8h10" />
@@ -416,7 +416,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                         setCreating({ parent: root, kind: "file" });
                         setNewName("");
                       }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
                     >
                       <FileIcon name="" />
                       New File…
@@ -428,7 +428,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                         setCreating({ parent: root, kind: "folder" });
                         setNewName("");
                       }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
                     >
                       <FolderIcon open={false} />
                       New Folder…
@@ -441,7 +441,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               type="button"
               onClick={collapseAll}
               title="Collapse folders"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h10M5.5 3.5L3 6l2.5 2.5M13 10H3M10.5 7.5L13 10l-2.5 2.5" />
@@ -451,7 +451,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               type="button"
               onClick={() => void loadDir(root)}
               title="Refresh"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.6h-2.6" />
@@ -464,7 +464,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
         <div className="relative px-3 pb-1.5 pt-1">
           <svg
             viewBox="0 0 16 16"
-            className="pointer-events-none absolute left-[20px] top-1/2 h-3 w-3 -translate-y-1/2 text-[#555555]"
+            className="pointer-events-none absolute left-[20px] top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-faint)]"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.5"
@@ -478,14 +478,14 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
             onChange={(ev) => setQuery(ev.target.value)}
             placeholder="Filter files…"
             spellCheck={false}
-            className="w-full rounded-md border border-white/[0.09] bg-[var(--bg-input)] py-[3px] pl-7 pr-2.5 text-[12px] text-[#d4d4d4] placeholder-[#555555] outline-none transition focus:border-[#2b6fd4]"
+            className="w-full rounded-md border border-(--border-strong) bg-[var(--bg-input)] py-[3px] pl-7 pr-2.5 text-[12px] text-[var(--text-primary)] placeholder-[#555555] outline-none transition focus:border-[#2b6fd4]"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery("")}
               title="Clear filter"
-              className="absolute right-[18px] top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-[#6b6b6b] transition hover:text-[#d4d4d4]"
+              className="absolute right-[18px] top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-[var(--text-muted)] transition hover:text-[var(--text-primary)]"
             >
               <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
                 <path d="M4 4l8 8M12 4l-8 8" />
@@ -504,10 +504,10 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
         )}
         {tree.length === 0 && creating?.parent !== root ? (
           <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
-            <svg viewBox="0 0 16 16" className="h-6 w-6 text-[#4a4a4a]" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 16 16" className="h-6 w-6 text-[var(--text-faint)]" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
             </svg>
-            <p className="text-[11px] leading-5 text-[#6b6b6b]">
+            <p className="text-[11px] leading-5 text-[var(--text-muted)]">
               {query ? `No files match "${query}"` : "This folder is empty."}
             </p>
           </div>
@@ -517,7 +517,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
       </div>
 
       {/* -- Footer */}
-      <div className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.02] px-3 text-[10px] text-[#555555]">
+      <div className="flex h-6 shrink-0 items-center justify-between border-t border-(--border) px-3 text-[10px] text-[var(--text-faint)]">
         <span>{itemCount} item{itemCount === 1 ? "" : "s"}</span>
         {query && <span className="truncate">filtered</span>}
       </div>
@@ -534,13 +534,13 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
             }}
           />
           <div
-            className="fixed z-50 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl"
+            className="fixed z-50 w-44 overflow-hidden rounded-lg border border-(--border) bg-[var(--bg-elevated)] py-1 shadow-xl"
             style={{
               left: Math.min(menu.x, window.innerWidth - 190),
               top: Math.min(menu.y, window.innerHeight - 220),
             }}
           >
-            <p className="truncate px-3 py-1 text-[10px] uppercase tracking-wider text-[#6b6b6b]">
+            <p className="truncate px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
               {menu.entry.name}
             </p>
             {menu.entry.is_dir && (
@@ -552,7 +552,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                     setCreating({ parent: menu.entry.path, kind: "file" });
                     setNewName("");
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
                 >
                   <FileIcon name="file.ts" /> New File…
                 </button>
@@ -563,7 +563,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                     setCreating({ parent: menu.entry.path, kind: "folder" });
                     setNewName("");
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
                 >
                   <FolderIcon open={false} /> New Folder…
                 </button>
@@ -576,7 +576,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                 setRenameInput(menu.entry.name);
                 setMenu(null);
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06]"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11.5 1.75l2.75 2.75L5.5 13.25 2 14l.75-3.5z" />

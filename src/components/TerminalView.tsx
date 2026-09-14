@@ -6,6 +6,22 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import "xterm/css/xterm.css";
 
+/** Build the xterm palette from the resolved theme so the terminal follows
+    custom/bright background colors instead of staying hardcoded dark. */
+function termThemeFromDoc() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name: string, fb: string) => cs.getPropertyValue(name).trim() || fb;
+  return {
+    background: v("--bg-chrome", "#0a0a0a"),
+    foreground: v("--text-primary", "#d4d4d4"),
+    cursor: v("--text-primary", "#cccccc"),
+    cursorAccent: v("--text-muted", "#181818"),
+    selectionBackground: v("--accent-soft", "rgba(76, 141, 255, 0.28)"),
+    black: v("--bg-active", "#181818"),
+    brightBlack: v("--text-muted", "#6b6b6b"),
+  };
+}
+
 export interface TerminalPrefs {
   fontSize: number;
   scrollback: number;
@@ -40,15 +56,7 @@ export default function TerminalView({ id, active, prefs }: TerminalViewProps) {
       fontSize: prefs?.fontSize ?? 12.5,
       lineHeight: 1.2,
       scrollback: prefs?.scrollback ?? 1000,
-      theme: {
-        background: "#262626",
-        foreground: "#d4d4d4",
-        cursor: "#cccccc",
-        cursorAccent: "#181818",
-        selectionBackground: "rgba(76, 141, 255, 0.28)",
-        black: "#181818",
-        brightBlack: "#6b6b6b",
-      },
+      theme: termThemeFromDoc(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

@@ -28,17 +28,17 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-6"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-xl border border-white/[0.09] bg-[var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
+      <div className="w-full max-w-md overflow-hidden rounded-xl border border-(--border-strong) bg-[var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
           <div>
-            <h2 className="m-0 text-[14px] font-semibold text-[#ececec]">Rate Neo</h2>
-            <p className="m-0 text-[11.5px] text-[#6b6b6b]">Lumorix Studios</p>
+            <h2 className="m-0 text-[14px] font-semibold text-[var(--text-primary)]">Rate Neo</h2>
+            <p className="m-0 text-[11.5px] text-[var(--text-muted)]">Lumorix Studios</p>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
               <path d="M4 4l8 8M12 4l-8 8" />
@@ -48,7 +48,7 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
 
         {/* Body */}
         <div className="px-5 py-6">
-          <p className="m-0 mb-5 text-[12.5px] leading-relaxed text-[#a3a3a3]">
+          <p className="m-0 mb-5 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
             Enjoying the app? Tap a star to rate your experience.
           </p>
 
@@ -81,15 +81,15 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
           </div>
 
           {rating > 0 && (
-            <p className="m-0 mt-4 text-center text-[11.5px] text-[#6b6b6b]">
+            <p className="m-0 mt-4 text-center text-[11.5px] text-[var(--text-muted)]">
               Thanks for the {rating}-star rating!
             </p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-white/[0.07] px-5 py-3">
-          <span className="text-[10.5px] text-[#6b6b6b]">© 2026 Lumorix Studios</span>
+        <div className="flex items-center justify-between border-t border-(--border) px-5 py-3">
+          <span className="text-[10.5px] text-[var(--text-muted)]">© 2026 Lumorix Studios</span>
           <button
             onClick={onClose}
             className="rounded-md bg-[#ececec] px-3.5 py-1.5 text-[12px] font-semibold text-[#111111] transition hover:bg-white"

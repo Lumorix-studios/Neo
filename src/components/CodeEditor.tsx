@@ -284,9 +284,9 @@ export default function CodeEditor({
     const g = gutterInnerRef.current;
     if (g) {
       const prev = g.querySelector<HTMLElement>(".gutter-active");
-      if (prev) prev.classList.remove("gutter-active", "font-medium", "text-zinc-400");
+      if (prev) prev.classList.remove("gutter-active", "font-medium", "text-[var(--text-secondary)]");
       const cur = g.querySelector<HTMLElement>(`[data-ln="${cursor.line}"]`);
-      if (cur) cur.classList.add("gutter-active", "font-medium", "text-zinc-400");
+      if (cur) cur.classList.add("gutter-active", "font-medium", "text-[var(--text-secondary)]");
     }
   }, [cursor.line, LINE_HEIGHT, lineCount, activePath]);
 
@@ -653,10 +653,10 @@ export default function CodeEditor({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-editor)]">
       {/* ── Tab strip (VS Code Dark Modern: flat tabs on chrome) */}
-      <div className="flex h-[35px] shrink-0 items-stretch border-b border-white/[0.07] bg-[var(--bg-chrome)]">
+      <div className="flex h-[35px] shrink-0 items-stretch border-b border-(--border) bg-[var(--bg-chrome)]">
         <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.length === 0 && (
-            <div className="flex items-center px-3 text-[11.5px] text-zinc-600">
+            <div className="flex items-center px-3 text-[11.5px] text-[var(--text-faint)]">
               No files open
             </div>
           )}
@@ -668,10 +668,10 @@ export default function CodeEditor({
                 onAuxClick={(ev) => {
                   if (ev.button === 1) onClose(t.path);
                 }}
-                className={`group relative flex shrink-0 items-stretch border-r border-white/[0.05] transition-colors ${
+                className={`group relative flex shrink-0 items-stretch border-r border-(--border) transition-colors ${
                   selected
-                    ? "bg-[var(--bg-editor)] text-[#e8e8e8]"
-                    : "bg-transparent text-[#8b8b8b] hover:bg-white/[0.04] hover:text-[#c9c9c9]"
+                    ? "bg-[var(--bg-editor)] text-[var(--text-primary)]"
+                    : "bg-transparent text-[var(--text-muted)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
                 }`}
               >
                 {selected && (
@@ -722,7 +722,7 @@ export default function CodeEditor({
               onClick={onCloseAll}
               title="Close all tabs"
               aria-label="Close all tabs"
-              className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 4h10M5.5 4V2.9A.9.9 0 016.4 2h3.2a.9.9 0 01.9.9V4M6.5 6.5v5M9.5 6.5v5M4.2 4l.6 8.4a1 1 0 001 .9h4.4a1 1 0 001-.9L11.8 4" />
@@ -735,7 +735,7 @@ export default function CodeEditor({
       {active ? (
         <>
           {/* ── Breadcrumbs ─────────────────────────────────────── */}
-          <div className="flex h-7 shrink-0 items-center gap-1.5 overflow-hidden border-b border-white/[0.04] px-3 text-[11px] text-zinc-600">
+          <div className="flex h-7 shrink-0 items-center gap-1.5 overflow-hidden border-b border-(--border) px-3 text-[11px] text-[var(--text-faint)]">
             <FileIcon name={active.path} />
             {visibleCrumbs.map((seg, i) => (
               <span key={`${seg}-${i}`} className="flex items-center gap-1.5 whitespace-nowrap">
@@ -744,7 +744,7 @@ export default function CodeEditor({
                     <path d="M6 3.5L10.5 8 6 12.5" />
                   </svg>
                 )}
-                <span className={i === visibleCrumbs.length - 1 ? "font-medium text-(--accent)" : "text-zinc-500"}>
+                <span className={i === visibleCrumbs.length - 1 ? "font-medium text-(--accent)" : "text-[var(--text-muted)]"}>
                   {seg}
                 </span>
               </span>
@@ -774,7 +774,7 @@ export default function CodeEditor({
 
           {/* ── Go to line ──────────────────────────────────────── */}
           {goToOpen && (
-            <div className="shrink-0 border-b border-white/[0.06] bg-[var(--bg-elevated)] px-3 py-1.5">
+            <div className="shrink-0 border-b border-(--border) bg-[var(--bg-elevated)] px-3 py-1.5">
               <div className="flex items-center gap-2">
                 <form
                   onSubmit={(ev) => {
@@ -802,7 +802,7 @@ export default function CodeEditor({
                     pattern="[0-9]*"
                     inputMode="numeric"
                     spellCheck={false}
-                    className="w-20 rounded-md border border-white/[0.08] bg-black/30 px-2 py-1 text-[12px] text-[#ececec] outline-none focus:border-(--accent)/50"
+                    className="w-20 rounded-md border border-(--border) bg-black/30 px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-(--accent)/50"
                   />
                   <span className="text-[11px] text-[var(--text-muted)]">of {lineCount}</span>
                 </form>
@@ -810,7 +810,7 @@ export default function CodeEditor({
                   type="button"
                   onClick={() => setGoToOpen(false)}
                   title="Close"
-                  className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                  className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                 >
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
                 </button>
@@ -858,7 +858,7 @@ export default function CodeEditor({
               <pre
                 ref={preRef}
                 aria-hidden
-                className={`pointer-events-none absolute inset-0 m-0 overflow-hidden pb-20 pl-4 pr-10 text-zinc-200 ${
+                className={`pointer-events-none absolute inset-0 m-0 overflow-hidden pb-20 pl-4 pr-10 text-[var(--text-primary)] ${
                   WORD_WRAP ? "whitespace-pre-wrap break-words" : "whitespace-pre"
                 }`}
                 style={{
@@ -894,12 +894,12 @@ export default function CodeEditor({
           </div>
 
           {/* ── Status bar  */}
-          <div className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.07] bg-[var(--bg-elevated)] px-3 text-[10.5px] text-zinc-500">
+          <div className="flex h-6 shrink-0 items-center justify-between border-t border-(--border) bg-[var(--bg-elevated)] px-3 text-[10.5px] text-[var(--text-muted)]">
             <div className="flex items-center gap-3">
               <span>
                 Ln {cursor.line}, Col {cursor.col}
               </span>
-              {cursor.sel > 0 && <span className="text-zinc-400">{cursor.sel} selected</span>}
+              {cursor.sel > 0 && <span className="text-[var(--text-secondary)]">{cursor.sel} selected</span>}
               <span>{lineCount} lines</span>
             </div>
             <div className="flex items-center gap-3">
@@ -935,15 +935,15 @@ export default function CodeEditor({
               variableSpeed={{ min: 60, max: 120 }}
               cursorBlinkDuration={0.8}
             />
-          {/* <p className="mt-4 text-[13px] font-medium text-[#d4d4d4]">No file open</p> 
-            <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+          {/* <p className="mt-4 text-[13px] font-medium text-[var(--text-primary)]">No file open</p> 
+            <p className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">
               Open a file to start editing.
             </p> */}
             <div className="mt-4 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => emptyState?.onOpenFiles?.()}
-                className="rounded-md border border-white/[0.1] px-3 py-1.5 text-[11.5px] text-[#d4d4d4] transition hover:bg-white/[0.05]"
+                className="rounded-md border border-(--border-strong) px-3 py-1.5 text-[11.5px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
               >
                 Open File
               </button>
@@ -951,7 +951,7 @@ export default function CodeEditor({
                 <button
                   type="button"
                   onClick={emptyState.onOpenFolder}
-                  className="rounded-md border border-white/[0.1] px-3 py-1.5 text-[11.5px] text-[#d4d4d4] transition hover:bg-white/[0.05]"
+                  className="rounded-md border border-(--border-strong) px-3 py-1.5 text-[11.5px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
                 >
                   Open Folder
                 </button>
@@ -961,7 +961,7 @@ export default function CodeEditor({
               <button
                 type="button"
                 onClick={() => setCreatingFile(true)}
-                className="mt-2 text-[11px] text-zinc-500 underline decoration-zinc-700 underline-offset-2 transition hover:text-zinc-300"
+                className="mt-2 text-[11px] text-[var(--text-muted)] underline decoration-zinc-700 underline-offset-2 transition hover:text-[var(--text-primary)]"
               >
                 New file
               </button>
@@ -987,11 +987,11 @@ export default function CodeEditor({
                   onKeyDown={(e) => e.key === "Escape" && setCreatingFile(false)}
                   placeholder="src/main.ts"
                   spellCheck={false}
-                  className="w-full rounded-md border border-(--accent)/40 bg-white/[0.04] px-2.5 py-1.5 text-center font-mono text-[11.5px] text-[#ececec] outline-none placeholder:text-zinc-600"
+                  className="w-full rounded-md border border-(--accent)/40 bg-(--fill-1) px-2.5 py-1.5 text-center font-mono text-[11.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
                 />
               </form>
             )}
-            <p className="mt-6 text-[10px] text-zinc-600">
+            <p className="mt-6 text-[10px] text-[var(--text-faint)]">
               Ctrl+S save · Ctrl+F find · Ctrl+G jump
             </p>
           </div>
@@ -1007,7 +1007,7 @@ export default function CodeEditor({
             onContextMenu={(ev) => { ev.preventDefault(); setCtxMenu(null); }}
           />
           <div
-            className="panel-in fixed z-50 w-48 overflow-hidden rounded-lg border border-white/[0.09] bg-[var(--bg-elevated)] py-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]"
+            className="panel-in fixed z-50 w-48 overflow-hidden rounded-lg border border-(--border-strong) bg-[var(--bg-elevated)] py-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]"
             style={{
               left: Math.min(ctxMenu.x, window.innerWidth - 200),
               top: Math.min(ctxMenu.y, window.innerHeight - 260),
@@ -1016,7 +1016,7 @@ export default function CodeEditor({
             <button
               type="button"
               onClick={() => { document.execCommand("cut"); setCtxMenu(null); }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[#c9c9c9] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M6 8L2 2M2 14l4-6M6 8l8-6M14 14l-8-6" /></svg>
               Cut
@@ -1025,7 +1025,7 @@ export default function CodeEditor({
             <button
               type="button"
               onClick={() => { document.execCommand("copy"); setCtxMenu(null); }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[#c9c9c9] hover:bg-white/[0.06] hover:text-[#ececec]"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M3.5 3.5h7v1" /></svg>
               Copy
@@ -1034,27 +1034,27 @@ export default function CodeEditor({
             <button
               type="button"
               onClick={() => { document.execCommand("paste"); setCtxMenu(null); }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[#c9c9c9] hover:bg-white/[0.06] hover:text-[#ececec]"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 4a1 1 0 011-1h2l1-1.5h2L10 3h2a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1z" /></svg>
               Paste
               <span className="kbd ml-auto">Ctrl+V</span>
             </button>
-            <div className="my-1 h-px bg-white/[0.06]" />
+            <div className="my-1 h-px bg-(--fill-2)" />
             <button
               type="button"
               onClick={() => { taRef.current?.select(); setCtxMenu(null); }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[#c9c9c9] hover:bg-white/[0.06] hover:text-[#ececec]"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="3" y="3" width="10" height="10" rx="1" /><path d="M6 6h4M6 8h4M6 10h2" /></svg>
               Select All
               <span className="kbd ml-auto">Ctrl+A</span>
             </button>
-            <div className="my-1 h-px bg-white/[0.06]" />
+            <div className="my-1 h-px bg-(--fill-2)" />
             <button
               type="button"
               onClick={() => { setCtxMenu(null); openFind(); }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[#c9c9c9] hover:bg-white/[0.06] hover:text-[#ececec]"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></svg>
               Find…
@@ -1063,7 +1063,7 @@ export default function CodeEditor({
             <button
               type="button"
               onClick={() => { setCtxMenu(null); setGoToOpen(true); setGoToInput(String(cursor.line)); }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[#c9c9c9] hover:bg-white/[0.06] hover:text-[#ececec]"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><rect x="3" y="6" width="10" height="8" rx="1.5" /><path d="M5.5 9h.01M8 9h.01M10.5 9h.01M4 6V4.5h8V6" /></svg>
               Go to Line…

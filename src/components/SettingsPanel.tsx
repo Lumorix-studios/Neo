@@ -3,11 +3,13 @@ import {
   ACCENT_SWATCHES,
   DEFAULT_UI_SETTINGS,
   THEMES,
+  contrastRatio,
+  deriveTheme,
   isValidHex,
+  onAccentInk,
   resolveThemeVars,
   clearRecentFiles,
   clearRecentFolders,
-  shade,
   type ThemePreset,
   type UiSettings,
 } from "../uiSettings";
@@ -90,11 +92,11 @@ function Toggle({
       className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
         checked
           ? "border-transparent bg-(--accent)"
-          : "border-white/10 bg-white/[0.06]"
+          : "border-(--border) bg-(--fill-2)"
       }`}
     >
       <span
-        className={`absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white transition-all ${
+        className={`absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-(--on-accent) transition-all ${
           checked ? "left-[18px]" : "left-[3px] opacity-60"
         }`}
       />
@@ -126,7 +128,7 @@ function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 w-28 cursor-pointer appearance-none rounded-full bg-white/10 accent-[var(--accent)]"
+        className="h-1 w-28 cursor-pointer appearance-none rounded-full bg-(--fill-2) accent-[var(--accent)]"
       />
       <span className="w-12 text-right text-[11px] tabular-nums text-[var(--text-secondary)]">
         {value}
@@ -146,7 +148,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-b border-white/[0.05] py-3 last:border-0">
+    <div className="flex items-center justify-between gap-6 border-b border-(--border) py-3 last:border-0">
       <div className="min-w-0">
         <p className="text-[12.5px] font-medium text-[var(--text-primary)]">{title}</p>
         {description && (
@@ -204,13 +206,13 @@ function ExtensionCard({
     <div
       className={`flex gap-3 rounded-lg border p-3 transition ${
         installed
-          ? "border-(--accent)/40 bg-white/[0.03]"
-          : "border-white/[0.07] hover:border-white/[0.14] hover:bg-white/[0.02]"
+          ? "border-(--accent)/40 bg-(--fill-1)"
+          : "border-(--border) hover:border-(--border-strong) hover:bg-(--fill-1)"
       }`}
     >
       {ext.theme ? (
         <div
-          className="flex h-10 w-10 shrink-0 flex-col overflow-hidden rounded-lg border border-white/10"
+          className="flex h-10 w-10 shrink-0 flex-col overflow-hidden rounded-lg border border-(--border-strong)"
           title={`${ext.theme.label} palette`}
         >
           <div className="flex-[3]" style={{ background: ext.theme.base }} />
@@ -232,7 +234,7 @@ function ExtensionCard({
           {installed && (
             <span
               className={`shrink-0 rounded-full px-1.5 py-px text-[9.5px] font-medium ${
-                enabled ? "bg-[rgba(52,211,153,0.14)] text-[#6ee7b7]" : "bg-white/[0.06] text-[var(--text-faint)]"
+                enabled ? "bg-[rgba(52,211,153,0.14)] text-[#6ee7b7]" : "bg-(--fill-2) text-[var(--text-faint)]"
               }`}
             >
               {enabled ? "Enabled" : "Disabled"}
@@ -244,7 +246,7 @@ function ExtensionCard({
           {ext.features.map((f) => (
             <span
               key={f}
-              className="rounded bg-white/[0.05] px-1.5 py-px text-[9.5px] text-[var(--text-secondary)]"
+              className="rounded bg-(--fill-2) px-1.5 py-px text-[9.5px] text-[var(--text-secondary)]"
             >
               {f}
             </span>
@@ -269,7 +271,7 @@ function ExtensionCard({
             <button
               type="button"
               onClick={onUninstall}
-              className="rounded-md border border-white/[0.09] px-2 py-1 text-[10.5px] text-[var(--text-secondary)] transition hover:border-[#e5534b]/40 hover:text-[#e5534b]"
+              className="rounded-md border border-(--border-strong) px-2 py-1 text-[10.5px] text-[var(--text-secondary)] transition hover:border-[#e5534b]/40 hover:text-[#e5534b]"
             >
               Uninstall
             </button>
@@ -282,7 +284,7 @@ function ExtensionCard({
           <button
             type="button"
             onClick={onInstall}
-            className="rounded-md bg-(--accent) px-3 py-1 text-[10.5px] font-medium text-white transition hover:brightness-110"
+            className="rounded-md bg-(--accent) px-3 py-1 text-[10.5px] font-medium text-(--on-accent) transition hover:brightness-110"
           >
             Install
           </button>
@@ -390,6 +392,21 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> =
   },
 ];
 
+/* Curated quick picks — includes very bright colors that exercise the
+   auto-harmony system (ink/borders/panels re-derive to match). */
+const BG_PRESETS: Array<{ label: string; value: string }> = [
+  { label: "Neo ink", value: "#0e0e0e" },
+  { label: "Midnight", value: "#0b1220" },
+  { label: "Charcoal", value: "#131110" },
+  { label: "Slate", value: "#0f1115" },
+  { label: "Plum", value: "#1a1023" },
+  { label: "Forest", value: "#0d1a14" },
+  { label: "Warm paper", value: "#f2eee8" },
+  { label: "Snow", value: "#eef2f6" },
+  { label: "Ice cyan", value: "#bfe9ff" },
+  { label: "Sun", value: "#ffdf8a" },
+];
+
 const SHORTCUTS: Array<[string, string]> = [
   ["Ctrl+Shift+P", "Command palette"],
   ["Ctrl+B", "Open AI settings"],
@@ -415,6 +432,7 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionId>("appearance");
   const [bgDraft, setBgDraft] = useState(settings.customBackground ?? "#0e0e0e");
+  const [bgBrightness, setBgBrightness] = useState(settings.bgBrightness ?? 0);
   // --- AI settings state (mirrors the previous chat settings sidebar) ---
   const [showAiKey, setShowAiKey] = useState(false);
   const [showLocalModels, setShowLocalModels] = useState(false);
@@ -439,6 +457,7 @@ export default function SettingsPanel({
   useEffect(() => {
     if (open) {
       setBgDraft(settings.customBackground ?? resolveThemeVars(settings)["--bg-base"]);
+      setBgBrightness(settings.bgBrightness ?? 0);
       setSection(initialSection ?? "appearance");
       setShowLocalModels(false);
       setShowAiKey(false);
@@ -608,12 +627,12 @@ export default function SettingsPanel({
   const installedCount = extState.installed.length;
 return (
     <div
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-(--scrim) px-4 backdrop-blur-[2px]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="panel-in flex h-[560px] max-h-[88vh] w-full max-w-3xl overflow-hidden rounded-xl border border-white/[0.09] bg-[var(--bg-base)] shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
+      <div className="panel-in flex h-[560px] max-h-[88vh] w-full max-w-3xl overflow-hidden rounded-xl border border-(--border-strong) bg-[var(--bg-base)] shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
         {/* ── Left nav */}
-        <aside className="flex w-44 shrink-0 flex-col border-r border-white/[0.06] bg-[var(--bg-panel)] p-2">
+        <aside className="flex w-44 shrink-0 flex-col border-r border-(--border) bg-[var(--bg-panel)] p-2">
           <p className="px-2 pb-2 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--text-faint)]">
             Settings
           </p>
@@ -625,8 +644,8 @@ return (
                 onClick={() => setSection(s.id)}
                 className={`flex items-center gap-2 rounded-md px-2 py-[6px] text-left text-[12px] transition-colors ${
                   section === s.id
-                    ? "bg-white/[0.07] text-[var(--text-primary)]"
-                    : "text-[var(--text-secondary)] hover:bg-white/[0.04] hover:text-[var(--text-primary)]"
+                    ? "bg-(--fill-2) text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
                 }`}
               >
                 <span className={section === s.id ? "text-(--accent)" : "text-[var(--text-muted)]"}>
@@ -646,7 +665,7 @@ return (
 
         {/* ── Content */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-11 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
+          <header className="flex h-11 shrink-0 items-center justify-between border-b border-(--border) px-4">
             <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">
               {SECTIONS.find((s) => s.id === section)?.label}
             </h2>
@@ -654,7 +673,7 @@ return (
               type="button"
               onClick={onClose}
               aria-label="Close settings"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                 <path d="M4 4l8 8M12 4l-8 8" />
@@ -682,15 +701,15 @@ return (
                         onClick={() => onChange({ themeId: t.id, customBackground: null })}
                         className={`rounded-lg border p-2 text-left transition ${
                           selected
-                            ? "border-(--accent) bg-white/[0.04]"
-                            : "border-white/[0.08] hover:border-white/[0.16] hover:bg-white/[0.02]"
+                            ? "border-(--accent) bg-(--fill-1)"
+                            : "border-(--border) hover:border-(--border-strong) hover:bg-(--fill-1)"
                         }`}
                       >
                         <div className="mb-1.5 flex gap-1">
                           {[t.base, t.panel, t.elevated, t.active].map((c) => (
                             <span
                               key={c}
-                              className="h-4 flex-1 rounded-[3px] border border-white/[0.07]"
+                              className="h-4 flex-1 rounded-[3px] border border-(--border)"
                               style={{ background: c }}
                             />
                           ))}
@@ -698,7 +717,7 @@ return (
                         <span className={`flex items-center gap-1.5 text-[11.5px] ${selected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>
                           {t.label}
                           {fromExtension && (
-                            <span className="rounded bg-white/[0.07] px-1 py-px text-[8.5px] uppercase tracking-wide text-[var(--text-faint)]">
+                            <span className="rounded bg-(--fill-2) px-1 py-px text-[8.5px] uppercase tracking-wide text-[var(--text-faint)]">
                               Ext
                             </span>
                           )}
@@ -711,7 +730,7 @@ return (
                 <SectionTitle>Background</SectionTitle>
                 <Row
                   title="Custom background color"
-                  description={`Overrides the ${theme.label} base color. Panel shades are derived automatically.`}
+                  description={`Overrides the ${theme.label} base color. Text, borders and panels are re-derived automatically — pick a really bright color and the whole UI flips to keep it readable.`}
                 >
                   <div className="flex shrink-0 items-center gap-2">
                     <input
@@ -721,7 +740,7 @@ return (
                         setBgDraft(e.target.value);
                         onChange({ customBackground: e.target.value });
                       }}
-                      className="h-7 w-9 cursor-pointer rounded border border-white/[0.1] bg-transparent p-0.5"
+                      className="h-7 w-9 cursor-pointer rounded border border-(--border) bg-transparent p-0.5"
                     />
                     <input
                       type="text"
@@ -731,28 +750,109 @@ return (
                         if (isValidHex(e.target.value)) onChange({ customBackground: e.target.value });
                       }}
                       spellCheck={false}
-                      className="w-20 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[11px] font-mono text-[var(--text-primary)] outline-none focus:border-(--accent)"
+                      className="w-20 rounded-md border border-(--border) bg-(--fill-2) px-2 py-1 text-[11px] font-mono text-[var(--text-primary)] outline-none focus:border-(--accent)"
                     />
                     {settings.customBackground && (
                       <button
                         type="button"
-                        onClick={() => onChange({ customBackground: null })}
-                        className="rounded-md px-2 py-1 text-[11px] text-[var(--text-muted)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                        onClick={() => {
+                          onChange({ customBackground: null, bgBrightness: 0 });
+                          setBgBrightness(0);
+                          setBgDraft(resolveThemeVars({ ...settings, customBackground: null, bgBrightness: 0 })["--bg-base"]);
+                        }}
+                        className="rounded-md px-2 py-1 text-[11px] text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                       >
                         Reset
                       </button>
                     )}
                   </div>
                 </Row>
-                {settings.customBackground && (
-                  <div className="mt-2 flex gap-1.5">
-                    {[-0.09, -0.04, 0, 0.03, 0.06].map((amt) => (
-                      <span
-                        key={amt}
-                        className="h-5 flex-1 rounded border border-white/[0.07]"
-                        style={{ background: shade(settings.customBackground as string, amt) }}
+                {settings.customBackground && isValidHex(bgDraft) && (
+                  <div className="mt-2 rounded-lg border border-(--border) bg-(--fill-1) p-2.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {BG_PRESETS.map((p) => (
+                        <button
+                          key={p.value}
+                          type="button"
+                          title={p.label}
+                          onClick={() => {
+                            setBgDraft(p.value);
+                            setBgBrightness(0);
+                            onChange({ customBackground: p.value, bgBrightness: 0 });
+                          }}
+                          className={`h-6 w-6 rounded-full border-2 transition ${
+                            bgDraft.toLowerCase() === p.value.toLowerCase()
+                              ? "scale-105 border-(--accent)"
+                              : "border-(--border) hover:scale-105"
+                          }`}
+                          style={{ background: p.value }}
+                        />
+                      ))}
+                      <span className="ml-auto self-center text-[10px] text-[var(--text-faint)]">Quick picks</span>
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-[10px] text-[var(--text-faint)]">Darker</span>
+                      <input
+                        type="range"
+                        min={-0.35}
+                        max={0.35}
+                        step={0.05}
+                        value={bgBrightness}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setBgBrightness(v);
+                          onChange({ bgBrightness: v });
+                        }}
+                        className="h-1 w-32 cursor-pointer appearance-none rounded-full bg-(--fill-2) accent-[var(--accent)]"
                       />
-                    ))}
+                      <span className="text-[10px] text-[var(--text-faint)]">Brighter</span>
+                      <span className="w-10 text-right text-[10px] tabular-nums text-[var(--text-secondary)]">
+                        {Math.round(bgBrightness * 100)}%
+                      </span>
+                    </div>
+
+                    {(() => {
+                      const d = deriveTheme(bgDraft, bgBrightness, settings.accent);
+                      const textOk = contrastRatio(d.base, d.textPrimary);
+                      const accentOk = contrastRatio(d.base, settings.accent);
+                      const grade = (c: number) => (c >= 7 ? "AAA" : c >= 4.5 ? "AA" : c >= 3 ? "AA lge" : "low");
+                      return (
+                        <div className="mt-2 overflow-hidden rounded-md border border-(--border-strong)">
+                          <div className="flex h-6 items-center justify-between px-2" style={{ background: d.chrome }}>
+                            <span className="text-[8.5px] text-[var(--text-faint)]">chrome</span>
+                            <span className="h-1.5 w-8 rounded-full" style={{ background: settings.accent }} />
+                          </div>
+                          <div className="flex h-16 items-start gap-1.5 px-2 py-1" style={{ background: d.editor }}>
+                            <div className="w-8 self-stretch rounded-[3px]" style={{ background: d.panel }} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[10px] font-semibold leading-4" style={{ color: d.textPrimary }}>The quick brown fox</p>
+                              <p className="text-[9px] leading-4" style={{ color: d.textSecondary }}>Secondary line of muted length</p>
+                              <p className="text-[8.5px] leading-4" style={{ color: d.textMuted }}>Tertiary detail that explains the rest.</p>
+                            </div>
+                          </div>
+                          <div className="flex h-6 items-center justify-between px-2" style={{ background: d.active }}>
+                            <span className="text-[9px]" style={{ color: d.onAccent }}>Active / selected row</span>
+                            <span className="rounded px-1.5 text-[9px] font-semibold" style={{ background: settings.accent, color: d.onAccent }}>
+                              Accent
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between px-2 py-1" style={{ background: d.base }}>
+                            <span className="text-[8.5px] text-[var(--text-faint)]">Text on background</span>
+                            <span className={`rounded-full px-1.5 text-[9px] font-semibold ${textOk >= 7 ? "bg-[#22c55e]/15 text-[#22c55e]" : textOk >= 4.5 ? "bg-[#e5b567]/15 text-[#e5b567]" : "bg-[#e5534b]/15 text-[#e5534b]"}`}>
+                              {textOk.toFixed(1)}:1 ({grade(textOk)})
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between px-2 py-1" style={{ background: d.base }}>
+                            <span className="text-[8.5px] text-[var(--text-faint)]">Accent on background</span>
+                            <span className="text-[9px] text-[var(--text-secondary)]">
+                              {accentOk.toFixed(1)}:1 ({grade(accentOk)})
+                              {accentOk < 3 ? " · accent ink flips for readability" : ""}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -775,8 +875,19 @@ return (
                     value={isValidHex(settings.accent) ? settings.accent : "var(--accent)"}
                     onChange={(e) => onChange({ accent: e.target.value })}
                     title="Custom accent"
-                    className="h-6 w-9 cursor-pointer rounded border border-white/[0.1] bg-transparent p-0.5"
+                    className="h-6 w-9 cursor-pointer rounded border border-(--border) bg-transparent p-0.5"
                   />
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className="rounded-md px-2 py-0.5 text-[10px] font-medium"
+                    style={{ background: settings.accent, color: onAccentInk(settings.accent) }}
+                  >
+                    Aa · {onAccentInk(settings.accent) === "#ffffff" ? "white ink" : "dark ink"}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    Ink on the accent is auto-picked — bright accents (yellow, cyan) get dark text so buttons stay readable.
+                  </span>
                 </div>
               </div>
             )}
@@ -802,7 +913,7 @@ return (
                     <select
                       value={aiSettings.provider}
                       onChange={(e) => handleAiProviderChange(e.target.value as ProviderId)}
-                      className="w-48 appearance-none rounded-md border border-white/[0.08] bg-white/[0.03] py-1.5 pl-2.5 pr-8 text-[12px] text-[var(--text-primary)] outline-none transition focus:border-white/[0.18]"
+                      className="w-48 appearance-none rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-2.5 pr-8 text-[12px] text-[var(--text-primary)] outline-none transition focus:border-(--border-strong)"
                     >
                       {PROVIDER_OPTIONS.map((p) => (
                         <option key={p.id} value={p.id} className="bg-[var(--bg-elevated)]">
@@ -823,7 +934,7 @@ return (
                     <button
                       type="button"
                       onClick={() => setShowLocalModels(true)}
-                      className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                      className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                     >
                       Browse
                     </button>
@@ -841,7 +952,7 @@ return (
                         setIsCheckingPorts(false);
                       }}
                       disabled={isCheckingPorts}
-                      className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)] disabled:opacity-50"
+                      className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-50"
                     >
                       {isCheckingPorts ? "Scanning..." : "Auto-Detect Server"}
                     </button>
@@ -862,7 +973,7 @@ return (
                     onChange={(e) => updateAi("baseUrl", e.target.value)}
                     placeholder="https://api.openai.com/v1"
                     spellCheck={false}
-                    className="w-56 shrink-0 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                    className="w-56 shrink-0 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                   />
                 </Row>
                 <Row title="API key" description={aiNeedsKey ? "Stored locally on this device." : "Not required for this provider."}>
@@ -873,12 +984,12 @@ return (
                       onChange={(e) => updateAi("apiKey", e.target.value)}
                       placeholder={aiNeedsKey ? "Enter API key" : "Not required"}
                       spellCheck={false}
-                      className="w-56 rounded-md border border-white/[0.08] bg-white/[0.03] py-1.5 pl-2.5 pr-14 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                      className="w-56 rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-2.5 pr-14 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                     />
                     <button
                       type="button"
                       onClick={() => setShowAiKey((v) => !v)}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10.5px] text-[var(--text-muted)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10.5px] text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                     >
                       {showAiKey ? "Hide" : "Show"}
                     </button>
@@ -893,7 +1004,7 @@ return (
                     onChange={(e) => updateAi("model", e.target.value)}
                     placeholder="e.g. gpt-4o-mini"
                     spellCheck={false}
-                    className="w-56 shrink-0 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                    className="w-56 shrink-0 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                   />
                 </Row>
                 <Row title="Temperature" description="Higher values make output more creative.">
@@ -910,7 +1021,7 @@ return (
                     onChange={(e) => updateAi("systemPrompt", e.target.value)}
                     rows={4}
                     placeholder="You are a helpful, professional assistant."
-                    className="w-full resize-none rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 text-[12.5px] leading-5 text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                    className="w-full resize-none rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-2 text-[12.5px] leading-5 text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                   />
                 </div>
 
@@ -923,13 +1034,13 @@ return (
                     </p>
                   )}
                   {mcpServers.map((s) => (
-                    <div key={s.id} className="flex items-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] px-2.5 py-2">
+                    <div key={s.id} className="flex items-center gap-2 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-2">
                       <button
                         type="button"
                         onClick={() => toggleMcpServer(s.id)}
                         title={s.enabled ? "Disable" : "Enable"}
                         className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
-                          s.enabled ? "bg-(--accent)" : "bg-white/[0.12]"
+                          s.enabled ? "bg-(--accent)" : "bg-(--fill-3)"
                         }`}
                       >
                         <span
@@ -943,7 +1054,7 @@ return (
                           <span className={`truncate text-[12px] font-medium ${s.enabled ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}`}>
                             {s.name}
                           </span>
-                          <span className="shrink-0 rounded border border-white/[0.09] px-1 py-px text-[9px] uppercase tracking-wide text-[var(--text-faint)]">
+                          <span className="shrink-0 rounded border border-(--border-strong) px-1 py-px text-[9px] uppercase tracking-wide text-[var(--text-faint)]">
                             {s.transport}
                           </span>
                         </div>
@@ -958,7 +1069,7 @@ return (
                         type="button"
                         onClick={() => void testMcpServer(s)}
                         title="Handshake + list tools"
-                        className="shrink-0 rounded border border-white/[0.09] px-2 py-1 text-[10.5px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                        className="shrink-0 rounded border border-(--border-strong) px-2 py-1 text-[10.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                       >
                         Test
                       </button>
@@ -975,7 +1086,7 @@ return (
                     </div>
                   ))}
                   {/* Transport picker */}
-                  <div className="flex items-center gap-1 self-start rounded-md border border-white/[0.08] bg-white/[0.03] p-0.5">
+                  <div className="flex items-center gap-1 self-start rounded-md border border-(--border) bg-(--fill-1) p-0.5">
                     {(["http", "stdio"] as const).map((t) => (
                       <button
                         key={t}
@@ -983,7 +1094,7 @@ return (
                         onClick={() => setMcpTransport(t)}
                         className={`rounded px-2.5 py-1 text-[11px] transition ${
                           mcpTransport === t
-                            ? "bg-white/[0.09] text-[var(--text-primary)]"
+                            ? "bg-(--fill-2) text-[var(--text-primary)]"
                             : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                         }`}
                       >
@@ -997,7 +1108,7 @@ return (
                     onChange={(e) => setMcpName(e.target.value)}
                     placeholder="Server name (e.g. filesystem)"
                     spellCheck={false}
-                    className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                    className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                   />
                   {mcpTransport === "http" ? (
                     <>
@@ -1007,7 +1118,7 @@ return (
                         onChange={(e) => setMcpUrl(e.target.value)}
                         placeholder="http://localhost:3000/mcp"
                         spellCheck={false}
-                        className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                        className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                       />
                       <input
                         type="text"
@@ -1015,7 +1126,7 @@ return (
                         onChange={(e) => setMcpHeaders(e.target.value)}
                         placeholder='Headers JSON (optional) — e.g. {"Authorization": "Bearer <your token>"}'
                         spellCheck={false}
-                        className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                        className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                       />
                     </>
                   ) : (
@@ -1027,7 +1138,7 @@ return (
                           onChange={(e) => setMcpCommand(e.target.value)}
                           placeholder="Command (e.g. npx)"
                           spellCheck={false}
-                          className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                         />
                         <input
                           type="text"
@@ -1035,7 +1146,7 @@ return (
                           onChange={(e) => setMcpArgs(e.target.value)}
                           placeholder='Args (e.g. -y @modelcontextprotocol/server-filesystem C:\projects)'
                           spellCheck={false}
-                          className="min-w-0 flex-[1.6] rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                          className="min-w-0 flex-[1.6] rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                         />
                       </div>
                       <input
@@ -1044,7 +1155,7 @@ return (
                         onChange={(e) => setMcpEnv(e.target.value)}
                         placeholder='Env JSON (optional) — e.g. {"API_TOKEN": "<your token>"}'
                         spellCheck={false}
-                        className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                        className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                       />
                     </>
                   )}
@@ -1055,7 +1166,7 @@ return (
                     type="button"
                     onClick={addMcpServer}
                     disabled={!mcpName.trim()}
-                    className="self-start rounded-md border border-white/[0.09] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="self-start rounded-md border border-(--border-strong) px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Add Server
                   </button>
@@ -1084,7 +1195,7 @@ return (
                   <Toggle checked={settings.showLineNumbers} onChange={(v) => onChange({ showLineNumbers: v })} />
                 </Row>
                 <Row title="Tab size" description="Spaces inserted per indent level.">
-                  <div className="flex shrink-0 overflow-hidden rounded-md border border-white/[0.08]">
+                  <div className="flex shrink-0 overflow-hidden rounded-md border border-(--border)">
                     {[2, 4, 8].map((n) => (
                       <button
                         key={n}
@@ -1092,8 +1203,8 @@ return (
                         onClick={() => onChange({ tabSize: n })}
                         className={`px-3 py-1 text-[11.5px] transition ${
                           settings.tabSize === n
-                            ? "bg-white/[0.1] text-[var(--text-primary)]"
-                            : "text-[var(--text-secondary)] hover:bg-white/[0.05]"
+                            ? "bg-(--fill-3) text-[var(--text-primary)]"
+                            : "text-[var(--text-secondary)] hover:bg-(--fill-2)"
                         }`}
                       >
                         {n}
@@ -1124,7 +1235,7 @@ return (
                       clearRecentFiles();
                       clearRecentFolders();
                     }}
-                    className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                    className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   >
                     Clear
                   </button>
@@ -1135,11 +1246,11 @@ return (
             {section === "shortcuts" && (
               <div>
                 <SectionTitle>Keyboard shortcuts</SectionTitle>
-                <div className="overflow-hidden rounded-lg border border-white/[0.07]">
+                <div className="overflow-hidden rounded-lg border border-(--border)">
                   {SHORTCUTS.map(([keys, label], i) => (
                     <div
                       key={keys}
-                      className={`flex items-center justify-between px-3 py-2 ${i % 2 === 0 ? "bg-white/[0.02]" : ""}`}
+                      className={`flex items-center justify-between px-3 py-2 ${i % 2 === 0 ? "bg-(--fill-1)" : ""}`}
                     >
                       <span className="text-[12px] text-[var(--text-secondary)]">{label}</span>
                       <span className="kbd">{keys}</span>
@@ -1164,7 +1275,7 @@ return (
                         onChange={(e) => setExtQuery(e.target.value)}
                         placeholder="Search extensions…"
                         spellCheck={false}
-                        className="w-full rounded-md border border-white/[0.08] bg-white/[0.03] py-1.5 pl-8 pr-2.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-white/[0.18]"
+                        className="w-full rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-8 pr-2.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                       />
                     </div>
                     <span className="shrink-0 text-[10.5px] text-[var(--text-faint)]">
@@ -1180,7 +1291,7 @@ return (
                         className={`rounded-full border px-2.5 py-0.5 text-[10.5px] transition ${
                           extCategory === c
                             ? "border-(--accent)/60 bg-(--accent-soft) text-[var(--text-primary)]"
-                            : "border-white/[0.08] text-[var(--text-secondary)] hover:bg-white/[0.04]"
+                            : "border-(--border) text-[var(--text-secondary)] hover:bg-(--fill-1)"
                         }`}
                       >
                         {c}
@@ -1256,7 +1367,7 @@ return (
                   <button
                     type="button"
                     onClick={() => exportSettingsSnapshot(settings, aiSettings, extState)}
-                    className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                    className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   >
                     Export JSON
                   </button>
@@ -1271,7 +1382,7 @@ return (
                       setExtState(loadExtensionState());
                       onExtensionsChanged?.();
                     }}
-                    className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                    className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   >
                     Clear
                   </button>
@@ -1283,7 +1394,7 @@ return (
                       setMcpServers([]);
                       saveMcpServers([]);
                     }}
-                    className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                    className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   >
                     Clear
                   </button>
@@ -1295,7 +1406,7 @@ return (
                       clearRecentFiles();
                       clearRecentFolders();
                     }}
-                    className="shrink-0 rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+                    className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   >
                     Clear
                   </button>
@@ -1337,7 +1448,7 @@ return (
                       href={href}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between rounded-md border border-white/[0.07] px-3 py-2 text-[12px] text-[var(--text-secondary)] transition hover:bg-white/[0.04] hover:text-[var(--text-primary)]"
+                      className="flex items-center justify-between rounded-md border border-(--border) px-3 py-2 text-[12px] text-[var(--text-secondary)] transition hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
                     >
                       {label}
                       <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -1350,7 +1461,7 @@ return (
                 <SectionTitle>Built with</SectionTitle>
                 <div className="flex flex-wrap gap-1.5">
                   {["Tauri 2", "React 19", "TypeScript", "Rust", "Tailwind CSS 4", "xterm.js", "portable-pty"].map((t) => (
-                    <span key={t} className="rounded-full border border-white/[0.08] px-2.5 py-0.5 text-[10.5px] text-[var(--text-secondary)]">
+                    <span key={t} className="rounded-full border border-(--border) px-2.5 py-0.5 text-[10.5px] text-[var(--text-secondary)]">
                       {t}
                     </span>
                   ))}
@@ -1364,12 +1475,12 @@ return (
           </div>
 
           {/* Footer */}
-          <footer className="flex h-11 shrink-0 items-center justify-between border-t border-white/[0.06] px-4">
+          <footer className="flex h-11 shrink-0 items-center justify-between border-t border-(--border) px-4">
             <span className="text-[10.5px] text-[var(--text-faint)]">Changes apply instantly</span>
             <button
               type="button"
               onClick={() => onChange({ ...DEFAULT_UI_SETTINGS })}
-              className="rounded-md border border-white/[0.09] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]"
+              className="rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               Reset to defaults
             </button>

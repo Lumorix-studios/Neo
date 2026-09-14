@@ -146,7 +146,7 @@ function IconButton({
       disabled={disabled}
       title={title}
       aria-label={title}
-      className="flex h-6 w-6 items-center justify-center rounded-md text-[#8a8a93] transition hover:bg-white/[0.07] hover:text-[#ececec] disabled:pointer-events-none disabled:opacity-35"
+      className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:pointer-events-none disabled:opacity-35"
     >
       {children}
     </button>
@@ -172,7 +172,7 @@ function ChangeRow({
   return (
     <div
       className={`group flex h-[26px] items-center gap-2 rounded-md pl-1 pr-1 transition-colors ${
-        busy ? "" : "hover:bg-white/[0.05]"
+        busy ? "" : "hover:bg-(--fill-2)"
       }`}
     >
       <span
@@ -188,9 +188,9 @@ function ChangeRow({
         className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left"
         title={`${change.origPath ? `${change.origPath} → ` : ""}${change.path}`}
       >
-        <span className="truncate text-[12px] text-[#d4d4d4]">{name}</span>
+        <span className="truncate text-[12px] text-[var(--text-primary)]">{name}</span>
         {segments.length > 0 && (
-          <span className="shrink-0 truncate text-[10px] text-[#6b6b6b]">
+          <span className="shrink-0 truncate text-[10px] text-[var(--text-muted)]">
             {segments.join("/")}
           </span>
         )}
@@ -406,16 +406,16 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
   const hasRemote = remotes.length > 0;
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/[0.07] bg-[var(--bg-chrome)]">
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-(--border) bg-[var(--bg-chrome)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a3a3a3]">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-(--border) px-3">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
           <IoGitNetwork size={13} />
           Source Control
         </div>
         <div className="flex items-center gap-0.5">
           {busy && (
-            <svg viewBox="0 0 16 16" className="mr-1 h-3 w-3 animate-spin text-[#6b6b6b]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <svg viewBox="0 0 16 16" className="mr-1 h-3 w-3 animate-spin text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M8 1.5a6.5 6.5 0 106.5 6.5" />
             </svg>
           )}
@@ -431,13 +431,13 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
       {fatal ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
           <p className="text-[12px] font-medium text-[#e5534b]">Git unavailable</p>
-          <p className="whitespace-pre-wrap text-[11px] leading-5 text-[#6b6b6b]">{fatal}</p>
+          <p className="whitespace-pre-wrap text-[11px] leading-5 text-[var(--text-muted)]">{fatal}</p>
         </div>
       ) : notRepo ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-          <IoGitBranch size={22} className="text-[#3f3f46]" />
-          <p className="text-[12px] font-medium text-[#d4d4d4]">Not a git repository</p>
-          <p className="text-[11px] leading-5 text-[#6b6b6b]">
+          <IoGitBranch size={22} className="text-[var(--text-faint)]" />
+          <p className="text-[12px] font-medium text-[var(--text-primary)]">Not a git repository</p>
+          <p className="text-[11px] leading-5 text-[var(--text-muted)]">
             Initialise one to start tracking changes in this workspace.
           </p>
           <button
@@ -452,17 +452,17 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
       ) : (
         <>
           {/* ── Branch / sync bar ─────────────────────────────────────── */}
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.05] px-2.5 py-1.5">
-            <div className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-[#c9c9c9]">
-              <IoGitBranch size={12} className="shrink-0 text-[#8a8a93]" />
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--border) px-2.5 py-1.5">
+            <div className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-[var(--text-primary)]">
+              <IoGitBranch size={12} className="shrink-0 text-[var(--text-secondary)]" />
               <span className="truncate">{branch.name ?? "HEAD (detached)"}</span>
               {branch.ahead > 0 && (
-                <span title={`${branch.ahead} commit(s) ahead`} className="flex items-center gap-0.5 rounded bg-white/[0.06] px-1 text-[10px] text-[#c9c9c9]">
+                <span title={`${branch.ahead} commit(s) ahead`} className="flex items-center gap-0.5 rounded bg-(--fill-2) px-1 text-[10px] text-[var(--text-primary)]">
                   ↑{branch.ahead}
                 </span>
               )}
               {branch.behind > 0 && (
-                <span title={`${branch.behind} commit(s) behind`} className="flex items-center gap-0.5 rounded bg-white/[0.06] px-1 text-[10px] text-[#c9c9c9]">
+                <span title={`${branch.behind} commit(s) behind`} className="flex items-center gap-0.5 rounded bg-(--fill-2) px-1 text-[10px] text-[var(--text-primary)]">
                   ↓{branch.behind}
                 </span>
               )}
@@ -487,10 +487,10 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                 }
                 className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium transition ${
                   busy || !hasRemote
-                    ? "cursor-not-allowed text-[#5a5a62]"
+                    ? "cursor-not-allowed text-[var(--text-muted)]"
                     : branch.ahead + branch.behind > 0
                       ? "bg-[#2563eb]/15 text-[#7ea6ff] hover:bg-[#2563eb]/25"
-                      : "bg-white/[0.05] text-[#8a8a93] hover:bg-white/[0.09] hover:text-[#c9c9c9]"
+                      : "bg-(--fill-2) text-[var(--text-secondary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                 }`}
               >
                 <IoSync size={11} className={busy ? "animate-spin" : ""} />
@@ -501,7 +501,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
             </div>
           </div>
           {remotes.length === 0 && (
-            <div className="shrink-0 border-b border-white/[0.05] bg-amber-500/[0.06] px-2.5 py-1.5 text-[10.5px] leading-4 text-amber-400/90">
+            <div className="shrink-0 border-b border-(--border) bg-amber-500/[0.06] px-2.5 py-1.5 text-[10.5px] leading-4 text-amber-400/90">
               No remote configured. Run{" "}
               <span className="font-mono">git remote add origin &lt;url&gt;</span> in
               the terminal to enable fetch / pull / push.
@@ -517,7 +517,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                 if (ev.key === "Enter" && canCommit) void commit();
               }}
               placeholder={`Message (Ctrl+Enter to commit on ${branch.name ?? "HEAD"})`}
-              className="mb-2 w-full rounded-md border border-white/[0.08] bg-[var(--bg-base)] px-2.5 py-1.5 text-[12px] text-[#ececec] outline-none placeholder:text-[#5a5a62] focus:border-(--accent)/60"
+              className="mb-2 w-full rounded-md border border-(--border) bg-[var(--bg-base)] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-(--accent)/60"
             />
             <div className="flex gap-2">
               <button
@@ -531,7 +531,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                       ? "Enter a commit message"
                       : `Commit ${staged.length} file(s)`
                 }
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2563eb] py-1.5 text-[12px] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#3b76f5] disabled:cursor-not-allowed disabled:bg-white/[0.05] disabled:text-[#5a5a62] disabled:shadow-none"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2563eb] py-1.5 text-[12px] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:bg-[#3b76f5] disabled:cursor-not-allowed disabled:bg-(--fill-2) disabled:text-[var(--text-muted)] disabled:shadow-none"
               >
                 <IoGitCommit size={14} />
                 Commit{staged.length > 0 ? ` (${staged.length})` : ""}
@@ -545,7 +545,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                   title="More commit actions"
                   aria-label="More commit actions"
                   aria-expanded={commitMenuOpen}
-                  className="flex h-full w-6 items-center justify-center rounded-md border border-l-white/20 border-[#2563eb]/60 bg-transparent text-[#7ea6ff] transition hover:bg-[#2563eb]/15 disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:text-[#5a5a62]"
+                  className="flex h-full w-6 items-center justify-center rounded-md border border-l-white/20 border-[#2563eb]/60 bg-transparent text-[#7ea6ff] transition hover:bg-[#2563eb]/15 disabled:cursor-not-allowed disabled:border-(--border) disabled:text-[var(--text-muted)]"
                 >
                   <IoChevronDown size={12} />
                 </button>
@@ -555,7 +555,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                       className="fixed inset-0 z-40"
                       onClick={() => setCommitMenuOpen(false)}
                     />
-                    <div className="absolute bottom-full right-0 z-50 mb-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] py-1 shadow-xl">
+                    <div className="absolute bottom-full right-0 z-50 mb-1 w-44 overflow-hidden rounded-lg border border-(--border) bg-[var(--bg-elevated)] py-1 shadow-xl">
                       <button
                         type="button"
                         onClick={() => {
@@ -563,7 +563,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                           void commitAndPush();
                         }}
                         disabled={!canCommit}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06] disabled:text-[#5a5a62]"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2) disabled:text-[var(--text-muted)]"
                       >
                         <IoArrowUp size={13} />
                         Commit &amp; Push
@@ -576,7 +576,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                         }}
                         disabled={!canCommit || !hasRemote}
                         title={hasRemote ? undefined : "No remote configured"}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#d4d4d4] transition hover:bg-white/[0.06] disabled:text-[#5a5a62]"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2) disabled:text-[var(--text-muted)]"
                       >
                         <IoSync size={13} />
                         Commit &amp; Sync
@@ -593,7 +593,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
             {staged.length > 0 && (
               <section>
                 <div className="flex items-center justify-between px-1.5 pb-0.5 pt-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
                     Staged changes ({staged.length})
                   </span>
                 </div>
@@ -612,7 +612,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
 
             <section>
               <div className="flex items-center justify-between px-1.5 pb-0.5 pt-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6b6b6b]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
                   Changes ({worktree.length})
                 </span>
                 {worktree.length > 0 && (
@@ -622,7 +622,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
                 )}
               </div>
               {worktree.length === 0 ? (
-                <p className="px-1.5 py-1 text-[11px] text-[#6b6b6b]">
+                <p className="px-1.5 py-1 text-[11px] text-[var(--text-muted)]">
                   {staged.length > 0
                     ? "Everything else is staged."
                     : "Working tree clean — no changes."}
@@ -647,18 +647,18 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
           <button
             type="button"
             onClick={() => setOutOpen((v) => !v)}
-            className="flex h-7 shrink-0 items-center gap-1.5 border-t border-white/[0.07] px-3 text-[10.5px] text-[#8a8a93] transition hover:bg-white/[0.04] hover:text-[#c9c9c9]"
+            className="flex h-7 shrink-0 items-center gap-1.5 border-t border-(--border) px-3 text-[10.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
           >
             {outOpen ? <IoChevronDown size={11} /> : <IoChevronUp size={11} />}
             Output
             {log.length > 0 && (
-              <span className="rounded bg-white/[0.06] px-1 text-[9.5px]">{log.length}</span>
+              <span className="rounded bg-(--fill-2) px-1 text-[9.5px]">{log.length}</span>
             )}
           </button>
           {outOpen && log.length > 0 && (
             <pre
               ref={logEndRef}
-              className="max-h-40 shrink-0 overflow-y-auto border-t border-white/[0.05] bg-[var(--bg-base)] px-2.5 py-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-[#8a8a93] scrollbar-thin"
+              className="max-h-40 shrink-0 overflow-y-auto border-t border-(--border) bg-[var(--bg-base)] px-2.5 py-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-[var(--text-secondary)] scrollbar-thin"
             >
               {log.join("\n")}
             </pre>

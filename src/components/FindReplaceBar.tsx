@@ -19,7 +19,7 @@ interface FindReplaceBarProps {
 }
 
 const inputCls =
-  "w-full rounded-md border border-white/[0.08] bg-black/30 px-2 py-1 text-[11.5px] text-[#ececec] outline-none transition focus:border-(--accent)/50 placeholder:text-[#555555]";
+  "w-full rounded-md border border-(--border) bg-black/30 px-2 py-1 text-[11.5px] text-[var(--text-primary)] outline-none transition focus:border-(--accent)/50 placeholder:text-[var(--text-faint)]";
 
 /** Compact find/replace bar shown above the editor when Ctrl+F is pressed. */
 export default function FindReplaceBar({
@@ -48,7 +48,7 @@ export default function FindReplaceBar({
   const status = query ? `${Math.max(0, matchIndex + 1)}/${matchCount}` : "";
 
   return (
-    <div className="shrink-0 border-b border-white/[0.06] bg-[var(--bg-elevated)] px-3 py-1.5">
+    <div className="shrink-0 border-b border-(--border) bg-[var(--bg-elevated)] px-3 py-1.5">
       <div className="flex items-center gap-2">
         <div className="relative flex flex-1 items-center gap-1">
           <span className="text-[var(--text-faint)]">
@@ -67,7 +67,7 @@ export default function FindReplaceBar({
             }}
             placeholder="Find"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent px-1 text-[12px] text-[#ececec] outline-none placeholder:text-[#555]"
+            className="min-w-0 flex-1 bg-transparent px-1 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
           />
           <span className={`shrink-0 text-[10.5px] tabular-nums ${matchCount > 0 ? "text-[var(--text-secondary)]" : "text-[#e5534b]"}`}>
             {status || "0/0"}
@@ -87,18 +87,18 @@ export default function FindReplaceBar({
             className={`rounded px-1.5 py-1 text-[11px] transition ${caseSensitive ? "text-(--accent)" : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"}`}>
             Aa
           </button>
-          <span className="mx-0.5 h-4 w-px bg-white/[0.08]" />
+          <span className="mx-0.5 h-4 w-px bg-(--fill-2)" />
           <button type="button" onClick={onPrev} title="Previous (Shift+Enter)"
-            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]">
+            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 12V4M4 8l4-4 4 4" /></svg>
           </button>
           <button type="button" onClick={onNext} title="Next (Enter)"
-            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]">
+            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 4v8M4 8l4 4 4-4" /></svg>
           </button>
-          <span className="mx-0.5 h-4 w-px bg-white/[0.08]" />
+          <span className="mx-0.5 h-4 w-px bg-(--fill-2)" />
           <button type="button" onClick={onClose} title="Close (Esc)"
-            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-white/[0.06] hover:text-[var(--text-primary)]">
+            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]">
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
           </button>
         </div>
@@ -118,11 +118,11 @@ export default function FindReplaceBar({
             className={inputCls}
           />
           <button type="button" onClick={() => onReplace()} disabled={!matchCount}
-            className="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] disabled:opacity-40">
+            className="shrink-0 rounded-md border border-(--border) px-2 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) disabled:opacity-40">
             Replace
           </button>
           <button type="button" onClick={() => onReplaceAll()} disabled={!matchCount}
-            className="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-white/[0.06] disabled:opacity-40">
+            className="shrink-0 rounded-md border border-(--border) px-2 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) disabled:opacity-40">
             Replace all
           </button>
         </div>

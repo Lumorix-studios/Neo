@@ -65,9 +65,9 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
       className="fixed inset-0 z-[100] flex items-start justify-center bg-black/50 pt-[14vh]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-xl border border-white/[0.09] bg-[var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
+      <div className="w-full max-w-xl overflow-hidden rounded-xl border border-(--border-strong) bg-[var(--bg-elevated)] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
         {/* Input */}
-        <div className="border-b border-white/[0.07] px-4 py-3">
+        <div className="border-b border-(--border) px-4 py-3">
           <input
             ref={inputRef}
             type="text"
@@ -78,14 +78,14 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
             }}
             placeholder="Type a command…"
             spellCheck={false}
-            className="w-full bg-transparent text-[13px] text-[#ececec] outline-none placeholder:text-[#555555]"
+            className="w-full bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
           />
         </div>
 
         {/* Commands list */}
         <div className="max-h-[360px] overflow-y-auto p-1.5">
           {filteredCommands.length === 0 ? (
-            <div className="px-3 py-8 text-center text-[12.5px] text-[#6b6b6b]">
+            <div className="px-3 py-8 text-center text-[12.5px] text-[var(--text-muted)]">
               No commands found
             </div>
           ) : (
@@ -98,11 +98,11 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
                 }}
                 onMouseEnter={() => setSelectedIndex(idx)}
                 className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors ${
-                  idx === selectedIndex ? "bg-white/[0.07] text-[#ececec]" : "text-[#a3a3a3]"
+                  idx === selectedIndex ? "bg-(--fill-2) text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
                 }`}
               >
                 <span className="min-w-0 flex-1 truncate text-[12.5px]">{cmd.label}</span>
-                <span className="shrink-0 text-[10px] uppercase tracking-wider text-[#555555]">
+                <span className="shrink-0 text-[10px] uppercase tracking-wider text-[var(--text-faint)]">
                   {cmd.category}
                 </span>
                 {cmd.shortcut && <span className="kbd shrink-0">{cmd.shortcut}</span>}
@@ -112,7 +112,7 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-4 border-t border-white/[0.07] px-4 py-2 text-[10px] text-[#6b6b6b]">
+        <div className="flex items-center gap-4 border-t border-(--border) px-4 py-2 text-[10px] text-[var(--text-muted)]">
           <span className="flex items-center gap-1.5">
             <span className="kbd">↑↓</span> Navigate
           </span>

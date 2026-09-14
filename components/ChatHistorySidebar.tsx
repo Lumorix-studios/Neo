@@ -42,15 +42,15 @@ export default function ChatHistorySidebar({
 
   return (
     <aside
-      className={`shrink-0 overflow-hidden border-r border-white/[0.07] bg-[var(--bg-panel)] transition-[width] duration-200 ease-out ${
+      className={`shrink-0 overflow-hidden border-r border-(--border) bg-[var(--bg-panel)] transition-[width] duration-200 ease-out ${
         isOpen ? "w-[260px] max-sm:w-full" : "w-0"
       }`}
     >
       {isOpen && (
-        <div className="flex h-full w-full flex-col bg-[var(--bg-panel)] text-[#ececec]">
+        <div className="flex h-full w-full flex-col bg-[var(--bg-panel)] text-[var(--text-primary)]">
           {/* Header */}
           <header className="flex h-10 shrink-0 items-center justify-between px-3">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
               Chats
             </span>
             <div className="flex items-center gap-0.5">
@@ -59,7 +59,7 @@ export default function ChatHistorySidebar({
                 aria-label="New chat"
                 title="New chat"
                 onClick={onNewChat}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                   <path d="M8 3v10M3 8h10" />
@@ -70,7 +70,7 @@ export default function ChatHistorySidebar({
                 aria-label="Close"
                 title="Close"
                 onClick={onClose}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                   <path d="M4 4l8 8M12 4l-8 8" />
@@ -86,8 +86,8 @@ export default function ChatHistorySidebar({
                 <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#4a4a4a" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 10.5a1.5 1.5 0 01-1.5 1.5H5l-3 3V3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7z" />
                 </svg>
-                <p className="text-[12px] text-[#6b6b6b]">No saved chats yet</p>
-                <p className="text-[11px] text-[#4a4a4a]">
+                <p className="text-[12px] text-[var(--text-muted)]">No saved chats yet</p>
+                <p className="text-[11px] text-[var(--text-faint)]">
                   Start a conversation and it will appear here.
                 </p>
               </div>
@@ -100,8 +100,8 @@ export default function ChatHistorySidebar({
                       key={session.id}
                       className={`group relative flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 transition-colors ${
                         isActive
-                          ? "bg-white/[0.07] text-[#ececec]"
-                          : "text-[#a3a3a3] hover:bg-white/[0.04] hover:text-[#d4d4d4]"
+                          ? "bg-(--fill-2) text-[var(--text-primary)]"
+                          : "text-[var(--text-secondary)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
                       }`}
                       onClick={() => {
                         onSelectSession(session.id);
@@ -115,11 +115,11 @@ export default function ChatHistorySidebar({
                         <p className="truncate text-[12.5px] font-medium leading-5">
                           {session.title || "Untitled chat"}
                         </p>
-                        <p className="mt-0.5 flex items-center gap-1.5 text-[10.5px] leading-4 text-[#6b6b6b]">
+                        <p className="mt-0.5 flex items-center gap-1.5 text-[10.5px] leading-4 text-[var(--text-muted)]">
                           <span>{formatDate(session.updatedAt)}</span>
                           {session.settings && (
                             <>
-                              <span className="text-[#3f3f3f]">·</span>
+                              <span className="text-[var(--text-faint)]">·</span>
                               <span className="truncate">
                                 {session.settings.model || providerById(session.settings.provider).label}
                               </span>
@@ -145,7 +145,7 @@ export default function ChatHistorySidebar({
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${
                           confirmDeleteId === session.id
                             ? "bg-red-500/15 text-red-400"
-                            : "text-[#6b6b6b] opacity-0 hover:bg-white/[0.06] hover:text-red-400 group-hover:opacity-100"
+                            : "text-[var(--text-muted)] opacity-0 hover:bg-(--fill-2) hover:text-red-400 group-hover:opacity-100"
                         }`}
                       >
                         {confirmDeleteId === session.id ? (
@@ -166,8 +166,8 @@ export default function ChatHistorySidebar({
           </main>
 
           {/* Footer hint */}
-          <footer className="border-t border-white/[0.06] px-3 py-2">
-            <p className="text-center text-[10px] leading-4 text-[#4a4a4a]">
+          <footer className="border-t border-(--border) px-3 py-2">
+            <p className="text-center text-[10px] leading-4 text-[var(--text-faint)]">
               Chats are stored locally on this device.
             </p>
           </footer>

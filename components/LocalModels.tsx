@@ -195,9 +195,9 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--bg-panel)] text-[#ececec]">
-      <header className="flex h-10 shrink-0 items-center justify-between border-b border-white/[0.07] px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+    <div className="flex h-full w-full flex-col bg-[var(--bg-panel)] text-[var(--text-primary)]">
+      <header className="flex h-10 shrink-0 items-center justify-between border-b border-(--border) px-3">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
           Local Models
         </span>
         <div className="flex items-center gap-0.5">
@@ -206,7 +206,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
             aria-label="Refresh"
             title="Refresh status"
             onClick={() => void refreshStatus()}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <IoRefresh size={14} />
           </button>
@@ -215,7 +215,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
             aria-label="Close"
             title="Close"
             onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <IoClose size={15} />
           </button>
@@ -226,7 +226,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
         <div className="flex flex-col gap-4 px-4 py-4">
           {/* Server Status */}
           <section>
-            <h3 className="mb-2.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+            <h3 className="mb-2.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
               <IoServer size={13} />
               Server Status
             </h3>
@@ -261,7 +261,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                   <span className="text-[12.5px] font-medium">
                     {running ? "Server running" : "Server stopped"}
                   </span>
-                  <span className="text-[10.5px] text-[#6b6b6b]">localhost:11434</span>
+                  <span className="text-[10.5px] text-[var(--text-muted)]">localhost:11434</span>
                 </div>
 
                 {!running ? (
@@ -305,17 +305,17 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
           {running && (
             <section>
               <div className="mb-2.5 flex items-center justify-between">
-                <h3 className="m-0 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+                <h3 className="m-0 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                   <IoCube size={13} />
                   Installed Models
-                  <span className="rounded-sm bg-white/[0.06] px-1.5 py-0.5 text-[9.5px] text-[#a3a3a3]">
+                  <span className="rounded-sm bg-(--fill-2) px-1.5 py-0.5 text-[9.5px] text-[var(--text-secondary)]">
                     {models.length}
                   </span>
                 </h3>
                 <button
                   type="button"
                   onClick={() => setShowPullInput((v) => !v)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                 >
                   <IoDownload size={12} />
                   Pull Model
@@ -334,7 +334,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                       }}
                       placeholder="e.g. llama3.2"
                       spellCheck={false}
-                      className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 text-[12px] text-[#ececec] outline-none transition placeholder:text-[#555555] focus:border-white/[0.18]"
+                      className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-2 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                     />
                     <button
                       type="button"
@@ -351,7 +351,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                         key={m}
                         type="button"
                         onClick={() => setPullName(m)}
-                        className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[10px] text-[#a3a3a3] transition hover:border-white/[0.18] hover:text-[#ececec]"
+                        className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] text-[var(--text-secondary)] transition hover:border-(--border-strong) hover:text-[var(--text-primary)]"
                       >
                         {m}
                       </button>
@@ -361,7 +361,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
               )}
 
               {models.length === 0 ? (
-                <p className="py-4 text-center text-[11.5px] text-[#555555]">
+                <p className="py-4 text-center text-[11.5px] text-[var(--text-faint)]">
                   No models installed yet. Pull one to get started.
                 </p>
               ) : (
@@ -371,8 +371,8 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                       key={model.name}
                       className={`group flex items-center gap-2 rounded-lg border px-3 py-2 transition ${
                         selectedModel === model.name
-                          ? "border-white/[0.16] bg-white/[0.05]"
-                          : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]"
+                          ? "border-(--border-strong) bg-(--fill-2)"
+                          : "border-(--border) bg-(--fill-1) hover:border-(--border-strong)"
                       }`}
                     >
                       <button
@@ -382,7 +382,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                       >
                         <span
                           className={`shrink-0 ${
-                            selectedModel === model.name ? "text-(--accent)" : "text-[#6b6b6b]"
+                            selectedModel === model.name ? "text-(--accent)" : "text-[var(--text-muted)]"
                           }`}
                         >
                           {selectedModel === model.name ? (
@@ -392,10 +392,10 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                           )}
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate text-[12px] font-medium text-[#ececec]">
+                          <span className="block truncate text-[12px] font-medium text-[var(--text-primary)]">
                             {model.name}
                           </span>
-                          <span className="block text-[10px] text-[#6b6b6b]">
+                          <span className="block text-[10px] text-[var(--text-muted)]">
                             {model.details?.parameter_size ?? "Unknown size"} ·{" "}
                             {formatModelSize(model.size)}
                           </span>
@@ -406,7 +406,7 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
                         onClick={() => void handleDelete(model.name)}
                         disabled={deleting === model.name}
                         title={`Delete ${model.name}`}
-                        className="shrink-0 rounded-md p-1.5 text-[#6b6b6b] opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 disabled:opacity-30"
+                        className="shrink-0 rounded-md p-1.5 text-[var(--text-muted)] opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 disabled:opacity-30"
                       >
                         <IoTrash size={13} />
                       </button>
@@ -419,12 +419,12 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
 
           {/* How it works */}
           <section>
-            <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+            <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
               How it works
             </h3>
-            <p className="m-0 text-[11px] leading-5 text-[#a3a3a3]">
+            <p className="m-0 text-[11px] leading-5 text-[var(--text-secondary)]">
               Local models run entirely on your device using{" "}
-              <span className="text-[#ececec]">Ollama</span>. No data leaves your computer.
+              <span className="text-[var(--text-primary)]">Ollama</span>. No data leaves your computer.
               Start the server, pull a model, then select it to chat with it. The selected
               model will be used as your AI provider.
             </p>

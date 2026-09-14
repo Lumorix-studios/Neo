@@ -118,7 +118,7 @@ export default function PortsPanel({ active }: PortsPanelProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-8 shrink-0 items-center justify-between px-3">
-        <span className="text-[11px] text-[#8a8a93]">
+        <span className="text-[11px] text-[var(--text-secondary)]">
           {scanning ? (
             <span className="flex items-center gap-1.5">
               <svg viewBox="0 0 16 16" className="h-3 w-3 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -134,7 +134,7 @@ export default function PortsPanel({ active }: PortsPanelProps) {
           type="button"
           onClick={() => void refresh()}
           disabled={scanning}
-          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec] disabled:pointer-events-none disabled:opacity-40"
+          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:pointer-events-none disabled:opacity-40"
         >
           <IoRefresh size={12} />
           Refresh
@@ -142,20 +142,20 @@ export default function PortsPanel({ active }: PortsPanelProps) {
       </div>
 
       {error ? (
-        <p className="mx-3 whitespace-pre-wrap rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1.5 font-mono text-[11px] text-[#e5534b]">
+        <p className="mx-3 whitespace-pre-wrap rounded-md border border-(--border) bg-(--fill-1) px-2 py-1.5 font-mono text-[11px] text-[#e5534b]">
           {error}
         </p>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 scrollbar-thin">
           {/* Table header */}
-          <div className="flex items-center gap-3 px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#6b6b6b]">
+          <div className="flex items-center gap-3 px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             <span className="w-14 shrink-0">Port</span>
             <span className="w-28 shrink-0">Address</span>
             <span className="min-w-0 flex-1">Process</span>
             <span className="w-12 shrink-0" />
           </div>
           {httpPorts.length === 0 && !scanning && (
-            <p className="px-2 py-2 text-[11.5px] text-[#6b6b6b]">
+            <p className="px-2 py-2 text-[11.5px] text-[var(--text-muted)]">
               Nothing listening right now.
             </p>
           )}
@@ -165,23 +165,23 @@ export default function PortsPanel({ active }: PortsPanelProps) {
               type="button"
               onClick={() => void openUrl(`http://localhost:${r.port}`)}
               title={`Open http://localhost:${r.port}`}
-              className="group flex w-full items-center gap-3 rounded-md px-2 py-1 text-left transition hover:bg-white/[0.05]"
+              className="group flex w-full items-center gap-3 rounded-md px-2 py-1 text-left transition hover:bg-(--fill-2)"
             >
               <span className="w-14 shrink-0 font-mono text-[12px] font-medium text-(--accent) group-hover:underline">
                 {r.port}
               </span>
-              <span className="w-28 shrink-0 truncate font-mono text-[11px] text-zinc-400">
+              <span className="w-28 shrink-0 truncate font-mono text-[11px] text-[var(--text-secondary)]">
                 {r.address}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[11.5px] text-zinc-300">
+              <span className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--text-primary)]">
                 {r.process ?? "unknown"}
                 {r.pid != null && (
-                  <span className="ml-1.5 text-[10px] text-[#6b6b6b]">
+                  <span className="ml-1.5 text-[10px] text-[var(--text-muted)]">
                     PID {r.pid}
                   </span>
                 )}
               </span>
-              <span className="flex w-12 shrink-0 items-center justify-end text-[#6b6b6b] opacity-0 transition group-hover:opacity-100">
+              <span className="flex w-12 shrink-0 items-center justify-end text-[var(--text-muted)] opacity-0 transition group-hover:opacity-100">
                 <IoOpenOutline size={13} />
               </span>
             </button>

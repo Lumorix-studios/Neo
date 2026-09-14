@@ -89,21 +89,21 @@ export default function DebugConsole({ root }: DebugConsoleProps) {
       {/* History */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11.5px] leading-5 scrollbar-thin">
         {history.length === 0 && (
-          <p className="text-[11px] leading-5 text-[#6b6b6b]">
+          <p className="text-[11px] leading-5 text-[var(--text-muted)]">
             Evaluate Node.js expressions in the workspace — async/await works.
             <br />
-            e.g. <span className="text-[#8a8a93]">await fetch('https://api.github.com').then(r =&gt; r.status)</span>
+            e.g. <span className="text-[var(--text-secondary)]">await fetch('https://api.github.com').then(r =&gt; r.status)</span>
           </p>
         )}
         {history.map((h, i) => (
-          <div key={`${h.time}-${i}`} className="mb-2 border-b border-white/[0.04] pb-1.5 last:border-0">
+          <div key={`${h.time}-${i}`} className="mb-2 border-b border-(--border) pb-1.5 last:border-0">
             <p className="whitespace-pre-wrap break-all text-[#7ea6ff]">
-              <span className="select-none text-[#6b6b6b]">❯ </span>
+              <span className="select-none text-[var(--text-muted)]">❯ </span>
               {h.expr}
             </p>
             <pre
               className={`whitespace-pre-wrap break-all ${
-                h.ok ? "text-zinc-300" : "text-[#e5534b]"
+                h.ok ? "text-[var(--text-primary)]" : "text-[#e5534b]"
               }`}
             >
               {h.output}
@@ -114,8 +114,8 @@ export default function DebugConsole({ root }: DebugConsoleProps) {
       </div>
 
       {/* Input */}
-      <div className="flex shrink-0 items-center gap-1.5 border-t border-white/[0.07] px-2.5 py-1.5">
-        <span className="shrink-0 font-mono text-[13px] text-[#6b6b6b]">❯</span>
+      <div className="flex shrink-0 items-center gap-1.5 border-t border-(--border) px-2.5 py-1.5">
+        <span className="shrink-0 font-mono text-[13px] text-[var(--text-muted)]">❯</span>
         <input
           value={expr}
           onChange={(e) => setExpr(e.target.value)}
@@ -129,7 +129,7 @@ export default function DebugConsole({ root }: DebugConsoleProps) {
           placeholder={running ? "Evaluating…" : "Node.js expression…"}
           spellCheck={false}
           autoCapitalize="off"
-          className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-[#ececec] outline-none placeholder:text-[#5a5a62]"
+          className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         />
         <button
           type="button"
@@ -137,7 +137,7 @@ export default function DebugConsole({ root }: DebugConsoleProps) {
           disabled={history.length === 0}
           title="Clear console"
           aria-label="Clear console"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#8a8a93] transition hover:bg-white/[0.06] hover:text-[#ececec] disabled:pointer-events-none disabled:opacity-40"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:pointer-events-none disabled:opacity-40"
         >
           <IoBan size={12} />
         </button>
@@ -151,7 +151,7 @@ export default function DebugConsole({ root }: DebugConsoleProps) {
           disabled={!expr.trim() || running}
           title="Evaluate (Enter)"
           aria-label="Evaluate"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#2563eb] text-white transition hover:bg-[#3b76f5] disabled:bg-white/[0.05] disabled:text-[#5a5a62]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#2563eb] text-white transition hover:bg-[#3b76f5] disabled:bg-(--fill-2) disabled:text-[var(--text-muted)]"
         >
           <IoSend size={11} />
         </button>

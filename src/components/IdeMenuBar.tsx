@@ -189,14 +189,14 @@ export default function IdeMenuBar({
           onMouseEnter={() => openMenu && setOpenMenu(id)}
           className={`flex items-center gap-1.5 rounded-[4px] px-2 py-[3px] text-[12.5px] transition-colors ${
             open
-              ? "bg-white/[0.09] text-[#e8e8e8]"
-              : "text-[#ababab] hover:bg-white/[0.09] hover:text-[#e8e8e8]"
+              ? "bg-(--fill-2) text-[var(--text-primary)]"
+              : "text-[var(--text-secondary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           }`}
         >
           {title}
         </button>
         {open && (
-          <div className="panel-in absolute left-0 top-full z-50 mt-px w-60 overflow-hidden rounded-[5px] border border-white/[0.1] bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
+          <div className="panel-in absolute left-0 top-full z-50 mt-px w-60 overflow-hidden rounded-[5px] border border-(--border-strong) bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
             <div>
               {items.map((item) => (
                 <button
@@ -206,15 +206,15 @@ export default function IdeMenuBar({
                   onClick={item.onSelect}
                   className={`flex w-full items-center gap-2.5 rounded-[3px] px-2 py-[5px] text-left text-[12.5px] transition-colors ${
                     item.disabled
-                      ? "cursor-default text-[#555555]"
-                      : "text-[#c9c9c9] hover:bg-white/[0.09] hover:text-[#ececec]"
+                      ? "cursor-default text-[var(--text-faint)]"
+                      : "text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   }`}
                 >
-                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.checked ? "text-(--accent)" : "text-[#6b6b6b]"}`}>
+                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.checked ? "text-(--accent)" : "text-[var(--text-muted)]"}`}>
                     {item.checked ? CheckGlyph : item.icon}
                   </span>
                   <span className="flex-1 truncate">{item.label}</span>
-                  {item.hint && <span className="shrink-0 text-[11px] tracking-wide text-[#8b8b8b]">{item.hint}</span>}
+                  {item.hint && <span className="shrink-0 text-[11px] tracking-wide text-[var(--text-muted)]">{item.hint}</span>}
                 </button>
               ))}
             </div>

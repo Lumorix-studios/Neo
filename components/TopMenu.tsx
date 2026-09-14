@@ -1,6 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useErrorHandler } from "../src/errorContext";
+import WindowControls, { toggleMaximizeWindow } from "./WindowControls";
 
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
@@ -146,8 +147,9 @@ export default function TopMenu({
   return (
     <nav
       ref={menuRef}
-      className="relative z-50 flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-[var(--bg-panel)] pl-3 pr-2"
+      className="relative z-50 flex h-[35px] shrink-0 items-center justify-between border-b border-(--border) bg-[var(--bg-panel)] pl-3 pr-2"
       data-tauri-drag-region
+      onDoubleClick={() => toggleMaximizeWindow()}
     >
       {/* Left: brand + menus */}
       <div className="flex items-center gap-1">
@@ -166,7 +168,7 @@ export default function TopMenu({
               className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--accent)"
             />
           </span>
-          <span className="text-[12.5px] font-semibold tracking-tight text-[#ececec]">
+          <span className="text-[12.5px] font-semibold tracking-tight text-[var(--text-primary)]">
             Neo
           </span>
         </div>
@@ -179,15 +181,15 @@ export default function TopMenu({
                 onMouseEnter={() => openMenu && setOpenMenu(menu.label)}
                 className={`rounded-[4px] px-2 py-[3px] text-[12.5px] transition-colors ${
                   openMenu === menu.label
-                    ? "bg-white/[0.09] text-[#e8e8e8]"
-                    : "text-[#ababab] hover:bg-white/[0.09] hover:text-[#e8e8e8]"
+                    ? "bg-(--fill-2) text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                 }`}
               >
                 {menu.label}
               </button>
 
               {openMenu === menu.label && (
-                <div className="panel-in absolute left-0 top-full z-50 mt-px w-64 overflow-hidden rounded-[5px] border border-white/[0.1] bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
+                <div className="panel-in absolute left-0 top-full z-50 mt-px w-64 overflow-hidden rounded-[5px] border border-(--border-strong) bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
                   {menu.items.map((item, i) => (
                     <button
                       key={i}
@@ -196,11 +198,11 @@ export default function TopMenu({
                         item.action();
                         setOpenMenu(null);
                       }}
-                      className="flex w-full items-center justify-between rounded-[3px] px-2.5 py-[5px] text-left text-[12.5px] text-[#c9c9c9] transition-colors hover:bg-white/[0.09] hover:text-[#ececec] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex w-full items-center justify-between rounded-[3px] px-2.5 py-[5px] text-left text-[12.5px] text-[var(--text-primary)] transition-colors hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <span>{item.label}</span>
                       {item.shortcut && (
-                        <span className="ml-8 text-[11px] tracking-wide text-[#8b8b8b]">
+                        <span className="ml-8 text-[11px] tracking-wide text-[var(--text-muted)]">
                           {item.shortcut}
                         </span>
                       )}
@@ -216,7 +218,7 @@ export default function TopMenu({
             type="button"
             onClick={onOpenIdeWindow}
             title="Open the IDE in its own window (explorer, git, terminal)"
-            className="ml-1.5 flex items-center gap-1 rounded-[4px] bg-white/[0.06] px-2 py-[3px] text-[11.5px] font-medium text-[#d4d4d4] transition-colors hover:bg-white/[0.12] hover:text-[#ececec]"
+            className="ml-1.5 flex items-center gap-1 rounded-[4px] bg-(--fill-2) px-2 py-[3px] text-[11.5px] font-medium text-[var(--text-primary)] transition-colors hover:bg-(--fill-3) hover:text-[var(--text-primary)]"
           >
             IDE
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -231,7 +233,7 @@ export default function TopMenu({
             type="button"
             onClick={onOpenCommandPalette}
             title="Search commands and files (Ctrl+P)"
-            className="pointer-events-auto flex h-[22px] w-[34%] max-w-[320px] items-center justify-center gap-2 rounded-[6px] border border-white/[0.09] bg-white/[0.03] text-[11.5px] text-[#8b8b8b] transition-colors hover:border-white/[0.18] hover:bg-white/[0.06] hover:text-[#c9c9c9]"
+            className="pointer-events-auto flex h-[22px] w-[34%] max-w-[320px] items-center justify-center gap-2 rounded-[6px] border border-(--border-strong) bg-(--fill-1) text-[11.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <circle cx="7" cy="7" r="4.4" />
@@ -242,6 +244,7 @@ export default function TopMenu({
         </div>
       )}
       {right && <div className="flex items-center gap-2">{right}</div>}
+      <WindowControls />
     </nav>
   );
 }

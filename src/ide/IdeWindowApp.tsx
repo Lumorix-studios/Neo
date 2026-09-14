@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import {IoChatboxEllipsesOutline, IoGitBranch, IoSettingsOutline,  } from "react-icons/io5";
+import WindowControls, { toggleMaximizeWindow } from "../../components/WindowControls";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
 import SettingsPanel, { type SectionId } from "../components/SettingsPanel";
@@ -42,7 +43,7 @@ function RailButton({
       title={title}
       aria-label={title}
       className={`relative flex h-[48px] w-full items-center justify-center transition-colors ${
-        active ? "text-[#e8e8e8]" : "text-[#868686] hover:text-[#e8e8e8]"
+        active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
       }`}
     >
       {active && (
@@ -545,11 +546,12 @@ export default function IdeWindowApp() {
   }, [workspaceRoot]);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-editor)] text-[#d4d4d4]">
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-editor)] text-[var(--text-primary)]">
       {/*Title bar: menus + workspace + window controls*/}
       <header
         data-tauri-drag-region
-        className="flex h-[35px] shrink-0 items-center justify-between border-b border-white/[0.02] bg-[var(--bg-chrome)] px-2"
+        onDoubleClick={() => toggleMaximizeWindow()}
+        className="flex h-[35px] shrink-0 items-center justify-between border-b border-(--border) bg-[var(--bg-chrome)] px-2"
       >
         <IdeMenuBar
           hasWorkspace={!!workspaceRoot}
@@ -574,7 +576,7 @@ export default function IdeWindowApp() {
           {workspaceRoot && (
             <span
               data-tauri-drag-region
-              className="max-w-[350px] truncate text-[11.5px] text-[#8a8a93]"
+              className="max-w-[350px] truncate text-[11.5px] text-[var(--text-secondary)]"
               title={workspaceRoot}
             >
               {[
@@ -597,12 +599,13 @@ export default function IdeWindowApp() {
             </button>
           )}
         </div>
+        <WindowControls />
       </header>
 
       {/* ── Body: activity rail | explorer | editor | git ──────────────── */}
       <div className="flex min-h-0 flex-1">
         {/* Activity bar — VS Code-style icon rail */}
-        <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.02] bg-[var(--bg-chrome)] py-1">
+        <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-(--border) bg-[var(--bg-chrome)] py-1">
           <div className="flex w-full flex-col items-center gap-1">
             <RailButton
               active={!explorerCollapsed}
@@ -877,13 +880,13 @@ export default function IdeWindowApp() {
       />
 
       {/* ── Status bar (VS Code-style) ──────────────────────────────────── */}
-      <footer className="flex h-[22px] shrink-0 items-center justify-between border-t border-white/[0.07] bg-[var(--bg-chrome)] px-2 text-[11px] text-[#a8a8a8]">
+      <footer className="flex h-[22px] shrink-0 items-center justify-between border-t border-(--border) bg-[var(--bg-chrome)] px-2 text-[11px] text-[var(--text-secondary)]">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={() => setAgentOpen((v) => !v)}
             title="AI Agent (Ctrl+I)"
-            className="flex shrink-0 items-center gap-1.5 rounded px-1 transition-colors hover:text-[#e8e8e8]"
+            className="flex shrink-0 items-center gap-1.5 rounded px-1 transition-colors hover:text-[var(--text-primary)]"
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${

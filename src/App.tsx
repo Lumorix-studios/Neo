@@ -179,7 +179,7 @@ function RailButton({
       title={title}
       aria-label={title}
       className={`relative flex h-[48px] w-full items-center justify-center transition-colors ${
-        active ? "text-[#e8e8e8]" : "text-[#868686] hover:text-[#e8e8e8]"
+        active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
       }`}
     >
       {active && (
@@ -272,7 +272,7 @@ function MessageAction({
       className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
         done
           ? "text-emerald-400/80"
-          : "text-[#6b6b6b] hover:bg-white/[0.06] hover:text-[#d4d4d4]"
+          : "text-[var(--text-muted)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
       }`}
     >
       {done ? (
@@ -736,6 +736,7 @@ export default function App() {
         height: 820,
         minWidth: 720,
         minHeight: 480,
+        decorations: false,
       });
       ideWin.once("tauri://error", (e) => {
         setError(`Failed to open IDE window: ${e.payload}`);
@@ -1657,7 +1658,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-base)] text-[#ececec] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <TopMenu
           contextEntries={contextEntries}
           pinnedPaths={pinnedPaths}
@@ -1685,7 +1686,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   type="button"
                   onClick={() => setModelOpen((v) => !v)}
                   title="Switch AI provider"
-                  className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-[3px] text-[11px] text-[#a3a3a3] transition-colors hover:border-white/[0.14] hover:text-[#ececec]"
+                  className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
@@ -1694,22 +1695,22 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   />
                   <span className="max-w-[160px] truncate">{settings.model || spec.label}</span>
                   {!settings.apiKey && spec.needsAuth && (
-                    <span className="text-[#6b6b6b]">(not configured)</span>
+                    <span className="text-[var(--text-muted)]">(not configured)</span>
                   )}
                   <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M4 6l4 4 4-4" />
                   </svg>
                 </button>
                 {modelOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-white/[0.09] bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
-                    <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-[#6b6b6b]">
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-(--border-strong) bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+                    <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
                       AI Provider
                     </div>
                     {PROVIDER_OPTIONS.map((p) => (
                       <button
                         key={p.id}
-                        className={`flex w-full items-center justify-between rounded-md px-2.5 py-[6px] text-left text-[12px] transition-colors hover:bg-white/[0.06] ${
-                          settings.provider === p.id ? "text-[#ececec]" : "text-[#a3a3a3]"
+                        className={`flex w-full items-center justify-between rounded-md px-2.5 py-[6px] text-left text-[12px] transition-colors hover:bg-(--fill-2) ${
+                          settings.provider === p.id ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
                         }`}
                         onClick={() => {
                           const next = providerById(p.id);
@@ -1740,14 +1741,14 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     ))}
 
                     {/* Model overview */}
-                    <div className="mt-1 border-t border-white/[0.07] px-2 pb-1 pt-2">
-                      <div className="flex items-center justify-between text-[10px] text-[#6b6b6b]">
+                    <div className="mt-1 border-t border-(--border) px-2 pb-1 pt-2">
+                      <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
                         <span>Context window</span>
                         <span className="tabular-nums">
                           ~{formatTokens(estTokens)} / {formatTokens(ctxLimit)} tok
                         </span>
                       </div>
-                      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.08]">
+                      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-(--fill-2)">
                         <div
                           className={`h-full rounded-full transition-all ${
                             ctxPct > 85 ? "bg-red-400" : ctxPct > 60 ? "bg-amber-400" : "bg-(--accent)"
@@ -1755,7 +1756,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           style={{ width: `${Math.max(2, ctxPct)}%` }}
                         />
                       </div>
-                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[#555555]">
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--text-faint)]">
                         <span>
                           {messages.length} message{messages.length === 1 ? "" : "s"}
                         </span>
@@ -1771,7 +1772,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 onClick={newChat}
                 title="New chat"
                 aria-label="New chat"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                   <path d="M8 3v10M3 8h10" />
@@ -1796,7 +1797,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
         />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Activity bar — VS Code-style icon rail */}
-          <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-white/[0.07] bg-[var(--bg-panel)] py-1">
+          <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-(--border) bg-[var(--bg-panel)] py-1">
             <div className="w-full">
               <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
                 <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1828,11 +1829,11 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               className="relative z-20 flex shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-zinc-800/30 bg-black/20 px-5 py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               data-debug="context-strip"
             >
-              <div className="flex items-center gap-1.5 text-zinc-400">
+              <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                 <span className="text-[10px] uppercase tracking-wider font-bold">Context:</span>
               </div>
               {workspaceRoot && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-200 text-[10px] font-mono">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[var(--text-primary)] text-[10px] font-mono">
                   <span>📁</span> {shortPath(workspaceRoot)}
                 </div>
               )}
@@ -1842,7 +1843,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 </div>
               )}
               {!workspaceRoot && !activeEditorPath && (
-                <span className="text-zinc-400 text-[10px] italic">No active workspace</span>
+                <span className="text-[var(--text-secondary)] text-[10px] italic">No active workspace</span>
               )}
             </div>
 
@@ -1867,7 +1868,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         animateBy="letters"
                         direction="top"
                         onAnimationComplete={handleAnimationComplete}
-                        className="mb-3 justify-center text-center text-2xl text-[#e5e5e5]"
+                        className="mb-3 justify-center text-center text-2xl text-[var(--text-primary)]"
                       />
                     </div>
                     
@@ -1875,7 +1876,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                       {/* <span
                         title={`Provider: ${spec.label}`}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#a3a3a3]"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-(--border) bg-(--fill-1) px-2.5 py-1 text-[11px] text-[var(--text-secondary)]"
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
@@ -1886,7 +1887,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       </span>
                       <span
                         title={workspaceRoot ?? undefined}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#a3a3a3]"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-(--border) bg-(--fill-1) px-2.5 py-1 text-[11px] text-[var(--text-secondary)]"
                       >
                         <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
@@ -1911,17 +1912,17 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         thickness={1}
                         backgroundColor="rgba(255, 255, 255, 0.02)"
                         borderColor="rgba(255, 255, 255, 0.08)"
-                        className="w-full rounded-[12px] transition hover:bg-white/[0.04]"
+                        className="w-full rounded-[12px] transition hover:bg-(--fill-1)"
                         innerClassName="px-3 py-2.5 text-left"
                       >
                         
                          
                       <span className="flex items-center gap-2">
                         <CardIcon name="folder" />
-                        <span className="block text-[12.5px] font-medium text-[#d4d4d4]">Open a project</span>
+                        <span className="block text-[12.5px] font-medium text-[var(--text-primary)]">Open a project</span>
                       </span>
                       
-                      <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">Browse and edit files in a real workspace</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-faint)]">Browse and edit files in a real workspace</span>
                       
                       </StarBorder>
                       {[
@@ -1954,20 +1955,20 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           thickness={1}
                           backgroundColor="rgba(255, 255, 255, 0.02)"
                           borderColor="rgba(255, 255, 255, 0.08)"
-                          className="w-full rounded-[12px] transition hover:bg-white/[0.04]"
+                          className="w-full rounded-[12px] transition hover:bg-(--fill-1)"
                           innerClassName="px-3 py-2.5 text-left"
                         >
                           <span className="flex items-center gap-2">
                             <CardIcon name={card.icon} />
-                            <span className="block text-[12.5px] font-medium text-[#d4d4d4]">{card.label}</span>
+                            <span className="block text-[12.5px] font-medium text-[var(--text-primary)]">{card.label}</span>
                           </span>
-                          <span className="mt-0.5 block text-[11px] leading-4 text-zinc-600">{card.desc}</span>
+                          <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-faint)]">{card.desc}</span>
                         </StarBorder>
                       ))}
                     </div>
 
                     {/* Keyboard shortcuts */}
-                    <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[10.5px] text-[#5a5a5a]">
+                    <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[10.5px] text-[var(--text-muted)]">
                       <span className="flex items-center gap-1.5">
                         <span className="kbd">Ctrl</span>
                         <span className="kbd">Shift</span>
@@ -1994,7 +1995,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <div key={index} className="msg-in">
                         {msg.role === "user" ? (
                           <div className="flex justify-end">
-                            <div className="max-w-[85%] whitespace-pre-wrap rounded-md border border-white/[0.06] bg-white/[0.04] px-3.5 py-2.5 text-[13px] leading-6 text-[#e4e4e4]">
+                            <div className="max-w-[85%] whitespace-pre-wrap rounded-md border border-(--border) bg-(--fill-1) px-3.5 py-2.5 text-[13px] leading-6 text-[var(--text-primary)]">
                               {msg.content}
                             </div>
                           </div>
@@ -2003,17 +2004,17 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           msg.content.trim().length === 0 ? (
                           <div className="flex items-center gap-2 py-2">
                             <span className="thinking-dot" />
-                            <span className="text-[11px] text-[#6b6b6b]">Working…</span>
+                            <span className="text-[11px] text-[var(--text-muted)]">Working…</span>
                           </div>
                         ) : (
                           <div className="group/msg min-w-0">
                             <div className="mb-1.5 flex items-center gap-1.5">
                               
-                              <span className="text-[10px] font-medium tracking-[0.06em] text-zinc-500">
+                              <span className="text-[10px] font-medium tracking-[0.06em] text-[var(--text-muted)]">
                                 Assistant - 
                               </span>
                             </div>
-                            <div className="text-[13.5px] leading-7 text-[#d4d4d4]">
+                            <div className="text-[13.5px] leading-7 text-[var(--text-primary)]">
                               <Markdown content={msg.content} />
                               {isLoading && index === messages.length - 1 && (
                                 <span className="stream-caret" aria-hidden />
@@ -2071,7 +2072,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
                     <span
                       title={`The agent will receive this file's contents automatically`}
-                      className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[11px] text-[#a3a3a3]"
+                      className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[11px] text-[var(--text-secondary)]"
                     >
                       <span className="h-1 w-1 rounded-full bg-[#5a5a5a]" />
                       {activeEditorPath.split(/[\\/]/).pop()}
@@ -2079,12 +2080,12 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   </div>
                 ) : (
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
-                    <span className="text-[11px] text-[#6b6b6b]">
+                    <span className="text-[11px] text-[var(--text-muted)]">
                       Open file/folder or give the agent the path of file/folder in the editor and it's sent to the agent automatically
                     </span>
                   </div>
                 )}
-                <div className="relative rounded-lg border border-white/[0.08] bg-[var(--bg-panel)] transition-colors duration-150 focus-within:border-blue-500/50 shadow-2xl">
+                <div className="relative rounded-lg border border-(--border) bg-[var(--bg-panel)] transition-colors duration-150 focus-within:border-blue-500/50 shadow-2xl">
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
@@ -2102,13 +2103,13 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     }
                     rows={1}
                     spellCheck={false}
-                    className="max-h-48 min-h-[54px] w-full resize-none bg-transparent px-3.5 pb-11 pt-3 pr-12 text-[13px] leading-6 text-[#ececec] outline-none placeholder:text-[#555555] disabled:opacity-60"
+                    className="max-h-48 min-h-[54px] w-full resize-none bg-transparent px-3.5 pb-11 pt-3 pr-12 text-[13px] leading-6 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] disabled:opacity-60"
                   />
                   <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
                     <button
                       type="button"
                       onClick={() => launchIdeWindowRef.current()}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                       title="Open IDE window"
                     >
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
@@ -2119,7 +2120,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <button
                         type="button"
                         onClick={stopChat}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.08] text-[#ececec] transition hover:bg-white/[0.14]"
+                        className="flex h-7 w-7 items-center justify-center rounded-md bg-(--fill-2) text-[var(--text-primary)] transition hover:bg-(--fill-3)"
                         title="Stop streaming"
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
@@ -2130,7 +2131,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <button
                         type="submit"
                         disabled={!message.trim() || isLoading}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
+                        className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-(--fill-2) disabled:text-[var(--text-faint)]"
                         title="Send message"
                       >
                         <IoSend size={14} />
@@ -2138,7 +2139,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                     )}
                   </div>
                 </div>
-                <div className="mt-1.5 flex items-center justify-between px-1 text-[10.5px] text-[#4a4a4a]">
+                <div className="mt-1.5 flex items-center justify-between px-1 text-[10.5px] text-[var(--text-faint)]">
                   <span>Enter to send · Shift+Enter for a new line</span>
                   <span>AI can make mistakes — verify important info.</span>
                 </div>

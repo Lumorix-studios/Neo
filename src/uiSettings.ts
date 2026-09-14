@@ -6,6 +6,9 @@ export interface UiSettings {
   
   customBackground: string | null;
 
+  /** -0.35..0.35 brightness safety nudge applied to the custom background. */
+  bgBrightness: number;
+
   accent: string;
   editorFontSize: number;
   editorLineHeight: number;
@@ -48,6 +51,7 @@ export const ACCENT_SWATCHES: Array<{ label: string; value: string }> = [
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   themeId: "neo",
   customBackground: null,
+  bgBrightness: 0,
   accent: "#4c8dff",
   editorFontSize: 12.5,
   editorLineHeight: 20,
@@ -144,18 +148,141 @@ function normalizeHex(hex: string): string {
   if (h.length === 3) return `#${h.split("").map((c) => c + c).join("")}`;
   return `#${h}`;
 }
+/* ── Adaptive / harmony helpers ─────────────────────────────────────── */
+
+/** WCAG relative luminance (0 = black, 1 = white). */
+export function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex);
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** WCAG contrast ratio (1..21) between two colors. */
+export function contrastRatio(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  const hi = Math.max(la, lb);
+  const lo = Math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** True when the color reads as a dark surface. */
+export function isDarkColor(hex: string): boolean {
+  return luminance(hex) < 0.35;
+}
+
+/** Best readable ink to place on top of `accent` (white unless too bright). */
+export function onAccentInk(accent: string): string {
+  return contrastRatio(accent, "#ffffff") >= 3 ? "#ffffff" : "#111111";
+}
+
+/** Brightness safety nudge in [-1,1]: lifts dark bases, deepens light ones. */
+export function applyBrightness(hex: string, delta: number): string {
+  if (!delta) return hex;
+  const l = luminance(hex);
+  return delta > 0 ? shade(hex, delta * (1 - l)) : shade(hex, delta * l);
+}
+
+/* Neutral ink ramps — one for dark surfaces, one for light/bright ones. */
+const DARK_INK = { primary: "#e5e5e5", secondary: "#a1a1a1", muted: "#666666", faint: "#444444" };
+const LIGHT_INK = { primary: "#1a1a1a", secondary: "#4d4d4d", muted: "#7d7d7d", faint: "#ababab" };
+
+const DARK_TOK = { kw: "#c678dd", str: "#98c379", num: "#d19a66", com: "#7f848e", fn: "#61afef", tag: "#e06c75" };
+const LIGHT_TOK = { kw: "#a626a4", str: "#50a14f", num: "#986801", com: "#8f9dae", fn: "#4078f2", tag: "#e45649" };
+
+/** Pull neutral ink a touch toward the background hue so text feels native on tinted bg. */
+function tintToward(ink: string, base: string, amount: number): string {
+  const [r, g, b] = hexToRgb(base);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max - min < 20) return ink; // neutral base → keep neutral ink
+  const [ir, ig, ib] = hexToRgb(ink);
+  return rgbToHex(ir + (r - ir) * amount, ig + (g - ig) * amount, ib + (b - ib) * amount);
+}
+
+export interface DerivedTheme {
+  base: string;
+  panel: string;
+  elevated: string;
+  active: string;
+  chrome: string;
+  editor: string;
+  input: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  textFaint: string;
+  onAccent: string;
+  isDark: boolean;
+}
+
+/**
+ * Derive a full readable surface/text system from ANY base color — dark
+ * or bright. Panels deepen on light bases, ink flips to dark on bright
+ * bases, tints toward the base hue for a harmonized look.
+ */
+export function deriveTheme(rawBase: string, brightness = 0, accent = "#3b82f6"): DerivedTheme {
+  const base = applyBrightness(normalizeHex(rawBase), brightness);
+  const dark = isDarkColor(base);
+  const dir = dark ? 1 : -1;
+  const ink = dark ? DARK_INK : LIGHT_INK;
+  const tint = (c: string, amt: number) => tintToward(c, base, amt);
+  return {
+    base,
+    panel: shade(base, 0.03 * dir),
+    elevated: shade(base, 0.055 * dir),
+    active: shade(base, 0.09 * dir),
+    chrome: shade(base, -0.025 * dir),
+    editor: base,
+    input: shade(base, 0.045 * dir),
+    textPrimary: tint(ink.primary, 0.06),
+    textSecondary: tint(ink.secondary, 0.1),
+    textMuted: tint(ink.muted, 0.12),
+    textFaint: tint(ink.faint, 0.14),
+    onAccent: onAccentInk(accent),
+    isDark: dark,
+  };
+}
+
 export function resolveThemeVars(s: UiSettings): Record<string, string> {
   const extTheme = installedThemePresets().find((t) => t.id === s.themeId);
   const theme = extTheme ?? THEMES.find((t) => t.id === s.themeId) ?? THEMES[0];
   const custom = !!(s.customBackground && isValidHex(s.customBackground));
-  const base = custom ? normalizeHex(s.customBackground as string) : theme.base;
+  const baseRaw = custom ? normalizeHex(s.customBackground as string) : theme.base;
+  const d = deriveTheme(baseRaw, custom ? (s.bgBrightness ?? 0) : 0, s.accent);
+  const dark = d.isDark;
+  const tok = dark ? DARK_TOK : LIGHT_TOK;
+  const alpha = (a: number) => (dark ? "rgba(255,255,255," : "rgba(0,0,0,") + a + ")";
   return {
-    "--bg-base": base,
-    "--bg-panel": custom ? shade(base, 0.028) : theme.panel,
-    "--bg-elevated": custom ? shade(base, 0.055) : theme.elevated,
-    "--bg-active": custom ? shade(base, 0.09) : theme.active,
+    "--bg-base": d.base,
+    // Hand-tuned presets keep their panels; custom colors get fully derived ones.
+    "--bg-panel": custom ? d.panel : theme.panel,
+    "--bg-elevated": custom ? d.elevated : theme.elevated,
+    "--bg-active": custom ? d.active : theme.active,
+    "--bg-chrome": custom ? d.chrome : shade(theme.base, -0.025),
+    "--bg-editor": custom ? d.editor : theme.base,
+    "--bg-input": custom ? d.input : theme.panel,
+    "--border": alpha(0.08),
+    "--border-strong": alpha(0.16),
+    "--fill-1": alpha(0.035),
+    "--fill-2": alpha(0.07),
+    "--fill-3": alpha(0.13),
+    "--text-primary": d.textPrimary,
+    "--text-secondary": d.textSecondary,
+    "--text-muted": d.textMuted,
+    "--text-faint": d.textFaint,
     "--accent": s.accent,
     "--accent-soft": hexToRgba(s.accent, 0.12),
+    "--on-accent": d.onAccent,
+    "--code-kw": tok.kw,
+    "--code-str": tok.str,
+    "--code-num": tok.num,
+    "--code-com": tok.com,
+    "--code-fn": tok.fn,
+    "--code-tag": tok.tag,
   };
 }
 

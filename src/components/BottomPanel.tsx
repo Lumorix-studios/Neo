@@ -168,7 +168,7 @@ export default function BottomPanel({
         onPointerCancel={onResizeEnd}
         className="group flex h-1.5 shrink-0 cursor-row-resize touch-none select-none items-center justify-center bg-[var(--bg-chrome)]"
       >
-        <span className="h-0.5 w-10 rounded-full bg-white/10 transition-colors group-hover:bg-white/30" />
+        <span className="h-0.5 w-10 rounded-full bg-(--fill-2) transition-colors group-hover:bg-white/30" />
       </div>
 
       {/* Tab strip + terminal instance controls */}
@@ -182,14 +182,14 @@ export default function BottomPanel({
               onClick={() => onTab(t.id)}
               className={`relative flex items-center gap-1.5 px-3 text-[11px] uppercase tracking-wide transition ${
                 tab === t.id
-                  ? "text-[#ececec]"
-                  : "text-[#8a8a93] hover:bg-white/[0.03] hover:text-[#c9c9c9]"
+                  ? "text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
               }`}
             >
               {t.icon}
               {t.label}
               {t.id === "problems" && problemCount > 0 && (
-                <span className="rounded-full bg-white/[0.08] px-1.5 text-[9.5px] leading-4 text-zinc-300">
+                <span className="rounded-full bg-(--fill-2) px-1.5 text-[9.5px] leading-4 text-[var(--text-primary)]">
                   {problemCount}
                 </span>
               )}
@@ -212,8 +212,8 @@ export default function BottomPanel({
                     onClick={() => setActiveTerm(id)}
                     className={`flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] transition ${
                       activeTerm === id
-                        ? "bg-white/[0.09] text-[#ececec]"
-                        : "text-[#8a8a93] hover:bg-white/[0.05] hover:text-[#c9c9c9]"
+                        ? "bg-(--fill-2) text-[var(--text-primary)]"
+                        : "text-[var(--text-secondary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                     }`}
                     title={`Terminal ${i + 1}`}
                   >
@@ -227,7 +227,7 @@ export default function BottomPanel({
                 onClick={() => void createTerm()}
                 title="New terminal"
                 aria-label="New terminal"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-[#8a8a93] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
                 <IoAdd size={14} />
               </button>
@@ -237,7 +237,7 @@ export default function BottomPanel({
                 disabled={activeTerm == null}
                 title="Kill terminal"
                 aria-label="Kill terminal"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-[#8a8a93] transition hover:bg-white/[0.06] hover:text-[#ececec] disabled:pointer-events-none disabled:opacity-40"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:pointer-events-none disabled:opacity-40"
               >
                 <IoTrash size={12} />
               </button>
@@ -248,7 +248,7 @@ export default function BottomPanel({
             onClick={onClose}
             title="Close panel"
             aria-label="Close panel"
-            className="flex h-6 w-6 items-center justify-center rounded-md text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec]"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
               <path d="M4 4l8 8M12 4l-8 8" />
@@ -269,10 +269,10 @@ export default function BottomPanel({
                     <p className="text-[12px] font-medium text-[#e5534b]">
                       Could not start terminal
                     </p>
-                    <p className="max-w-sm whitespace-pre-wrap text-[11px] leading-5 text-[#8a8a93]">
+                    <p className="max-w-sm whitespace-pre-wrap text-[11px] leading-5 text-[var(--text-secondary)]">
                       {termError}
                     </p>
-                    <p className="text-[10.5px] text-[#6b6b6b]">
+                    <p className="text-[10.5px] text-[var(--text-muted)]">
                       This usually means the app was rebuilt without the new
                       backend. Try{" "}
                       <span className="font-mono">npm run tauri dev</span> to
@@ -288,14 +288,14 @@ export default function BottomPanel({
                     </button>
                   </>
                 ) : spawning ? (
-                  <p className="flex items-center gap-2 text-[11.5px] text-[#6b6b6b]">
+                  <p className="flex items-center gap-2 text-[11.5px] text-[var(--text-muted)]">
                     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                       <path d="M8 1.5a6.5 6.5 0 106.5 6.5" />
                     </svg>
                     Spawning shell…
                   </p>
                 ) : (
-                  <p className="text-[11.5px] text-[#6b6b6b]">
+                  <p className="text-[11.5px] text-[var(--text-muted)]">
                     Terminal closed — open it from the rail or press{" "}
                     <span className="font-mono">Ctrl+`</span>
                   </p>
@@ -329,7 +329,7 @@ export default function BottomPanel({
                 <Markdown content={preview.content} />
               </div>
             ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center text-[11.5px] text-[#6b6b6b]">
+              <div className="flex h-full items-center justify-center px-6 text-center text-[11.5px] text-[var(--text-muted)]">
                 Open a Markdown (.md) file in the editor to preview it here.
               </div>
             )}

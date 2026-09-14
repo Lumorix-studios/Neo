@@ -1005,16 +1005,16 @@ Rules:
   return (
     <aside className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-panel)]">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-white/[0.05] px-3">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border) px-3">
         
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a3a3a3]">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
           Agent
         </span>
         <button
           type="button"
           onClick={onOpenSettings}
           title="Change model in AI Settings"
-          className="ml-auto flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-1.5 py-[2px] text-[10.5px] text-[#8a8a8a] transition-colors hover:border-white/[0.14] hover:text-[#e8e8e8]"
+          className="ml-auto flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-1.5 py-[2px] text-[10.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
@@ -1028,7 +1028,7 @@ Rules:
             type="button"
             onClick={clearChat}
             title="Clear conversation"
-            className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#e8e8e8]"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <path d="M2.5 4h11M6.5 4V2.8A.8.8 0 017.3 2h1.4a.8.8 0 01.8.8V4M4 4l.7 8.6a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.6 7v4M9.4 7v4" />
@@ -1039,7 +1039,7 @@ Rules:
           type="button"
           onClick={onClose}
           title="Close agent panel (Ctrl+I)"
-          className="flex h-6 w-6 items-center justify-center rounded-md text-[#6b6b6b] transition hover:bg-white/[0.06] hover:text-[#e8e8e8]"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
         >
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
             <path d="M4 4l8 8M12 4l-8 8" />
@@ -1048,7 +1048,7 @@ Rules:
       </div>
 
       {/* ── Mode switcher */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-white/[0.05] px-2.5 py-1.5">
+      <div className="flex shrink-0 items-center gap-1 border-b border-(--border) px-2.5 py-1.5">
         {(
           [
             ["chat", "Chat", "Plain conversation — no file tools"],
@@ -1064,8 +1064,8 @@ Rules:
             title={tip}
             className={`rounded-md px-2.5 py-1 text-[11px] transition disabled:opacity-50 ${
               mode === m
-                ? "bg-white/[0.08] font-medium text-[#e8e8e8]"
-                : "text-[#7a7a7a] hover:bg-white/[0.04] hover:text-[#c9c9c9]"
+                ? "bg-(--fill-2) font-medium text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
             }`}
           >
             {label}
@@ -1077,7 +1077,7 @@ Rules:
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-5 pb-6 text-center">
-            <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-[#7a7a7a]">
+            <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-[var(--text-muted)]">
               Reads, edits and runs files in your workspace — with your approval for anything
               destructive.
             </p>
@@ -1085,7 +1085,7 @@ Rules:
               <button
                 type="button"
                 onClick={onOpenSettings}
-                className="mt-4 rounded-md border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-[#e8e8e8] transition hover:bg-white/[0.08]"
+                className="mt-4 rounded-md border border-(--border-strong) bg-(--fill-1) px-3 py-1.5 text-[11.5px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
               >
                 Configure an API key to start →
               </button>
@@ -1097,10 +1097,10 @@ Rules:
                   type="button"
                   onClick={() => send(sg.prompt)}
                   disabled={!configured}
-                  className="group flex items-center gap-2 rounded-md border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-left transition hover:border-white/[0.12] hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="group flex items-center gap-2 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-left transition hover:border-(--border-strong) hover:bg-(--fill-2) disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <IoAdd/>
-                  <span className="text-[11.5px] text-[#b8b8b8] group-hover:text-[#e8e8e8]">
+                  <span className="text-[11.5px] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
                     {sg.label}
                   </span>
                 </button>
@@ -1112,21 +1112,21 @@ Rules:
             {messages.map((m, i) =>
               m.role === "user" ? (
                 <div key={i} className="msg-in flex justify-end">
-                  <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-lg rounded-br-sm border border-white/[0.07] bg-white/[0.055] px-3 py-1.5 text-[12.5px] leading-5 text-[#e8e8e8]">
+                  <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-lg rounded-br-sm border border-(--border) bg-white/[0.055] px-3 py-1.5 text-[12.5px] leading-5 text-[var(--text-primary)]">
                     {m.content}
                   </div>
                 </div>
               ) : (
                 <div key={i} className="msg-in">
                   <div className="mb-1 flex items-center gap-1.5">
-                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinejoin="round">
+                    {/* <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinejoin="round">
                       <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
-                    </svg>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b6b6b]">
+                    </svg> */}
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                       Agent
                     </span>
                   </div>
-                  <div className="text-[12.5px] leading-6 text-[#d4d4d4]">
+                  <div className="text-[12.5px] leading-6 text-[var(--text-primary)]">
                     {m.content ? (
                       <Markdown content={m.content} />
                     ) : (
@@ -1140,7 +1140,7 @@ Rules:
               )
             )}
             {busy && (
-              <div className="flex items-center gap-2 text-[11px] text-[#6b6b6b]">
+              <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
                 <span className="thinking-dot" />
                 Working…
               </div>
@@ -1152,16 +1152,16 @@ Rules:
       {/* ── Orchestrator plan ──────────────────────────────────────────────── */}
       {plan && (
         <div className="shrink-0 px-3 pb-1">
-          <div className="overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.02]">
-            <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8a8a8a]">
+          <div className="overflow-hidden rounded-lg border border-(--border) bg-(--fill-1)">
+            <div className="flex items-center justify-between border-b border-(--border) px-3 py-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                 Plan
               </span>
               <button
                 type="button"
                 onClick={() => setPlan(null)}
                 title="Dismiss plan"
-                className="text-[10px] text-[#5a5a5a] transition hover:text-[#c9c9c9]"
+                className="text-[10px] text-[var(--text-muted)] transition hover:text-[var(--text-primary)]"
               >
                 ✕
               </button>
@@ -1181,11 +1181,11 @@ Rules:
                     }`}
                   />
                   <div className="min-w-0">
-                    <p className="text-[11.5px] font-medium leading-5 text-[#d4d4d4]">
+                    <p className="text-[11.5px] font-medium leading-5 text-[var(--text-primary)]">
                       {i + 1}. {s.title}
                     </p>
                     {s.detail && (
-                      <p className="text-[10.5px] leading-4 text-[#6b6b6b]">{s.detail}</p>
+                      <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">{s.detail}</p>
                     )}
                   </div>
                 </div>
@@ -1219,13 +1219,13 @@ Rules:
       )}
 
       {/* ── Composer ───────────────────────────────────────────────────────── */}
-      <form onSubmit={onSubmit} className="shrink-0 border-t border-white/[0.05] p-2.5">
+      <form onSubmit={onSubmit} className="shrink-0 border-t border-(--border) p-2.5">
         {/* Context chips — what the agent can currently see. */}
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-0.5">
           {workspaceRoot ? (
             <span
               title={workspaceRoot}
-              className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[10.5px] text-[#a3a3a3]"
+              className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)]"
             >
               <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
@@ -1233,12 +1233,12 @@ Rules:
               {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
             </span>
           ) : (
-            <span className="text-[10.5px] text-[#5a5a5a]">No workspace open</span>
+            <span className="text-[10.5px] text-[var(--text-muted)]">No workspace open</span>
           )}
           {activeEditorPath && (
             <span
               title="The agent will receive this file's contents automatically"
-              className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[10.5px] text-[#a3a3a3]"
+              className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)]"
             >
               <span className="h-1 w-1 rounded-full bg-(--accent)" />
               {activeEditorPath.split(/[\\/]/).pop()}
@@ -1249,7 +1249,7 @@ Rules:
               type="button"
               onClick={onOpenSettings}
               title={`${mcpServerCount} MCP server${mcpServerCount === 1 ? "" : "s"} connected — click to manage`}
-              className="inline-flex items-center gap-1.5 rounded border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-[10.5px] text-[#a3a3a3] transition-colors hover:border-white/[0.14] hover:text-[#e8e8e8]"
+              className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
             >
               <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="2" width="5" height="5" rx="1" />
@@ -1261,7 +1261,7 @@ Rules:
             </button>
           )}
         </div>
-        <div className="relative rounded-lg border border-white/[0.08] bg-[var(--bg-elevated)] transition-colors duration-150 focus-within:border-white/[0.16]">
+        <div className="relative rounded-lg border border-(--border) bg-[var(--bg-elevated)] transition-colors duration-150 focus-within:border-(--border-strong)">
           <textarea
             value={input}
             onChange={(e) => {
@@ -1285,14 +1285,14 @@ Rules:
             }
             rows={1}
             spellCheck={false}
-            className="max-h-[140px] min-h-[46px] w-full resize-none bg-transparent px-3 pb-10 pt-2.5 pr-11 text-[12.5px] leading-5 text-[#ececec] outline-none placeholder:text-[#555555] disabled:opacity-60"
+            className="max-h-[140px] min-h-[46px] w-full resize-none bg-transparent px-3 pb-10 pt-2.5 pr-11 text-[12.5px] leading-5 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] disabled:opacity-60"
           />
           <div className="absolute bottom-1.5 right-1.5">
             {busy ? (
               <button
                 type="button"
                 onClick={stopAgent}
-                className="flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.08] text-[#ececec] transition hover:bg-white/[0.14]"
+                className="flex h-7 w-7 items-center justify-center rounded-md bg-(--fill-2) text-[var(--text-primary)] transition hover:bg-(--fill-3)"
                 title="Stop the agent"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
@@ -1303,7 +1303,7 @@ Rules:
               <button
                 type="submit"
                 disabled={!input.trim() || !configured}
-                className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8e8e8] text-[#141414] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-[#555555]"
+                className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8e8e8] text-[#141414] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-(--fill-2) disabled:text-[var(--text-faint)]"
                 title="Send to agent"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1313,9 +1313,9 @@ Rules:
             )}
           </div>
         </div>
-        <div className="mt-1 flex items-center justify-between px-1 text-[10px] text-[#4a4a4a]">
-          <span>Enter to send · Shift+Enter for a new line</span>
-          <span>Destructive actions need approval</span>
+        <div className="mt-1 flex items-center justify-between px-1 text-[10px] text-[var(--text-faint)]">
+          <span>Ai can make mistakes: verify information</span>
+          {/* <span>Destructive actions need approval</span> */}
         </div>
       </form>
     </aside>

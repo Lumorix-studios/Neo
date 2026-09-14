@@ -59,7 +59,7 @@ export default function OutputPanel() {
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as LogChannel | "All")}
-          className="rounded-md border border-white/[0.08] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[11px] text-[#d4d4d4] outline-none"
+          className="rounded-md border border-(--border) bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none"
         >
           {CHANNELS.map((c) => (
             <option key={c} value={c}>
@@ -67,7 +67,7 @@ export default function OutputPanel() {
             </option>
           ))}
         </select>
-        <span className="text-[10.5px] text-[#6b6b6b]">{shown.length} line(s)</span>
+        <span className="text-[10.5px] text-[var(--text-muted)]">{shown.length} line(s)</span>
         <div className="flex-1" />
         <button
           type="button"
@@ -77,7 +77,7 @@ export default function OutputPanel() {
           }}
           disabled={entries.length === 0}
           title="Clear output"
-          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[#a3a3a3] transition hover:bg-white/[0.06] hover:text-[#ececec] disabled:pointer-events-none disabled:opacity-40"
+          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:pointer-events-none disabled:opacity-40"
         >
           <IoBan size={11} />
           Clear
@@ -87,21 +87,21 @@ export default function OutputPanel() {
       {/* Stream */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2 font-mono text-[11px] leading-4 scrollbar-thin">
         {shown.length === 0 && (
-          <p className="py-2 font-sans text-[11.5px] text-[#6b6b6b]">
+          <p className="py-2 font-sans text-[11.5px] text-[var(--text-muted)]">
             No output yet — commit with the Git panel, run a problems scan or
             evaluate something in the debug console and it will show up here.
           </p>
         )}
         {shown.map((e, i) => (
           <p key={`${e.time}-${i}`} className="whitespace-pre-wrap break-all">
-            <span className="mr-2 select-none text-[#4f4f57]">{timeOf(e.time)}</span>
+            <span className="mr-2 select-none text-[var(--text-faint)]">{timeOf(e.time)}</span>
             <span
               className="mr-2 select-none"
               style={{ color: CHANNEL_COLORS[e.channel] }}
             >
               [{e.channel}]
             </span>
-            <span className="text-zinc-300">{e.message}</span>
+            <span className="text-[var(--text-primary)]">{e.message}</span>
           </p>
         ))}
         <div ref={endRef} />
