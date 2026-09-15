@@ -33,40 +33,24 @@ import {
   SiYaml,
 } from "react-icons/si";
 import { FaJava } from "react-icons/fa";
+import { IoDocumentOutline, IoImageOutline, IoLockClosedOutline } from "react-icons/io5";
 
 /** Folded-corner document fallback for unknown types. */
 function DocIcon({ tint }: { tint: string }) {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
-      <path
-        d="M4 1.75h5.2L12.5 5v8.25a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-10.5a1 1 0 0 1 1-1z"
-        fill="none" stroke={tint} strokeWidth="1.15" strokeLinejoin="round"
-      />
-      <path d="M9.2 1.75V5h3.3" fill="none" stroke={tint} strokeWidth="1.15" strokeLinejoin="round" />
-      <g stroke={tint} strokeWidth="1" strokeLinecap="round" opacity="0.65">
-        <path d="M5.2 8h5.6M5.2 10.4h5.6M5.2 12.4h3.4" />
-      </g>
-    </svg>
+    <IoDocumentOutline className="h-4 w-4 shrink-0" color={tint} />
   );
 }
 
 function ImageIcon() {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
-      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" fill="none" stroke="#7cb342" strokeWidth="1.2" />
-      <circle cx="5.6" cy="6.1" r="1.15" fill="#ffd54f" />
-      <path d="M3.4 12l3.1-3.4 2.2 2.3 2.3-2.6 2.6 3.7z" fill="#7cb342" opacity="0.85" />
-    </svg>
+    <IoImageOutline className="h-4 w-4 shrink-0" color="#7cb342" />
   );
 }
 
 function LockIcon() {
   return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
-      <rect x="3.25" y="7" width="9.5" height="7" rx="1.5" fill="#8d8d93" />
-      <path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" fill="none" stroke="#8d8d93" strokeWidth="1.4" />
-      <circle cx="8" cy="10.2" r="1" fill="#3f3f46" />
-    </svg>
+    <IoLockClosedOutline className="h-4 w-4 shrink-0" color="#8d8d93" />
   );
 }
 

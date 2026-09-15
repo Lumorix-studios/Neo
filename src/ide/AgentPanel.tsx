@@ -31,7 +31,7 @@ import {
   callMcpTool,
   type McpServerConfig,
 } from "../mcp";
-import { IoAdd } from "react-icons/io5";
+import { IoAdd, IoClose } from "react-icons/io5";
 
 type JsonDict = Record<string, unknown>;
 
@@ -1212,7 +1212,7 @@ Rules:
               className="shrink-0 text-red-300/60 transition hover:text-red-200"
               title="Dismiss"
             >
-              ✕
+              <IoClose size={14} />
             </button>
           </div>
         </div>

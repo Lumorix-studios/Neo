@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { IoArrowDownOutline, IoArrowUpOutline, IoClose, IoSearch } from "react-icons/io5";
 
 interface FindReplaceBarProps {
   query: string;
@@ -52,10 +53,7 @@ export default function FindReplaceBar({
       <div className="flex items-center gap-2">
         <div className="relative flex flex-1 items-center gap-1">
           <span className="text-[var(--text-faint)]">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <circle cx="7" cy="7" r="4.5" />
-              <path d="M10.5 10.5L14 14" />
-            </svg>
+            <IoSearch size={12} />
           </span>
           <input
             ref={qRef}
@@ -90,16 +88,16 @@ export default function FindReplaceBar({
           <span className="mx-0.5 h-4 w-px bg-(--fill-2)" />
           <button type="button" onClick={onPrev} title="Previous (Shift+Enter)"
             className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 12V4M4 8l4-4 4 4" /></svg>
+            <IoArrowUpOutline size={12} />
           </button>
           <button type="button" onClick={onNext} title="Next (Enter)"
             className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 4v8M4 8l4 4 4-4" /></svg>
+            <IoArrowDownOutline size={12} />
           </button>
           <span className="mx-0.5 h-4 w-px bg-(--fill-2)" />
           <button type="button" onClick={onClose} title="Close (Esc)"
             className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]">
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+            <IoClose size={11} />
           </button>
         </div>
       </div>

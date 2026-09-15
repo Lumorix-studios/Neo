@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useErrorHandler } from "../src/errorContext";
+import { IoClose, IoStar, IoStarOutline } from "react-icons/io5";
 
 interface Tab2Props {
   isOpen: boolean;
@@ -40,9 +41,7 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
             aria-label="Close"
             className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
+            <IoClose size={12} />
           </button>
         </div>
 
@@ -65,17 +64,11 @@ export default function Tab2({ isOpen, onClose }: Tab2Props) {
                 aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
                 className="p-1 transition-transform hover:scale-110"
               >
-                <svg
-                  width="26"
-                  height="26"
-                  viewBox="0 0 24 24"
-                  fill={(hover || rating) >= star ? "#ececec" : "none"}
-                  stroke={(hover || rating) >= star ? "#ececec" : "#555555"}
-                  strokeWidth="1.4"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                </svg>
+                {(hover || rating) >= star ? (
+                  <IoStar size={26} color="#ececec" />
+                ) : (
+                  <IoStarOutline size={26} color="#555555" />
+                )}
               </button>
             ))}
           </div>

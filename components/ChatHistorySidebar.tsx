@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChatSession } from "../src/types";
 import { providerById } from "../src/providers";
+import { IoAdd, IoChatbubbleOutline, IoClose, IoTrashOutline } from "react-icons/io5";
 
 interface Props {
   isOpen: boolean;
@@ -61,9 +62,7 @@ export default function ChatHistorySidebar({
                 onClick={onNewChat}
                 className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                  <path d="M8 3v10M3 8h10" />
-                </svg>
+                <IoAdd size={14} />
               </button>
               <button
                 type="button"
@@ -72,9 +71,7 @@ export default function ChatHistorySidebar({
                 onClick={onClose}
                 className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                  <path d="M4 4l8 8M12 4l-8 8" />
-                </svg>
+                <IoClose size={12} />
               </button>
             </div>
           </header>
@@ -83,9 +80,7 @@ export default function ChatHistorySidebar({
           <main className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             {sorted.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1.5 py-14 text-center">
-                <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="#4a4a4a" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 10.5a1.5 1.5 0 01-1.5 1.5H5l-3 3V3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7z" />
-                </svg>
+                <IoChatbubbleOutline size={22} className="text-[var(--text-faint)]" />
                 <p className="text-[12px] text-[var(--text-muted)]">No saved chats yet</p>
                 <p className="text-[11px] text-[var(--text-faint)]">
                   Start a conversation and it will appear here.
@@ -149,13 +144,9 @@ export default function ChatHistorySidebar({
                         }`}
                       >
                         {confirmDeleteId === session.id ? (
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                            <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8a1 1 0 001 .95h3.8a1 1 0 001-.95l.6-8" />
-                          </svg>
+                          <IoTrashOutline size={12} />
                         ) : (
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                            <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8a1 1 0 001 .95h3.8a1 1 0 001-.95l.6-8" />
-                          </svg>
+                          <IoTrashOutline size={12} />
                         )}
                       </button>
                     </div>

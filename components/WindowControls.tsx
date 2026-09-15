@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { IoClose, IoCopyOutline, IoRemove, IoSquareOutline } from "react-icons/io5";
 
 /**
  * Frameless-window controls (minimize / maximize / close) rendered in-app
@@ -30,40 +31,10 @@ export function closeWindow(): void {
   void currentWin()?.close();
 }
 
-const glyph = {
-  viewBox: "0 0 16 16",
-  className: "h-[11px] w-[11px]",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.35,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-};
-
-const MinimizeGlyph = (
-  <svg {...glyph}>
-    <path d="M3 8h10" />
-  </svg>
-);
-
-const MaximizeGlyph = (
-  <svg {...glyph}>
-    <rect x="3" y="3" width="10" height="10" rx="1.2" />
-  </svg>
-);
-
-const RestoreGlyph = (
-  <svg {...glyph}>
-    <rect x="2.5" y="2.5" width="7.5" height="11" rx="1.1" />
-    <rect x="7" y="2.5" width="6" height="7.5" rx="1.1" />
-  </svg>
-);
-
-const CloseGlyph = (
-  <svg {...glyph}>
-    <path d="M3.4 3.4l9.2 9.2M12.6 3.4l-9.2 9.2" />
-  </svg>
-);
+const MinimizeGlyph = <IoRemove className="h-[11px] w-[11px]" />;
+const MaximizeGlyph = <IoSquareOutline className="h-[11px] w-[11px]" />;
+const RestoreGlyph = <IoCopyOutline className="h-[11px] w-[11px]" />;
+const CloseGlyph = <IoClose className="h-[11px] w-[11px]" />;
 
 export default function WindowControls() {
   const [maximized, setMaximized] = useState(false);

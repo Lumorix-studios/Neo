@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { IoAlertCircle, IoRefresh } from "react-icons/io5";
+import { IoAlertCircle, IoRefresh, IoReloadOutline } from "react-icons/io5";
 import { logToBus } from "./logBus";
 
 interface ProblemsPanelProps {
@@ -113,9 +113,7 @@ export default function ProblemsPanel({
         <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
           {scanning ? (
             <span className="flex items-center gap-1.5">
-              <svg viewBox="0 0 16 16" className="h-3 w-3 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M8 1.5a6.5 6.5 0 106.5 6.5" />
-              </svg>
+              <IoReloadOutline className="h-3 w-3 animate-spin" />
               Scanning…
             </span>
           ) : (

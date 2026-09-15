@@ -1,5 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useErrorHandler } from "../src/errorContext";
+import { IoClose, IoInformationCircleOutline, IoLogoGithub, IoOpenOutline } from "react-icons/io5";
 
 interface InfoPanelProps {
   isOpen: boolean;
@@ -19,10 +20,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.08]">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#c9f2d6] text-[#152219]">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" />
-                <path d="M12 8v1M12 11v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
+              <IoInformationCircleOutline size={16} />
             </div>
             <div>
               <h2 className="text-[15px] font-semibold text-[#f1f1eb] m-0">Privacy Policies</h2>
@@ -33,9 +31,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] text-[#777873] transition hover:bg-white/[0.06] hover:text-[#f1f1eb]"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+            <IoClose size={14} />
           </button>
         </div>
 
@@ -44,9 +40,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
             <Section>
               <ActionButton
                 icon={
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2A10 10 0 002 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z"/>
-                  </svg>
+                  <IoLogoGithub size={15} />
                 }
                 onClick={async () => {
                   try {
@@ -121,21 +115,7 @@ function ActionButton({
           {sublabel}
         </div>
       </div>
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        className="text-[#777873] flex-shrink-0"
-      >
-        <path
-          d="M7 17L17 7M17 7H7M17 7v10"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <IoOpenOutline size={14} className="text-[#777873] flex-shrink-0" />
     </button>
   );
 }

@@ -1,7 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useErrorHandler } from "../src/errorContext";
-import WindowControls, { toggleMaximizeWindow } from "./WindowControls";
+import WindowControls from "./WindowControls";
+import { IoChevronForward, IoSearch } from "react-icons/io5";
 
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
@@ -148,14 +149,13 @@ export default function TopMenu({
     <nav
       ref={menuRef}
       className="relative z-50 flex h-[35px] shrink-0 items-center border-b border-(--border) bg-[var(--bg-panel)] pl-3 pr-2"
-      data-tauri-drag-region
-      onDoubleClick={() => toggleMaximizeWindow()}
+      data-tauri-drag-region="deep"
     >
       {/* Left: brand + menus */}
       <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
         <div
           className="mr-1.5 flex items-center gap-2 select-none"
-          data-tauri-drag-region
+          data-tauri-drag-region="deep"
         >
           <span className="relative flex h-6 w-6 items-center justify-center">
             <img
@@ -221,9 +221,7 @@ export default function TopMenu({
             className="ml-1.5 flex items-center gap-1 rounded-[4px] bg-(--fill-2) px-2 py-[3px] text-[11.5px] font-medium text-[var(--text-primary)] transition-colors hover:bg-(--fill-3) hover:text-[var(--text-primary)]"
           >
             IDE
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 3.5L10.5 8 6 12.5" />
-            </svg>
+            <IoChevronForward size={10} />
           </button>
         )}
       </div>
@@ -238,10 +236,7 @@ export default function TopMenu({
             title="Search commands and files (Ctrl+P)"
             className="flex h-[22px] w-[min(28vw,280px)] items-center justify-center gap-2 rounded-[6px] border border-(--border-strong) bg-(--fill-1) text-[11.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <circle cx="7" cy="7" r="4.4" />
-              <path d="M10.4 10.4L13.5 13.5" />
-            </svg>
+            <IoSearch size={11} />
             Search Neo
           </button>
         </div>

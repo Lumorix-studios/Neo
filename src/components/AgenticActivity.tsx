@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AgenticActivity as AgenticActivityType, FsEntry } from "../agentic";
 import { TOOL_LABELS } from "../agentic";
 import { diffStats } from "../../src/diff";
+import { IoChevronForward } from "react-icons/io5";
 
 interface AgenticActivityProps {
   items: AgenticActivityType[];
@@ -28,15 +29,9 @@ function shortPath(p: string): string {
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg
-      viewBox="0 0 16 16"
+    <IoChevronForward
       className={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform ${open ? "rotate-90" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <path d="M6 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    />
   );
 }
 

@@ -1,5 +1,6 @@
 import Noise from '../components/Noise'
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { IoClose } from "react-icons/io5";
 interface ErrorTabProps {
   isOpen: boolean;
   onClose: () => void;
@@ -37,19 +38,7 @@ export default function ErrorTab({ isOpen, onClose, message }: ErrorTabProps) {
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-(--border) text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[#f1f1eb]"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <path
-                d="M18 6L6 18M6 6l12 12"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
+            <IoClose size={14} />
           </button>
         </div>
 

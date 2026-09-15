@@ -5,10 +5,12 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   IoAdd,
   IoAlertCircle,
+  IoClose,
   IoCodeSlash,
   IoDocumentText,
   IoEyeOutline,
   IoPulse,
+  IoReloadOutline,
   IoTerminal,
   IoTrash,
 } from "react-icons/io5";
@@ -250,9 +252,7 @@ export default function BottomPanel({
             aria-label="Close panel"
             className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
+            <IoClose size={11} />
           </button>
         </div>
 
@@ -289,9 +289,7 @@ export default function BottomPanel({
                   </>
                 ) : spawning ? (
                   <p className="flex items-center gap-2 text-[11.5px] text-[var(--text-muted)]">
-                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                      <path d="M8 1.5a6.5 6.5 0 106.5 6.5" />
-                    </svg>
+                    <IoReloadOutline className="h-3.5 w-3.5 animate-spin" />
                     Spawning shell…
                   </p>
                 ) : (

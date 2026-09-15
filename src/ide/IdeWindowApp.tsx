@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import {IoChatboxEllipsesOutline, IoGitBranch, IoSettingsOutline,  } from "react-icons/io5";
-import WindowControls, { toggleMaximizeWindow } from "../../components/WindowControls";
+import WindowControls from "../../components/WindowControls";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
 import SettingsPanel, { type SectionId } from "../components/SettingsPanel";
@@ -549,8 +549,7 @@ export default function IdeWindowApp() {
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-editor)] text-[var(--text-primary)]">
       {/*Title bar: menus + workspace + window controls*/}
       <header
-        data-tauri-drag-region
-        onDoubleClick={() => toggleMaximizeWindow()}
+        data-tauri-drag-region="deep"
         className="flex h-[35px] shrink-0 items-center justify-between border-b border-(--border) bg-[var(--bg-chrome)] px-2"
       >
         <IdeMenuBar
@@ -572,10 +571,10 @@ export default function IdeWindowApp() {
           onToggleGit={() => setGitOpen((v) => !v)}
           onClosePanel={() => void appWindow.close()}
         />
-        <div data-tauri-drag-region className="flex items-center gap-1.5">
+        <div data-tauri-drag-region="deep" className="flex items-center gap-1.5">
           {workspaceRoot && (
             <span
-              data-tauri-drag-region
+              data-tauri-drag-region="deep"
               className="max-w-[350px] truncate text-[11.5px] text-[var(--text-secondary)]"
               title={workspaceRoot}
             >

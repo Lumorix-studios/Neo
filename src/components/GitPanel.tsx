@@ -12,6 +12,7 @@ import {
   IoClose,
   IoRefresh,
   IoAdd,
+  IoReloadOutline,
   IoRemove,
   IoSync,
   IoArrowUndo,
@@ -415,9 +416,7 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
         </div>
         <div className="flex items-center gap-0.5">
           {busy && (
-            <svg viewBox="0 0 16 16" className="mr-1 h-3 w-3 animate-spin text-[var(--text-muted)]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M8 1.5a6.5 6.5 0 106.5 6.5" />
-            </svg>
+            <IoReloadOutline className="mr-1 h-3 w-3 animate-spin text-[var(--text-muted)]" />
           )}
           <IconButton title="Refresh status" onClick={() => void refresh()} disabled={busy}>
             <IoRefresh size={13} />

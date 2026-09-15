@@ -1,3 +1,5 @@
+import { IoFolderOutline } from "react-icons/io5";
+
 interface Props {
   historySidebarOpen: boolean;
   onToggleHistorySidebar: () => void;
@@ -59,9 +61,7 @@ export default function StatusBar({
         </span>
         {workspaceName && (
           <span className="flex min-w-0 shrink-0 items-center gap-1 text-[var(--text-muted)]" title={workspaceName}>
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1.75 13V3.75A.75.75 0 012.5 3h3l1.5 1.75h6a.75.75 0 01.75.75V13a.75.75 0 01-.75.75h-10.5A.75.75 0 011.75 13z" />
-            </svg>
+            <IoFolderOutline size={10} />
             <span className="max-w-[140px] truncate">{workspaceName}</span>
           </span>
         )}

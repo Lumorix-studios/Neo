@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { IoOpenOutline, IoRefresh } from "react-icons/io5";
+import { IoOpenOutline, IoRefresh, IoReloadOutline } from "react-icons/io5";
 
 interface PortRow {
   port: number;
@@ -121,9 +121,7 @@ export default function PortsPanel({ active }: PortsPanelProps) {
         <span className="text-[11px] text-[var(--text-secondary)]">
           {scanning ? (
             <span className="flex items-center gap-1.5">
-              <svg viewBox="0 0 16 16" className="h-3 w-3 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M8 1.5a6.5 6.5 0 106.5 6.5" />
-              </svg>
+              <IoReloadOutline className="h-3 w-3 animate-spin" />
               Scanning…
             </span>
           ) : (
