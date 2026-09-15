@@ -41,7 +41,7 @@ import {
 } from "../extensions";
 import LocalModels from "../../components/LocalModels";
 
-import { IoCode } from "react-icons/io5";
+import { IoApps, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoSearch, IoShieldCheckmarkOutline, IoTerminal } from "react-icons/io5";
 
 
 export type SectionId =
@@ -318,10 +318,7 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> =
     id: "appearance",
     label: "Appearance",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3">
-        <circle cx="8" cy="8" r="6.25" />
-        <path d="M8 1.75a6.25 6.25 0 010 12.5z" fill="currentColor" stroke="none" opacity="0.35" />
-      </svg>
+      <IoContrastOutline className="h-3.5 w-3.5" />
     ),
   },
   {
@@ -336,58 +333,42 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> =
     id: "files",
     label: "Files & Save",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
-        <path d="M4 1.75h5.2L12.5 5v8.25a1 1 0 01-1 1H4a1 1 0 01-1-1v-10.5a1 1 0 011-1zM9.2 1.75V5h3.3" />
-      </svg>
+      <IoDocumentOutline className="h-3.5 w-3.5" />
     ),
   },
   {
     id: "shortcuts",
     label: "Shortcuts",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-        <rect x="1.75" y="4" width="12.5" height="8" rx="1.5" />
-        <path d="M4.5 7h.01M7 7h.01M9.5 7h.01M12 7h.01M4.5 9.5h7" />
-      </svg>
+      <IoKeyOutline className="h-3.5 w-3.5" />
     ),
   },
   {
     id: "extensions",
     label: "Extensions",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
-        <path d="M6 1.75a1.75 1.75 0 100 3.5h.75v1H2.75a1 1 0 00-1 1v2.25h1a1.75 1.75 0 110 3.5h-1v2.25a1 1 0 001 1H5v-1a1.75 1.75 0 013.5 0v1h2.25a1 1 0 001-1v-4.25h1a1.75 1.75 0 100-3.5h-1V3.75a1 1 0 00-1-1H6.75v-1z" />
-      </svg>
+      <IoApps className="h-3.5 w-3.5" />
     ),
   },
   {
     id: "terminal",
     label: "Terminal",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
-        <path d="M4.5 6l2.25 2L4.5 10M8.25 10.25h3" />
-      </svg>
+      <IoTerminal className="h-3.5 w-3.5" />
     ),
   },
   {
     id: "data",
     label: "Privacy & Data",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
-        <path d="M8 1.75l5 2v4.1c0 3.1-2.1 5.4-5 6.4-2.9-1-5-3.3-5-6.4V3.75l5-2z" />
-        <path d="M5.9 7.9l1.5 1.5 2.7-2.9" strokeLinecap="round" />
-      </svg>
+      <IoShieldCheckmarkOutline className="h-3.5 w-3.5" />
     ),
   },
   {
     id: "about",
     label: "About",
     icon: (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-        <circle cx="8" cy="8" r="6.25" />
-        <path d="M8 7.25v4M8 4.6v.01" />
-      </svg>
+      <IoInformationCircleOutline className="h-3.5 w-3.5" />
     ),
   },
 ];
@@ -675,9 +656,7 @@ return (
               aria-label="Close settings"
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M4 4l8 8M12 4l-8 8" />
-              </svg>
+              <IoClose size={11} />
             </button>
           </header>
 
@@ -1079,9 +1058,7 @@ return (
                         aria-label={`Remove ${s.name}`}
                         className="shrink-0 rounded p-1 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-400"
                       >
-                        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                          <path d="M4 4l8 8M12 4l-8 8" />
-                        </svg>
+                        <IoClose size={11} />
                       </button>
                     </div>
                   ))}
@@ -1266,10 +1243,7 @@ return (
                 <div className="sticky -top-4 z-10 -mx-4 mb-3 bg-[var(--bg-base)]/95 px-4 pb-2 pt-1 backdrop-blur-sm">
                   <div className="flex items-center gap-2">
                     <div className="relative min-w-0 flex-1">
-                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-faint)]">
-                        <circle cx="7" cy="7" r="4.5" />
-                        <path d="M10.5 10.5L14 14" />
-                      </svg>
+                      <IoSearch size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-faint)]" />
                       <input
                         value={extQuery}
                         onChange={(e) => setExtQuery(e.target.value)}
@@ -1451,9 +1425,7 @@ return (
                       className="flex items-center justify-between rounded-md border border-(--border) px-3 py-2 text-[12px] text-[var(--text-secondary)] transition hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
                     >
                       {label}
-                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6 3.5h6.5V10M12.5 3.5L3 13" />
-                      </svg>
+                      <IoOpenOutline size={10} />
                     </a>
                   ))}
                 </div>

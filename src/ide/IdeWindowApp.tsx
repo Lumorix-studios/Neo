@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import {IoChatboxEllipsesOutline, IoGitBranch, IoSettingsOutline,  } from "react-icons/io5";
+import {IoChatboxEllipsesOutline, IoFolderOpenOutline, IoGitBranch, IoSearch, IoSettingsOutline, IoTerminal,  } from "react-icons/io5";
 import WindowControls from "../../components/WindowControls";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
@@ -611,10 +611,7 @@ export default function IdeWindowApp() {
               title="Toggle file explorer (Ctrl+Shift+E)"
               onClick={() => setExplorerCollapsed((v) => !v)}
             >
-              <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
-                <path d="M1.5 7h13" opacity="0.5" />
-              </svg>
+              <IoFolderOpenOutline size={17} />
             </RailButton>
             <RailButton active={gitOpen} title="Git tools" onClick={() => setGitOpen((v) => !v)}>
               <IoGitBranch size={15} />
@@ -648,16 +645,10 @@ export default function IdeWindowApp() {
               title="Command Palette (Ctrl+Shift+P)"
               onClick={() => setPaletteOpen(true)}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-                <circle cx="7" cy="7" r="4.4" />
-                <path d="M10.4 10.4L14 14" />
-              </svg>
+              <IoSearch size={16} />
             </RailButton>
             <RailButton active={terminalOpen} title="Terminal (Ctrl+`)" onClick={() => setTerminalOpen((v) => !v)}>
-              <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" />
-                <path d="M4.5 6l2 1.7-2 1.7M8 9.8h3.5" />
-              </svg>
+              <IoTerminal size={17} />
             </RailButton>
             
           </div>

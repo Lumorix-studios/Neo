@@ -31,7 +31,7 @@ import {
   callMcpTool,
   type McpServerConfig,
 } from "../mcp";
-import { IoAdd, IoClose } from "react-icons/io5";
+import { IoAdd, IoApps, IoArrowUpOutline, IoClose, IoFolderOutline, IoStop, IoTrashOutline } from "react-icons/io5";
 
 type JsonDict = Record<string, unknown>;
 
@@ -1030,9 +1030,7 @@ Rules:
             title="Clear conversation"
             className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-              <path d="M2.5 4h11M6.5 4V2.8A.8.8 0 017.3 2h1.4a.8.8 0 01.8.8V4M4 4l.7 8.6a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.6 7v4M9.4 7v4" />
-            </svg>
+            <IoTrashOutline size={13} />
           </button>
         )}
         <button
@@ -1041,9 +1039,7 @@ Rules:
           title="Close agent panel (Ctrl+I)"
           className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
         >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
+          <IoClose size={12} />
         </button>
       </div>
 
@@ -1227,9 +1223,7 @@ Rules:
               title={workspaceRoot}
               className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)]"
             >
-              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z" />
-              </svg>
+              <IoFolderOutline size={9} />
               {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
             </span>
           ) : (
@@ -1251,12 +1245,7 @@ Rules:
               title={`${mcpServerCount} MCP server${mcpServerCount === 1 ? "" : "s"} connected — click to manage`}
               className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
             >
-              <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="2" width="5" height="5" rx="1" />
-                <rect x="9" y="2" width="5" height="5" rx="1" />
-                <rect x="2" y="9" width="5" height="5" rx="1" />
-                <rect x="9" y="9" width="5" height="5" rx="1" />
-              </svg>
+              <IoApps size={9} />
               {mcpServerCount} MCP
             </button>
           )}
@@ -1295,9 +1284,7 @@ Rules:
                 className="flex h-7 w-7 items-center justify-center rounded-md bg-(--fill-2) text-[var(--text-primary)] transition hover:bg-(--fill-3)"
                 title="Stop the agent"
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="6" width="12" height="12" rx="2" />
-                </svg>
+                <IoStop size={11} />
               </button>
             ) : (
               <button
@@ -1306,9 +1293,7 @@ Rules:
                 className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8e8e8] text-[#141414] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-(--fill-2) disabled:text-[var(--text-faint)]"
                 title="Send to agent"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
+                <IoArrowUpOutline size={13} />
               </button>
             )}
           </div>

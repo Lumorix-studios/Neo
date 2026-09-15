@@ -12,6 +12,7 @@ import { langOf, highlightCode, commentToken } from "./highlight";
 import { FileIcon } from "./FileIcon";
 import FindReplaceBar from "./FindReplaceBar";
 import TextType from '../../components/TextType';
+import { IoChevronForward, IoClipboardOutline, IoClose, IoCodeSlashOutline, IoCopyOutline, IoCutOutline, IoListOutline, IoSearch, IoTrashOutline } from "react-icons/io5";
 export interface EditorTab {
   path: string;
   content: string;
@@ -277,9 +278,12 @@ export default function CodeEditor({
 
   // Keep the active-line band and the highlighted gutter row on the cursor's
   // line (imperative updates — the memoized gutter never re-renders here).
+  // The band's position is logical-line based, so it is hidden while wrapping
+  // (its row cannot represent a wrapped fragment).
   useEffect(() => {
     if (activeBandRef.current) {
       activeBandRef.current.style.top = `${PAD_TOP + (cursor.line - 1) * LINE_HEIGHT}px`;
+      activeBandRef.current.style.display = WORD_WRAP ? "none" : "";
     }
     const g = gutterInnerRef.current;
     if (g) {
@@ -288,7 +292,7 @@ export default function CodeEditor({
       const cur = g.querySelector<HTMLElement>(`[data-ln="${cursor.line}"]`);
       if (cur) cur.classList.add("gutter-active", "font-medium", "text-[var(--text-secondary)]");
     }
-  }, [cursor.line, LINE_HEIGHT, lineCount, activePath]);
+  }, [cursor.line, LINE_HEIGHT, lineCount, activePath, WORD_WRAP]);
 
   
   const replaceRange = (text: string, from: number, to: number) => {
@@ -694,19 +698,15 @@ export default function CodeEditor({
                   type="button"
                   onClick={() => onClose(t.path)}
                   aria-label={`Close ${fileName(t.path)}`}
-                  className="mr-1.5 flex h-5 w-5 items-center justify-center rounded transition"
+                  className="mr-1.5 flex h-5 w-5 shrink-0 self-center items-center justify-center rounded transition"
                 >
                   {t.dirty ? (
                     <>
                       <span className="h-[7px] w-[7px] rounded-full bg-zinc-400 group-hover:hidden" />
-                      <svg viewBox="0 0 16 16" className="hidden h-3 w-3 group-hover:block" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                        <path d="M4 4l8 8M12 4l-8 8" />
-                      </svg>
+                      <IoClose className="hidden h-3 w-3 group-hover:block" />
                     </>
                   ) : (
-                    <svg viewBox="0 0 16 16" className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-70" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                      <path d="M4 4l8 8M12 4l-8 8" />
-                    </svg>
+                    <IoClose className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-70" />
                   )}
                 </button>
               </div>
@@ -724,9 +724,7 @@ export default function CodeEditor({
               aria-label="Close all tabs"
               className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 4h10M5.5 4V2.9A.9.9 0 016.4 2h3.2a.9.9 0 01.9.9V4M6.5 6.5v5M9.5 6.5v5M4.2 4l.6 8.4a1 1 0 001 .9h4.4a1 1 0 001-.9L11.8 4" />
-              </svg>
+              <IoTrashOutline className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
@@ -740,9 +738,7 @@ export default function CodeEditor({
             {visibleCrumbs.map((seg, i) => (
               <span key={`${seg}-${i}`} className="flex items-center gap-1.5 whitespace-nowrap">
                 {i > 0 && (
-                  <svg viewBox="0 0 16 16" className="h-2.5 w-2.5 text-zinc-700" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M6 3.5L10.5 8 6 12.5" />
-                  </svg>
+                  <IoChevronForward className="h-2.5 w-2.5 text-zinc-700" />
                 )}
                 <span className={i === visibleCrumbs.length - 1 ? "font-medium text-(--accent)" : "text-[var(--text-muted)]"}>
                   {seg}
@@ -786,10 +782,7 @@ export default function CodeEditor({
                   className="flex flex-1 items-center gap-2"
                 >
                   <span className="text-[var(--text-faint)]">
-                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                      <rect x="3" y="6" width="10" height="8" rx="1.5" />
-                      <path d="M5.5 9h.01M8 9h.01M10.5 9h.01M4 6V4.5h8V6" />
-                    </svg>
+                    <IoCodeSlashOutline size={11} />
                   </span>
                   <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Line</span>
                   <input
@@ -812,7 +805,7 @@ export default function CodeEditor({
                   title="Close"
                   className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                 >
-                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+                  <IoClose size={11} />
                 </button>
               </div>
             </div>
@@ -820,8 +813,10 @@ export default function CodeEditor({
 
           {/* ── Editor surface ──────────────────────────────────── */}
           <div className="flex min-h-0 flex-1">
-            {/* Line-number gutter */}
-            {SHOW_LINE_NUMBERS && (
+            {/* Line-number gutter — hidden while wrapping: numbers follow
+                logical lines but wrapped rows are visual rows, so showing them
+                would actively mislabel lines. */}
+            {SHOW_LINE_NUMBERS && !WORD_WRAP && (
               <LineNumberGutter
                 lineCount={lineCount}
                 width={gutterDigits * FONT_SIZE * 0.62 + 28}
@@ -859,12 +854,18 @@ export default function CodeEditor({
                 ref={preRef}
                 aria-hidden
                 className={`pointer-events-none absolute inset-0 m-0 overflow-hidden pb-20 pl-4 pr-10 text-[var(--text-primary)] ${
-                  WORD_WRAP ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+                  WORD_WRAP ? "whitespace-pre-wrap" : "whitespace-pre"
                 }`}
                 style={{
                   paddingTop: PAD_TOP,
                   lineHeight: `${LINE_HEIGHT}px`,
                   tabSize: TAB_SIZE,
+                  // Match the <textarea>'s eager soft-wrap breaking exactly:
+                  // both layers now break long tokens anywhere and reserve the
+                  // same scrollbar gutter width, so wrap points (and therefore
+                  // line positions) can never diverge.
+                  overflowWrap: "anywhere",
+                  scrollbarGutter: "stable",
                 }}
                 dangerouslySetInnerHTML={{ __html: highlighted }}
               />
@@ -886,9 +887,18 @@ export default function CodeEditor({
                 autoCorrect="off"
                 wrap={WORD_WRAP ? "soft" : "off"}
                 className={`absolute inset-0 resize-none overflow-auto bg-transparent pb-20 pl-4 pr-10 text-transparent caret-(--accent) outline-none selection:bg-(--accent)/25 ${
-                  WORD_WRAP ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+                  WORD_WRAP ? "whitespace-pre-wrap" : "whitespace-pre"
                 }`}
-                style={{ paddingTop: PAD_TOP, lineHeight: `${LINE_HEIGHT}px`, tabSize: TAB_SIZE }}
+                style={{
+                  paddingTop: PAD_TOP,
+                  lineHeight: `${LINE_HEIGHT}px`,
+                  tabSize: TAB_SIZE,
+                  // Force the same breaking rules as the highlight layer above
+                  // and reserve the scrollbar gutter on both, so soft-wrapped
+                  // rows stay pixel-identical (no more caret-on-the-wrong-line).
+                  overflowWrap: "anywhere",
+                  scrollbarGutter: "stable",
+                }}
               />
             </div>
           </div>
@@ -1018,7 +1028,7 @@ export default function CodeEditor({
               onClick={() => { document.execCommand("cut"); setCtxMenu(null); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M6 8L2 2M2 14l4-6M6 8l8-6M14 14l-8-6" /></svg>
+              <IoCutOutline size={12} />
               Cut
               <span className="kbd ml-auto">Ctrl+X</span>
             </button>
@@ -1027,7 +1037,7 @@ export default function CodeEditor({
               onClick={() => { document.execCommand("copy"); setCtxMenu(null); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M3.5 3.5h7v1" /></svg>
+              <IoCopyOutline size={12} />
               Copy
               <span className="kbd ml-auto">Ctrl+C</span>
             </button>
@@ -1036,7 +1046,7 @@ export default function CodeEditor({
               onClick={() => { document.execCommand("paste"); setCtxMenu(null); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 4a1 1 0 011-1h2l1-1.5h2L10 3h2a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1z" /></svg>
+              <IoClipboardOutline size={12} />
               Paste
               <span className="kbd ml-auto">Ctrl+V</span>
             </button>
@@ -1046,7 +1056,7 @@ export default function CodeEditor({
               onClick={() => { taRef.current?.select(); setCtxMenu(null); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="3" y="3" width="10" height="10" rx="1" /><path d="M6 6h4M6 8h4M6 10h2" /></svg>
+              <IoListOutline size={12} />
               Select All
               <span className="kbd ml-auto">Ctrl+A</span>
             </button>
@@ -1056,7 +1066,7 @@ export default function CodeEditor({
               onClick={() => { setCtxMenu(null); openFind(); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></svg>
+              <IoSearch size={12} />
               Find…
               <span className="kbd ml-auto">Ctrl+F</span>
             </button>
@@ -1065,7 +1075,7 @@ export default function CodeEditor({
               onClick={() => { setCtxMenu(null); setGoToOpen(true); setGoToInput(String(cursor.line)); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><rect x="3" y="6" width="10" height="8" rx="1.5" /><path d="M5.5 9h.01M8 9h.01M10.5 9h.01M4 6V4.5h8V6" /></svg>
+              <IoCodeSlashOutline size={12} />
               Go to Line…
               <span className="kbd ml-auto">Ctrl+G</span>
             </button>

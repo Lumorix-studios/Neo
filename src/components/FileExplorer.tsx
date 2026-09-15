@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FsEntry } from "../agentic";
 import { FileIcon } from "./FileIcon";
-import { IoFolderOutline } from "react-icons/io5";
+import { IoAdd, IoChevronForward, IoClose, IoContractOutline, IoFolderOpen, IoFolderOpenOutline, IoFolderOutline, IoPencilOutline, IoRefresh, IoSearch, IoTrashOutline } from "react-icons/io5";
 
 const SKIP = new Set([
   "node_modules",
@@ -35,40 +35,17 @@ interface NodeState {
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <svg
-      viewBox="0 0 16 16"
+    <IoChevronForward
       className={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150 ${open ? "rotate-90" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M6 4l4 4-4 4" />
-    </svg>
+    />
   );
 }
 
 function FolderIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className={`h-4 w-4 shrink-0 transition-colors duration-150 ${open ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]"}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {open ? (
-        <>
-          <path d="M1.5 12.5V3.75A.75.75 0 0 1 2.25 3h3l1.5 1.75h5.25a.75.75 0 0 1 .75.75V7" />
-          <path d="M1.5 12.5l1.9-4.55a.75.75 0 0 1 .69-.45h9.36a.5.5 0 0 1 .46.7L12.2 12.5H1.5z" />
-        </>
-      ) : (
-        <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
-      )}
-    </svg>
+  return open ? (
+    <IoFolderOpen className="h-4 w-4 shrink-0 transition-colors duration-150 text-[var(--text-primary)]" />
+  ) : (
+    <IoFolderOutline className="h-4 w-4 shrink-0 transition-colors duration-150 text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]" />
   );
 }
 
@@ -401,9 +378,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
                 aria-label="New file or folder"
                 className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
-                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                  <path d="M8 3v10M3 8h10" />
-                </svg>
+                <IoAdd className="h-3.5 w-3.5" />
               </button>
               {newMenu && (
                 <>
@@ -443,9 +418,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               title="Collapse folders"
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h10M5.5 3.5L3 6l2.5 2.5M13 10H3M10.5 7.5L13 10l-2.5 2.5" />
-              </svg>
+              <IoContractOutline className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -453,26 +426,16 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               title="Refresh"
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v2.6h-2.6" />
-              </svg>
+              <IoRefresh className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
 
         {/* Filter box */}
         <div className="relative px-3 pb-1.5 pt-1">
-          <svg
-            viewBox="0 0 16 16"
+          <IoSearch
             className="pointer-events-none absolute left-[20px] top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-faint)]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          >
-            <circle cx="7" cy="7" r="4.4" />
-            <path d="M10.4 10.4L13.5 13.5" />
-          </svg>
+          />
           <input
             value={query}
             onChange={(ev) => setQuery(ev.target.value)}
@@ -487,9 +450,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               title="Clear filter"
               className="absolute right-[18px] top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-[var(--text-muted)] transition hover:text-[var(--text-primary)]"
             >
-              <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                <path d="M4 4l8 8M12 4l-8 8" />
-              </svg>
+              <IoClose className="h-3 w-3" />
             </button>
           )}
         </div>
@@ -504,9 +465,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
         )}
         {tree.length === 0 && creating?.parent !== root ? (
           <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
-            <svg viewBox="0 0 16 16" className="h-6 w-6 text-[var(--text-faint)]" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
-            </svg>
+            <IoFolderOpenOutline className="h-6 w-6 text-[var(--text-faint)]" />
             <p className="text-[11px] leading-5 text-[var(--text-muted)]">
               {query ? `No files match "${query}"` : "This folder is empty."}
             </p>
@@ -578,9 +537,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
             >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11.5 1.75l2.75 2.75L5.5 13.25 2 14l.75-3.5z" />
-              </svg>
+              <IoPencilOutline className="h-3.5 w-3.5" />
               Rename…
             </button>
             <button
@@ -588,9 +545,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               onClick={() => void deleteEntry(menu.entry)}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[#e5534b] transition hover:bg-[#e5534b]/10"
             >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.75 9.5h6.5L12 4M6.5 7v4M9.5 7v4" />
-              </svg>
+              <IoTrashOutline className="h-3.5 w-3.5" />
               Delete
             </button>
           </div>

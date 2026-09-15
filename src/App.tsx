@@ -70,7 +70,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAlertSharp, IoCopyOutline, IoThumbsDownSharp, IoThumbsUpSharp, IoSend } from "react-icons/io5";
+import { IoAdd, IoAlertSharp, IoBarChartOutline, IoBugOutline, IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, IoSparkles, IoStop, IoSettingsOutline, IoTerminal, IoThumbsDownSharp, IoThumbsUpSharp, IoSend } from "react-icons/io5";
 import { shortPath } from "./utils";
 
 type JsonDict = Record<string, unknown>;
@@ -208,31 +208,20 @@ const CONTEXT_LIMITS: Array<[string, number]> = [
   ["llama", 8192],
 ];
 
-/** Small stroke icon used on the welcome-screen action cards. */
+/** Small icon used on the welcome-screen action cards. */
 function CardIcon({ name }: { name: string }) {
-  const paths: Record<string, string> = {
-    folder:
-      "M1.5 4.5A1.5 1.5 0 013 3h3l1.5 1.75H13A1.5 1.5 0 0114.5 6.25V12A1.5 1.5 0 0112.5 13.5h-9A1.5 1.5 0 011.5 12V4.5z",
-    chart: "M2.5 13.5v-5M8 13.5V2.5M13.5 13.5v-8",
-    bug: "M8 5.5a2.75 2.75 0 00-2.75 2.75v1.5a2.75 2.75 0 005.5 0v-1.5A2.75 2.75 0 008 5.5zM5.25 8.75H2.5M13.5 8.75h-2.75M8 5.5V3.75M5.9 6.2L4.4 4.7M10.1 6.2l1.5-1.5M6.5 11.5v1.5M9.5 11.5v1.5",
-    sparkle:
-      "M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z",
-  };
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="var(--accent)"
-      strokeWidth="1.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0 opacity-60"
-    >
-      <path d={paths[name] ?? paths.sparkle} />
-    </svg>
-  );
+  const cls = "shrink-0 opacity-60";
+  const color = "var(--accent)";
+  switch (name) {
+    case "folder":
+      return <IoFolderOutline size={13} className={cls} color={color} />;
+    case "chart":
+      return <IoBarChartOutline size={13} className={cls} color={color} />;
+    case "bug":
+      return <IoBugOutline size={13} className={cls} color={color} />;
+    default:
+      return <IoSparkles size={13} className={cls} color={color} />;
+  }
 }
 
 function contextLimitFor(model: string): number {
@@ -276,9 +265,7 @@ function MessageAction({
       }`}
     >
       {done ? (
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 8.5l3.2 3L13 4.5" />
-        </svg>
+        <IoCheckmark size={13} />
       ) : (
         children
       )}
@@ -1681,25 +1668,27 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           right={
             <>
               {/* Provider / model pill */}
-              <div className="relative min-w-0">
+              <div className="relative min-w-0 max-w-full">
                 <button
                   type="button"
                   onClick={() => setModelOpen((v) => !v)}
                   title="Switch AI provider"
-                  className="flex min-w-0 items-center gap-1.5 rounded-md border border-(--border) bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
+                  className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-(--border) bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
                 >
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                       settings.apiKey || !spec.needsAuth ? "bg-emerald-500" : "bg-zinc-600"
                     }`}
                   />
-                  <span className="min-w-0 max-w-[140px] truncate">{settings.model || spec.label}</span>
+                  <span className="min-w-0 max-w-[min(22vw,150px)] flex-1 truncate">
+                    {settings.model || spec.label}
+                  </span>
                   {!settings.apiKey && spec.needsAuth && (
-                    <span className="hidden text-[var(--text-muted)] sm:inline">(not configured)</span>
+                    <span className="hidden shrink-0 whitespace-nowrap text-[var(--text-muted)] sm:inline">
+                      (not configured)
+                    </span>
                   )}
-                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 6l4 4 4-4" />
-                  </svg>
+                  <IoChevronDown size={10} className="shrink-0" />
                 </button>
                 {modelOpen && (
                   <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-(--border-strong) bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
@@ -1774,9 +1763,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                 aria-label="New chat"
                 className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
               >
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                  <path d="M8 3v10M3 8h10" />
-                </svg>
+                <IoAdd size={13} />
               </button>
             </>
           }
@@ -1800,16 +1787,10 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-(--border) bg-[var(--bg-panel)] py-1">
             <div className="w-full">
               <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
-                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" />
-                  <path d="M4.5 6l2 1.7-2 1.7M8 9.8h3.5" />
-                </svg>
+                <IoTerminal size={17} />
               </RailButton>
               <RailButton active={settingsOpen} title="Settings (Ctrl+,)" onClick={() => setSettingsOpen(true)}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="8" cy="8" r="2.1" />
-                  <path d="M8 1.6l.7 1.7a4.9 4.9 0 011.7.7l1.8-.6 1.2 2-1.1 1.5a4.9 4.9 0 010 1.9l1.1 1.5-1.2 2-1.8-.6a4.9 4.9 0 01-1.7.7L8 14.4l-.7-1.7a4.9 4.9 0 01-1.7-.7l-1.8.6-1.2-2 1.1-1.5a4.9 4.9 0 010-1.9L2.6 5.7l1.2-2 1.8.6a4.9 4.9 0 011.7-.7z" />
-                </svg>
+                <IoSettingsOutline size={16} />
               </RailButton>
             </div>
           </nav>
@@ -1834,12 +1815,14 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
               </div>
               {workspaceRoot && (
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[var(--text-primary)] text-[10px] font-mono">
-                  <span>📁</span> {shortPath(workspaceRoot)}
+                  <span><IoFolderOutline/>
+                  </span> {shortPath(workspaceRoot)}
                 </div>
               )}
               {activeEditorPath && (
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10px] font-mono">
-                  <span>📄</span> {shortPath(activeEditorPath)}
+                  <span>
+                  </span> {shortPath(activeEditorPath)}
                 </div>
               )}
               {!workspaceRoot && !activeEditorPath && (
@@ -1907,12 +1890,12 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         onClick={() => {
                           void launchIdeWindow();
                         }}
-                        color="magenta"
+                        color="lightblue"
                         speed="5s"
                         thickness={1}
                         backgroundColor="rgba(255, 255, 255, 0.02)"
                         borderColor="rgba(255, 255, 255, 0.08)"
-                        className="w-full rounded-[12px] transition hover:bg-(--fill-1)"
+                        className="w-full rounded-[2px] transition hover:bg-(--fill-1)"
                         innerClassName="px-3 py-2.5 text-left"
                       >
                         
@@ -1930,19 +1913,18 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           label: "Summarize my project",
                           desc: "A quick overview of what's here",
                           prompt: "Summarize my project in small details",
-                          icon: "chart",
                         },
                         {
                           label: "Find and fix bugs",
                           desc: "Scan for issues and apply fixes",
                           prompt: "Find and fix bugs and make sure they aren't repeated again",
-                          icon: "bug",
+                         
                         },
                         {
                           label: "Write a new feature",
                           desc: "Describe it and Neo builds it",
                           prompt: "Write a new feature in my code",
-                          icon: "sparkle",
+                          
                         },
                       ].map((card) => (
                         <StarBorder
@@ -1950,16 +1932,16 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                           as="button"
                           type="button"
                           onClick={() => setMessage(card.prompt)}
-                          color="magenta"
+                          color="lightblue"
                           speed="5s"
                           thickness={1}
                           backgroundColor="rgba(255, 255, 255, 0.02)"
                           borderColor="rgba(255, 255, 255, 0.08)"
-                          className="w-full rounded-[12px] transition hover:bg-(--fill-1)"
+                          className="w-full rounded-[2px] transition hover:bg-(--fill-1)"
                           innerClassName="px-3 py-2.5 text-left"
                         >
                           <span className="flex items-center gap-2">
-                            <CardIcon name={card.icon} />
+                            {/* <CardIcon name={card.icon} /> */}
                             <span className="block text-[12.5px] font-medium text-[var(--text-primary)]">{card.label}</span>
                           </span>
                           <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-faint)]">{card.desc}</span>
@@ -1983,7 +1965,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       <span className="flex items-center gap-1.5">
                         <span className="kbd">Ctrl</span>
                         <span className="kbd">B</span>
-                        AI settings
+                        AI config
                       </span>
                     </div>
                   </div>
@@ -2112,9 +2094,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                       className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                       title="Open IDE window"
                     >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                        <path d="M8 3v10M3 8h10" />
-                      </svg>
+                      <IoAdd size={14} />
                     </button>
                     {isLoading ? (
                       <button
@@ -2123,9 +2103,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                         className="flex h-7 w-7 items-center justify-center rounded-md bg-(--fill-2) text-[var(--text-primary)] transition hover:bg-(--fill-3)"
                         title="Stop streaming"
                       >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                          <rect x="6" y="6" width="12" height="12" rx="2" />
-                        </svg>
+                        <IoStop size={11} />
                       </button>
                     ) : (
                       <button

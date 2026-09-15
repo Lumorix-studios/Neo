@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { IoSettingsOutline } from "react-icons/io5";
+import {
+  IoCheckmark,
+  IoContractOutline,
+  IoDiamondOutline,
+  IoDocumentOutline,
+  IoDocumentTextOutline,
+  IoFolderOutline,
+  IoGitNetworkOutline,
+  IoSaveOutline,
+  IoSettingsOutline,
+  IoTerminal,
+} from "react-icons/io5";
 
 interface IdeMenuBarProps {
   hasWorkspace: boolean;
@@ -31,70 +42,24 @@ interface MenuItem {
 
 
 const iconProps = {
-  viewBox: "0 0 16 16",
   className: "h-3.5 w-3.5 shrink-0",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.4,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
 };
 
-const FolderGlyph = (
-  <svg {...iconProps}>
-    <path d="M1.75 13V3.75A.75.75 0 0 1 2.5 3h3l1.5 1.75h6a.75.75 0 0 1 .75.75V13a.75.75 0 0 1-.75.75h-10.5A.75.75 0 0 1 1.75 13z" />
-  </svg>
-);
+const FolderGlyph = <IoFolderOutline {...iconProps} />;
 
-const FileGlyph = (
-  <svg {...iconProps}>
-    <path d="M4 1.75h5.2L12.5 5v8.25a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-10.5a1 1 0 0 1 1-1zM9.2 1.75V5h3.3" />
-  </svg>
-);
+const FileGlyph = <IoDocumentOutline {...iconProps} />;
 
-const TabsGlyph = (
-  <svg {...iconProps}>
-    <rect x="1.75" y="4.25" width="10" height="8.5" rx="1.2" />
-    <path d="M4.5 4.25V2.75a1 1 0 0 1 1-1h7.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-.75" />
-  </svg>
-);
+const TabsGlyph = <IoDocumentTextOutline {...iconProps} />;
 
-const TerminalGlyph = (
-  <svg {...iconProps}>
-    <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" />
-    <path d="M4.5 6l2 1.7-2 1.7M8 9.8h3.5" />
-  </svg>
-);
+const TerminalGlyph = <IoTerminal {...iconProps} />;
 
-const PanelCloseGlyph = (
-  <svg {...iconProps}>
-    <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.6" />
-    <path d="M10 2.75v10.5M12 6.5l-1.5 1.5L12 9.5" />
-  </svg>
-);
+const PanelCloseGlyph = <IoContractOutline {...iconProps} />;
 
-const CheckGlyph = (
-  <svg {...iconProps} strokeWidth={1.8}>
-    <path d="M3 8.5l3.2 3L13 4.5" />
-  </svg>
-);
+const CheckGlyph = <IoCheckmark {...iconProps} />;
 
-const SaveGlyph = (
-  <svg {...iconProps}>
-    <path d="M3.5 3h7.4l2.1 2.1v7.4a.5.5 0 01-.5.5H3.5a.5.5 0 01-.5-.5v-9a.5.5 0 01.5-.5z" />
-    <path d="M5.5 3v3.4h4.4V3" />
-    <path d="M5.5 13V9.2h5V13" />
-  </svg>
-);
+const SaveGlyph = <IoSaveOutline {...iconProps} />;
 
-const GitGlyph = (
-  <svg {...iconProps}>
-    <circle cx="5" cy="4" r="1.9" />
-    <circle cx="5" cy="12" r="1.9" />
-    <circle cx="11.5" cy="8" r="1.9" />
-    <path d="M5 5.9v4.2M6.9 4.7l2.9 2.1M6.9 11.3l2.9-2.1" />
-  </svg>
-);
+const GitGlyph = <IoGitNetworkOutline {...iconProps} />;
 const Settings = (
   <IoSettingsOutline size={14} className="shrink-0" />
 )
@@ -227,10 +192,7 @@ export default function IdeMenuBar({
   return (
     <div ref={barRef} className="flex items-center gap-0.5">
       {/* Brand glyph to ground the bar */}
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#8a8a8a" strokeWidth="1.1" strokeLinejoin="round" className="mr-1 opacity-80">
-        <path d="M8 1l6 3.5v7L8 15l-6-3.5v-7L8 1z" />
-        <path d="M8 1v7m0 0l6-3.5M8 8L2 4.5" opacity="0.5" />
-      </svg>
+      <img src="/app-icon.png" alt="Agentic Coder logo" className="h-5 w-5 shrink-0" />
       {renderMenu("file", "File", fileItems)}
       {renderMenu("view", "View", viewItems)}
     </div>
