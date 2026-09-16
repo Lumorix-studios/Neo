@@ -17,7 +17,7 @@ NEO is designed around local data ownership and user-controlled AI infrastructur
 <!-- SCREENSHOT: Main NEO interface -->
 
 <p align="center">
-  <img src="src/assets/images/previewss2.0.png" alt="NEO coding environment" width="900" />
+  <img src="src/assets/images/preview sss.png" alt="NEO coding environment" width="900" />
 </p>
 
 ---
@@ -70,10 +70,6 @@ Destructive operations require explicit user approval.
 Agent operations are displayed through an activity timeline with tool status and output.
 
 <!-- SCREENSHOT: Agent activity / tool timeline -->
-
-<p align="center">
-  <img src="docs/screenshots/agent-tools.png" alt="NEO agent activity timeline" width="850" />
-</p>
 
 ---
 
@@ -196,9 +192,7 @@ NEO does not bundle complete compiler toolchains into the application. It instea
 
 <!-- SCREENSHOT: Terminal + multiple sessions -->
 
-<p align="center">
-  <img src="docs/screenshots/terminal.png" alt="NEO integrated PowerShell terminal" width="900" />
-</p>
+
 
 ---
 
