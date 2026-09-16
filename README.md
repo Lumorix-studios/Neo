@@ -17,7 +17,7 @@ NEO is designed around local data ownership and user-controlled AI infrastructur
 <!-- SCREENSHOT: Main NEO interface -->
 
 <p align="center">
-  <img src="src/assets/neo-overview.png" alt="NEO coding environment" width="900" />
+  <img src="src/assets/images/previewss2.0.png" alt="NEO coding environment" width="900" />
 </p>
 
 ---
@@ -127,7 +127,7 @@ Ctrl + Shift + E
 <!-- SCREENSHOT: Code editor + file explorer -->
 
 <p align="center">
-  <img src="docs/screenshots/editor.png" alt="NEO integrated code editor" width="900" />
+  <img src="src/assets/images/IDE.png" alt="NEO integrated code editor" width="900" />
 </p>
 
 ---
@@ -155,7 +155,7 @@ This allows users to review modifications before they become part of the project
 <!-- SCREENSHOT: Change review / diff -->
 
 <p align="center">
-  <img src="docs/screenshots/change-review.png" alt="NEO change review interface" width="850" />
+  <img src="src/assets/images/previewss2.0.png" alt="NEO change review interface" width="850" />
 </p>
 
 ---
