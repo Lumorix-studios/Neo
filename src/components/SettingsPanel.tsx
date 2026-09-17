@@ -1400,7 +1400,7 @@ return (
                   </div>
                   <div>
                     <p className="text-[14px] font-semibold text-[var(--text-primary)]">Neo</p>
-                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.0.7 (Beta) · AI-native code workspace</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.0.8 (Beta) · AI-native code workspace</p>
                   </div>
                 </div>
 
