@@ -1,25 +1,24 @@
 # NEO
 
 ### Lightweight Agentic Coding Environment
-### In very early stages
+
 <p align="left">
-  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/TSX-3178C6?style=for-the-badge&logo=react&logoColor=white" alt="TSX" />
-  <img src="https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white" alt="Tauri" />
-  <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
-  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" />
-  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
-  <img src="https://img.shields.io/badge/CSS-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" />
-  <img src="https://img.shields.io/badge/TOML-9C4221?style=for-the-badge&logo=toml&logoColor=white" alt="TOML" />
+  <img src="https://skillicons.dev/icons?i=react,ts,tauri,rust,kotlin,vite,tailwind,css,toml" alt="React, TypeScript, Tauri, Rust, Kotlin, Vite, Tailwind CSS, CSS, TOML" />
 </p>
+
+> **NEO is currently in beta and under active development.**
 
 NEO is a lightweight agentic coding environment built with React, TypeScript, Tauri, and Rust.
 
 It combines an integrated code editor, AI agent, filesystem tools, Git integration, terminals, debugging infrastructure, MCP support, configurable model providers, and local model support into a single development environment.
 
 NEO is designed around local data ownership and user-controlled AI infrastructure. The application does not require a NEO-operated cloud service for storing application data, conversations, configuration, or project information.
+
+<!-- SCREENSHOT: Main NEO interface -->
+
+<p align="center">
+  <img src="src/assets/images/preview sss.png" alt="NEO coding environment" width="900" />
+</p>
 
 ---
 
@@ -42,9 +41,9 @@ The application is designed around the following principles:
 
 ---
 
-## Features
+# Features
 
-### Agentic Coding
+## Agentic Coding
 
 NEO provides models with filesystem tools for interacting with development projects.
 
@@ -70,9 +69,11 @@ Destructive operations require explicit user approval.
 
 Agent operations are displayed through an activity timeline with tool status and output.
 
+<!-- SCREENSHOT: Agent activity / tool timeline -->
+
 ---
 
-### Context Management
+## Context Management
 
 NEO provides controlled context access rather than automatically exposing an entire repository to the model.
 
@@ -87,7 +88,7 @@ This approach allows users to control the information available to the model whi
 
 ---
 
-### Integrated Code Editor
+## Integrated Code Editor
 
 NEO includes a built-in code editor designed to operate alongside the agent.
 
@@ -119,13 +120,19 @@ Toggle the editor with:
 Ctrl + Shift + E
 ```
 
+<!-- SCREENSHOT: Code editor + file explorer -->
+
+<p align="center">
+  <img src="src/assets/images/IDE.png" alt="NEO integrated code editor" width="900" />
+</p>
+
 ---
 
-### Change Review
+## Change Review
 
 NEO provides explicit visibility into agent-generated modifications.
 
-Before applying changes, the user can review the proposed modifications through the application's change and diff interfaces.
+Before applying changes, the user can review proposed modifications through the application's change and diff interfaces.
 
 Typical agent activity may appear as:
 
@@ -141,9 +148,15 @@ Apply?
 
 This allows users to review modifications before they become part of the project.
 
+<!-- SCREENSHOT: Change review / diff -->
+
+<p align="center">
+  <img src="src/assets/images/previewss2.0.png" alt="NEO change review interface" width="850" />
+</p>
+
 ---
 
-### Git Integration
+## Git Integration
 
 NEO integrates Git into the development workflow.
 
@@ -155,7 +168,7 @@ Git can also be used independently through the integrated terminal.
 
 ---
 
-### Integrated PowerShell Terminal
+## Integrated PowerShell Terminal
 
 NEO includes an integrated PowerShell terminal backed by a native PTY implementation.
 
@@ -177,9 +190,13 @@ NEO supports multiple PowerShell sessions, allowing users to maintain separate i
 
 NEO does not bundle complete compiler toolchains into the application. It instead works with the development environments available on the user's machine.
 
+<!-- SCREENSHOT: Terminal + multiple sessions -->
+
+
+
 ---
 
-### Debugging and Development Infrastructure
+## Debugging and Development Infrastructure
 
 NEO provides development-oriented infrastructure for working with local projects.
 
@@ -196,7 +213,7 @@ The application is designed to work with the tools and runtimes already installe
 
 ---
 
-### Model Providers
+## Model Providers
 
 NEO is designed to be provider-independent.
 
@@ -214,7 +231,7 @@ This allows users to select the AI infrastructure appropriate for their workflow
 
 ---
 
-### Local Models
+## Local Models
 
 NEO supports locally hosted models through Ollama.
 
@@ -224,7 +241,7 @@ When using a local model, inference can remain entirely on the user's device.
 
 ---
 
-### MCP Support
+## MCP Support
 
 NEO supports the Model Context Protocol (MCP), allowing additional tools and services to be connected to the agent environment.
 
@@ -232,7 +249,7 @@ MCP provides an extensible mechanism for adding capabilities without requiring e
 
 ---
 
-### Command Palette
+## Command Palette
 
 NEO includes a keyboard-driven command palette for accessing application functionality.
 
@@ -244,7 +261,7 @@ Ctrl + Shift + P
 
 ---
 
-## Keyboard Shortcuts
+# Keyboard Shortcuts
 
 | Shortcut       | Action                     |
 | -------------- | -------------------------- |
@@ -314,10 +331,10 @@ NEO uses a hybrid web and native architecture.
 |              React / TypeScript / TSX            |
 |                         |                        |
 |                         v                        |
-|                      Tauri                      |
+|                      Tauri                       |
 |                         |                        |
 |                         v                        |
-|                       Rust                      |
+|                       Rust                       |
 |                         |                        |
 |       +-----------------+----------------+        |
 |       |                 |                |        |
@@ -332,7 +349,7 @@ NEO uses a hybrid web and native architecture.
 |              +----------+----------+             |
 |              |                     |             |
 |              v                     v             |
-|         Cloud Providers          Ollama          |
+|         Cloud Providers          Ollama           |
 |                                    |             |
 |                              Local Models        |
 +--------------------------------------------------+
@@ -341,12 +358,7 @@ NEO uses a hybrid web and native architecture.
 ## Frontend
 
 <p align="left">
-  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/TSX-3178C6?style=for-the-badge&logo=react&logoColor=white" alt="TSX" />
-  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
-  <img src="https://img.shields.io/badge/CSS-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" />
+  <img src="https://skillicons.dev/icons?i=react,ts,tsx,vite,tailwind,css" alt="React, TypeScript, TSX, Vite, Tailwind CSS, CSS" />
 </p>
 
 React and TypeScript provide the primary application interface and component architecture.
@@ -358,8 +370,7 @@ Tailwind CSS and CSS are used for application styling and interface components.
 ## Native Application Layer
 
 <p align="left">
-  <img src="https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white" alt="Tauri" />
-  <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
+  <img src="https://skillicons.dev/icons?i=tauri,rust" alt="Tauri and Rust" />
 </p>
 
 Tauri provides the native application layer while Rust handles native functionality, filesystem operations, process management, PTY integration, and other system-level functionality.
@@ -367,7 +378,7 @@ Tauri provides the native application layer while Rust handles native functional
 ## Mobile
 
 <p align="left">
-  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" />
+  <img src="https://skillicons.dev/icons?i=kotlin" alt="Kotlin" />
 </p>
 
 Kotlin is used for Android-specific functionality within the broader project ecosystem.
@@ -375,8 +386,7 @@ Kotlin is used for Android-specific functionality within the broader project eco
 ## Configuration
 
 <p align="left">
-  <img src="https://img.shields.io/badge/TOML-9C4221?style=for-the-badge&logo=toml&logoColor=white" alt="TOML" />
-  <img src="https://img.shields.io/badge/.config-Configuration-555555?style=for-the-badge" alt=".config" />
+  <img src="https://skillicons.dev/icons?i=toml" alt="TOML" />
 </p>
 
 TOML and `.config` files are used throughout project configuration and platform-specific infrastructure.
