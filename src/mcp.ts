@@ -35,6 +35,20 @@ export interface McpServerConfig {
 export interface McpToolInfo {
   name: string;
   description: string;
+  /** JSON-schema for the tool's arguments, when the server advertises one. */
+  inputSchema?: Record<string, unknown>;
+  /** Server-declared read-only tool (safe to run parallel without approval). */
+  readOnly?: boolean;
+}
+
+/** Value stored per discovered MCP tool in the agent loops. */
+export interface McpToolEntry {
+  server: McpServerConfig;
+  tool: string;
+  /** Argument schema from tools/list, when the server provides one. */
+  schema?: Record<string, unknown>;
+  /** Server-declared read-only tool (safe to run parallel, no approval). */
+  readOnly?: boolean;
 }
 
 const STORAGE_KEY = "neochat.mcp.v2";
@@ -251,7 +265,41 @@ function extractTools(result: unknown): McpToolInfo[] {
   return tools.map((t) => ({
     name: String(t.name ?? ""),
     description: String(t.description ?? ""),
+    inputSchema:
+      t.inputSchema && typeof t.inputSchema === "object"
+        ? (t.inputSchema as Record<string, unknown>)
+        : undefined,
+    readOnly:
+      (t.annotations as Record<string, unknown> | undefined)?.readOnlyHint === true,
   }));
+}
+
+/**
+ * Compact, model-readable parameter list for an MCP tool, e.g.
+ * "code: string (required) — The Luau code to execute; studio_id: string (required)".
+ * Empty string when the server gave no schema. Without this the model cannot
+ * know which arguments a tool requires and guesses (→ repeated failures).
+ */
+export function formatMcpToolSchema(schema?: Record<string, unknown>): string {
+  if (!schema || typeof schema !== "object") return "";
+  const props = (schema.properties ?? {}) as Record<
+    string,
+    { type?: unknown; description?: unknown; enum?: unknown }
+  >;
+  const required = Array.isArray(schema.required)
+    ? (schema.required as unknown[]).map(String)
+    : [];
+  const keys = Object.keys(props);
+  if (keys.length === 0) return "";
+  const parts = keys.map((k) => {
+    const p = props[k] ?? {};
+    const kind = Array.isArray(p.enum) ? p.enum.map(String).join("|") : String(p.type ?? "any");
+    const req = required.includes(k) ? " (required)" : "";
+    const desc = typeof p.description === "string" ? p.description.trim() : "";
+    const d = desc.length > 100 ? `${desc.slice(0, 97)}...` : desc;
+    return d ? `${k}: ${kind}${req} — ${d}` : `${k}: ${kind}${req}`;
+  });
+  return `Parameters: ${parts.join("; ")}`;
 }
 
 const CLIENT_INFO = { name: "Neo", version: "1.0.4" };

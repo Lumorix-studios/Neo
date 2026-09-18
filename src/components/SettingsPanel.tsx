@@ -908,7 +908,7 @@ return (
                 {(aiSpec.note || aiNeedsKey) && (
                   <p className="pb-3 text-[11px] leading-4 text-[var(--text-muted)]">
                     {aiSpec.note ??
-                      'API key required — the prefix is validated for your provider (e.g. OpenAI "sk-", Anthropic "sk-ant-", Groq "gsk-").'}
+                      'API key required — it is sent to your provider as configured; the provider itself rejects invalid keys with a clear error.'}
                   </p>
                 )}
                 <Row title="Local models" description="Browse, pull and run models locally with Ollama.">

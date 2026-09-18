@@ -51,7 +51,8 @@ import {
   loadMcpServers,
   listMcpTools,
   callMcpTool,
-  type McpServerConfig,
+  formatMcpToolSchema,
+  type McpToolEntry,
 } from "./mcp";
 import { computeLineDiff } from "./diff";
 import { resolveFsPath } from "./agentic";
@@ -945,7 +946,46 @@ ${promptSuffix}` : ""}`,
       if (res.status === 401 || res.status === 403) {
         msg += ` ${s.authErrorHint(res.status, settings)}`;
       }
-      throw new Error(msg);
+
+      // Self-healing retry for Google thinking models: a 400 about a missing
+      // thought_signature means replayed functionCall parts lack the opaque
+      // signature the model originally returned (e.g. turns saved before
+      // signature capture existed). Signatures are unrecoverable, so retry
+      // once with every tool-call turn downgraded to plain text.
+      if (res.status === 400 && /thought[_ ]?signature/i.test(detail)) {
+        const retryBody = s.buildBody(effectiveSettings, history, {
+          enableTools: agentic,
+          forceTextTools: true,
+        });
+        const retryRes = await platformFetch(endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(retryBody),
+          signal,
+        });
+        if (!retryRes.ok) {
+          let retryDetail: string = `HTTP ${retryRes.status} ${retryRes.statusText}`;
+          try {
+            const text = await retryRes.text();
+            if (text.trim() && !text.trim().startsWith("<")) {
+              try {
+                const parsed = JSON.parse(text.trim()) as JsonDict;
+                const errMsg = parsed?.error as JsonDict | undefined;
+                retryDetail = (errMsg?.message as string) || text.trim().slice(0, 500);
+              } catch {
+                retryDetail = text.trim().slice(0, 500);
+              }
+            }
+          } catch {
+            /* keep status-based detail */
+          }
+          throw new Error(`API error (${retryRes.status}): ${retryDetail}`);
+        }
+        if (signal.aborted) throw new Error("__ABORTED__");
+        res = retryRes;
+      } else {
+        throw new Error(msg);
+      }
     }
 
     const bodyStream = res.body;
@@ -1192,7 +1232,7 @@ ${promptSuffix}` : ""}`,
       }
     }
 
-    const mcpTools = new Map<string, { server: McpServerConfig; tool: string }>();
+    const mcpTools = new Map<string, McpToolEntry>();
     if (agentic) {
       const servers = loadMcpServers().filter((s) => s.enabled);
       if (servers.length > 0) {
@@ -1201,7 +1241,12 @@ ${promptSuffix}` : ""}`,
             try {
               const tools = await listMcpTools(s);
               for (const t of tools) {
-                mcpTools.set(`mcp_${s.name}_${t.name}`, { server: s, tool: t.name });
+                mcpTools.set(`mcp_${s.name}_${t.name}`, {
+                  server: s,
+                  tool: t.name,
+                  schema: t.inputSchema,
+                  readOnly: t.readOnly,
+                });
               }
             } catch {
               /* server offline — skip silently */
@@ -1212,8 +1257,18 @@ ${promptSuffix}` : ""}`,
       if (mcpTools.size > 0) {
         promptSuffix += `
 
-MCP tools available (call via {"name": "<full name>", "arguments": {...}}):
-${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
+MCP tools available (call via {"name": "<full name>", "arguments": {...}}). Parameters marked (required) MUST be included in arguments or the call fails:
+${[...mcpTools.entries()]
+  .map(([k, m]) => {
+    const sig = formatMcpToolSchema(m.schema);
+    return sig ? `- ${k}\n  ${sig}` : `- ${k}`;
+  })
+  .join(NL)}
+
+MCP call rules:
+- If a call fails naming a missing argument (e.g. "datamodel_type is required", "studio_id is required"), re-call WITH that argument included.
+- Tools needing id-style arguments (e.g. studio_id) get them from a discovery tool on the same server (e.g. list_roblox_studios) — call that first, then pass the id on every later call to that server.
+- Batch independent calls together in one round (e.g. discovery + reads) to save round trips.`;
       }
     }
 
@@ -1235,8 +1290,17 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
       // Cumulative failures per tool NAME (across rounds). Catches models
       // that keep failing with *different* arguments (e.g. guessing news
       // site URLs one after another), which the identical-signature guard
-      // below can never trip.
+      // below can never trip. A success resets the count, and hitting the
+      // limit only BENCHES that tool — the rest of the turn continues.
       const toolFailCounts = new Map<string, number>();
+      const TOOL_FAIL_LIMIT = 8;
+      // If the model keeps calling benched tools despite the instruction to
+      // stop, end the turn after this many extra attempts.
+      const BANNED_TOOL_CALL_LIMIT = 3;
+      const bannedTools = new Set<string>();
+      let bannedToolCalls = 0;
+      let totalFails = 0;
+      let totalSuccesses = 0;
       // Per-turn cache of read-only tool results. Weak models frequently
       // re-emit identical read calls in later rounds; serving them from cache
       // skips redundant filesystem work. Cleared whenever a mutating tool runs.
@@ -1257,6 +1321,7 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
                   id: c.id ?? `call_${toolRounds}_${i}`,
                   name: c.name,
                   arguments: c.arguments,
+                  thoughtSignature: c.thoughtSignature,
                 })),
               }
             : {}),
@@ -1338,6 +1403,15 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           })();
 
         const runToolCall = async (call: ToolCall): Promise<{ ok: boolean; output: string; data?: unknown }> => {
+          // A tool benched for repeated failures is short-circuited: the
+          // model is told to move on instead of hammering it.
+          if (bannedTools.has(call.name)) {
+            bannedToolCalls++;
+            return {
+              ok: false,
+              output: `Tool "${call.name}" is disabled for the rest of this turn after repeated failures. Use a different tool, or answer from what you already have.`,
+            };
+          }
           // Weak local models frequently emit tool calls with EMPTY arguments
           // (e.g. web_search with no query). Rescue the common cases by
           // falling back to the user's own message, so one malformed call
@@ -1355,7 +1429,9 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
             if (!mcp) {
               return {
                 ok: false,
-                output: `Unknown MCP tool "${call.name}". It may belong to a server that is offline or disabled.`,
+                output: `Unknown MCP tool "${call.name}". It may belong to a server that is offline or disabled. Available MCP tools: ${
+                  [...mcpTools.keys()].join(", ") || "(none)"
+                }.`,
               };
             }
             try {
@@ -1384,10 +1460,16 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           }
         };
 
-        // --- Read-only batch (parallel). MCP tools always need approval. ---
-        const readOnly = calls.filter(
-          ({ call }) => !isDestructive(call.name) && !call.name.startsWith("mcp_")
-        );
+        // --- Read-only batch (parallel). MCP tools the server declares
+        // read-only (readOnlyHint) join this batch too — they run without
+        // approval and get cached. Unknown MCP tools stay in the sequential
+        // batch to be safe. ---
+        const isMcpName = (n: string) => n.startsWith("mcp_");
+        const readOnly = calls.filter(({ call }) => {
+          if (isDestructive(call.name)) return false;
+          if (!isMcpName(call.name)) return true;
+          return mcpTools.get(call.name)?.readOnly === true;
+        });
         if (readOnly.length > 0) {
           readOnly.forEach(({ key }) => {
             if (readOnlyCache.has(key)) return; // cached — no spinner needed
@@ -1416,7 +1498,9 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
 
         // --- Mutating batch (sequential, each behind user approval). ---
         const mutating = calls.filter(
-          ({ call }) => isDestructive(call.name) || call.name.startsWith("mcp_")
+          ({ call }) =>
+            isDestructive(call.name) ||
+            (isMcpName(call.name) && mcpTools.get(call.name)?.readOnly !== true)
         );
         /** Tools whose result can be shown as a line diff in the activity feed. */
         const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
@@ -1496,16 +1580,17 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           }
         }
 
-        // Runaway guard: if every call in a round failed and the failing
-        // signatures match the previous round's, we're looping — stop early.
+        // Runaway guard: identical failing calls across consecutive rounds.
+        // A round with ANY success proves progress — reset the streak.
+        const anySuccess = calls.some(({ key }) => resultsByKey.get(key)?.ok === true);
         const failSig = calls
           .filter(({ key }) => resultsByKey.get(key)?.ok === false)
           .map(({ call }) => `${call.name}:${JSON.stringify(call.arguments)}`)
           .sort()
           .join("|");
-        if (failSig && failSig === lastFailSig) {
+        if (failSig && failSig === lastFailSig && !anySuccess) {
           failStreak++;
-          if (failStreak >= 3) {
+          if (failStreak >= 4) {
             setError(
               "The same tool calls kept failing identically — stopping to avoid an endless loop. Try rephrasing the task or checking that the files exist."
             );
@@ -1516,21 +1601,40 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           failStreak = failSig ? 1 : 0;
         }
 
-        // Per-tool cumulative failure guard (see toolFailCounts above).
+        // Per-tool failure accounting. Success resets a tool's strike count
+        // (a tool that recovers is never benched); reaching the limit only
+        // benches THAT tool — the turn continues with everything else. Hard
+        // stop only if the model keeps hammering benched tools, or nothing
+        // succeeds despite many failures.
         for (const [key, r] of resultsByKey) {
-          if (!r.ok) {
-            const tool = key.slice(0, key.indexOf(":"));
+          const tool = key.slice(0, key.indexOf(":"));
+          if (r.ok) {
+            totalSuccesses++;
+            toolFailCounts.delete(tool);
+          } else if (!bannedTools.has(tool)) {
+            totalFails++;
             toolFailCounts.set(tool, (toolFailCounts.get(tool) ?? 0) + 1);
           }
         }
-        const failing = [...toolFailCounts.entries()].find(([, c]) => c >= 4);
-        if (failing) {
+        for (const [tool, count] of toolFailCounts) {
+          if (count >= TOOL_FAIL_LIMIT) bannedTools.add(tool);
+        }
+        if (bannedTools.size > 0) {
           agentHistory.push({
             role: "user",
-            content: `The ${failing[0]} tool has now failed ${failing[1]} times this turn. Stop calling ${failing[0]} entirely — it is not working for these targets. Summarize what you already know and answer the user directly.`,
+            content: `Tools disabled for the rest of this turn after repeated failures: ${[
+              ...bannedTools,
+            ].join(", ")}. Do NOT call them again — use other tools, or summarize what you know and answer directly.`,
           });
+        }
+        if (
+          bannedToolCalls >= BANNED_TOOL_CALL_LIMIT ||
+          (totalFails >= 12 && totalSuccesses === 0)
+        ) {
           setError(
-            `The ${failing[0]} tool kept failing (${failing[1]} attempts) — stopped early instead of looping.`
+            `Too many tool failures this turn (${totalFails} failed, ${totalSuccesses} succeeded${
+              bannedTools.size > 0 ? `; disabled: ${[...bannedTools].join(", ")}` : ""
+            }). Stopped to avoid an endless loop — try rephrasing or check the target system.`
           );
           break;
         }

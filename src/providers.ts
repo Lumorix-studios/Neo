@@ -75,6 +75,10 @@ interface OllamaShape {
 
 export interface BuildBodyOptions {
   enableTools?: boolean;
+  /** Google only: replay every historical tool-call turn as plain text
+   * instead of functionCall parts (self-healing fallback when the Gemini API
+   * rejects replayed calls missing their thought_signature). */
+  forceTextTools?: boolean;
 }
 
 function toolArgsJson(tc: NativeToolCall): string {
@@ -171,18 +175,64 @@ function toAnthropicMessages(history: Message[]): object[] {
   return out;
 }
 
-function toGeminiContents(history: Message[]): object[] {
+function toGeminiContents(history: Message[], forceTextTools = false): object[] {
   const out: object[] = [];
   for (let i = 0; i < history.length; i++) {
     const m = history[i];
     if (m.role === "tool") continue;
     if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-      out.push({
-        role: "model",
-        parts: m.toolCalls.map((tc) => ({
-          functionCall: { name: tc.name, args: tc.arguments ?? {} },
-        })),
-      });
+      // Gemini thinking models hard-fail (400 "Function call is missing a
+      // thought_signature") if a replayed functionCall part lacks the opaque
+      // signature the model originally returned. Old turns saved before
+      // signature capture existed — and any capture we miss — can't be
+      // repaired retroactively, so degrade gracefully: replay the whole
+      // call/result exchange as plain text instead of raw functionCall parts.
+      const allSigned =
+        !forceTextTools && m.toolCalls.every((tc) => !!tc.thoughtSignature);
+      if (!allSigned) {
+        const callSummary = m.toolCalls
+          .map(
+            (tc) =>
+              `${tc.name.replace(/^default_api:/, "")}(${JSON.stringify(tc.arguments ?? {})})`
+          )
+          .join("; ");
+        out.push({
+          role: "model",
+          parts: [
+            {
+              text: `${m.content ? `${m.content}\n` : ""}[called tools: ${callSummary}]`,
+            },
+          ],
+        });
+        const resultParts: object[] = [];
+        while (i + 1 < history.length && history[i + 1].role === "tool") {
+          i++;
+          const t = history[i];
+          const text = String(t.content ?? "");
+          resultParts.push({
+            text: `[${t.toolName ?? "tool"} result] ${
+              text.length > 4000 ? `${text.slice(0, 4000)}…` : text
+            }`,
+          });
+        }
+        if (resultParts.length) out.push({ role: "user", parts: resultParts });
+        continue;
+      }
+
+      const callParts: object[] = [];
+      if (m.content.trim()) callParts.push({ text: m.content });
+      for (const tc of m.toolCalls) {
+        const part: Record<string, unknown> = {
+          // Defensive: some models emit names with a "default_api:" prefix.
+          functionCall: { name: tc.name.replace(/^default_api:/, ""), args: tc.arguments ?? {} },
+        };
+        // Gemini thinking models require the signature returned with a
+        // functionCall to be replayed in later turns — without it the API
+        // fails with 400 "Function call is missing a thought_signature".
+        if (tc.thoughtSignature) part.thoughtSignature = tc.thoughtSignature;
+        callParts.push(part);
+      }
+      out.push({ role: "model", parts: callParts });
       const parts: object[] = [];
       while (i + 1 < history.length && history[i + 1].role === "tool") {
         i++;
@@ -249,8 +299,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     },
     extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
     validateAuth: (k) =>
-      !k || !k.startsWith("sk-")
-        ? 'OpenAI API key looks invalid — it should start with "sk-" (get one at platform.openai.com/api-keys).'
+      !k
+        ? "An OpenAI API key is required (get one at platform.openai.com/api-keys)."
         : null,
     authErrorHint: (status) =>
       `Authentication failed (${status}). Verify your OpenAI key at platform.openai.com/api-keys and confirm billing is enabled.`,
@@ -285,8 +335,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     },
     extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
     validateAuth: (k) =>
-      !k || !k.startsWith("sk-")
-        ? 'OpenRouter API key looks invalid — it should start with "sk-" (get one at openrouter.ai/keys).'
+      !k
+        ? "An OpenRouter API key is required (get one at openrouter.ai/keys)."
         : null,
     authErrorHint: (status) =>
       `Authentication failed (${status}). Check your OpenRouter key at openrouter.ai/keys and that the model is available.`,
@@ -316,8 +366,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     },
     extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
     validateAuth: (k) =>
-      !k || !k.startsWith("gsk-")
-        ? 'Groq API key looks invalid — it should start with "gsk-" (get one at console.groq.com/keys).'
+      !k
+        ? "A Groq API key is required (get one at console.groq.com/keys)."
         : null,
     authErrorHint: (status) =>
       `Authentication failed (${status}). Check your Groq key at console.groq.com/keys.`,
@@ -351,8 +401,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     },
     extractContent: (j) => (j as AnthropicShape)?.content?.[0]?.text ?? "",
     validateAuth: (k) =>
-      !k || !k.startsWith("sk-ant-")
-        ? 'Anthropic API key looks invalid — it should start with "sk-ant-" (get one at console.anthropic.com/settings/keys).'
+      !k
+        ? "An Anthropic API key is required (get one at console.anthropic.com/settings/keys)."
         : null,
     authErrorHint: (status, s) =>
       `Authentication failed (${status}). Verify your Anthropic key at console.anthropic.com/settings/keys and that you have access to "${s.model}".`,
@@ -379,7 +429,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       return url.toString();
     },
     buildBody: (s, history, opts) => ({
-      contents: toGeminiContents(history),
+      contents: toGeminiContents(history, opts?.forceTextTools === true),
       system_instruction: { parts: [{ text: s.systemPrompt }] },
       generationConfig: { temperature: s.temperature },
       ...(opts?.enableTools ? { tools: [{ functionDeclarations: GEMINI_FUNCTION_DECLARATIONS }] } : {}),
@@ -391,8 +441,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     extractContent: (j) =>
       (j as GoogleShape)?.candidates?.[0]?.content?.parts?.[0]?.text ?? "",
     validateAuth: (k) =>
-      !k || k.length < 20
-        ? "Google API key looks invalid — it should be a long alphanumeric string from Google Cloud."
+      !k
+        ? "A Google API key is required (get one from Google Cloud / AI Studio)."
         : null,
     authErrorHint: (status) =>
       `Authentication failed (${status}). Check your Google API key and that the Generative Language API is enabled in Google Cloud.`,

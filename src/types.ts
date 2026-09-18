@@ -11,6 +11,10 @@ export interface NativeToolCall {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
+  /** Gemini thinking models: opaque signature returned with a functionCall
+   * part — it must be replayed verbatim in later turns or the API 400s
+   * ("Function call is missing a thought_signature"). */
+  thoughtSignature?: string;
 }
 
 export interface Message {

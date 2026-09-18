@@ -29,7 +29,8 @@ import {
   loadMcpServers,
   listMcpTools,
   callMcpTool,
-  type McpServerConfig,
+  formatMcpToolSchema,
+  type McpToolEntry,
 } from "../mcp";
 import { IoAdd, IoApps, IoArrowUpOutline, IoClose, IoFolderOutline, IoStop, IoTrashOutline } from "react-icons/io5";
 
@@ -416,16 +417,19 @@ Rules:
   };
 
   /** Collect MCP tools from all enabled servers (offline servers are skipped). */
-  const collectMcpTools = async (): Promise<
-    Map<string, { server: McpServerConfig; tool: string }>
-  > => {
-    const map = new Map<string, { server: McpServerConfig; tool: string }>();
+  const collectMcpTools = async (): Promise<Map<string, McpToolEntry>> => {
+    const map = new Map<string, McpToolEntry>();
     const servers = loadMcpServers().filter((s) => s.enabled);
     await Promise.all(
       servers.map(async (s) => {
         try {
           for (const t of await listMcpTools(s)) {
-            map.set(`mcp_${s.name}_${t.name}`, { server: s, tool: t.name });
+            map.set(`mcp_${s.name}_${t.name}`, {
+              server: s,
+              tool: t.name,
+              schema: t.inputSchema,
+              readOnly: t.readOnly,
+            });
           }
         } catch {
           /* server offline — skip silently */
@@ -439,7 +443,7 @@ Rules:
   const buildAgentPrompt = async (): Promise<{
     systemPrompt: string;
     userFileNote: string;
-    mcpTools: Map<string, { server: McpServerConfig; tool: string }>;
+    mcpTools: Map<string, McpToolEntry>;
   }> => {
     const root = rootRef.current;
     const openTabs = tabsRef.current;
@@ -471,11 +475,14 @@ Rules:
     }
     const mcpTools = await collectMcpTools();
     if (mcpTools.size > 0) {
-      systemPrompt += `\n\nMCP tools available (invoke via tool-call markup using the FULL name):\n${[
-        ...mcpTools.keys(),
+      systemPrompt += `\n\nMCP tools available (invoke via tool-call markup using the FULL name). Parameters marked (required) MUST be included or the call fails:\n${[
+        ...mcpTools.entries(),
       ]
-        .map((k) => `- ${k}`)
-        .join(NL)}`;
+        .map(([k, m]) => {
+          const sig = formatMcpToolSchema(m.schema);
+          return sig ? `- ${k}\n  ${sig}` : `- ${k}`;
+        })
+        .join(NL)}\n\nMCP call rules:\n- If a call fails naming a missing argument (e.g. "datamodel_type is required", "studio_id is required"), re-call WITH that argument included.\n- Tools needing id-style arguments (e.g. studio_id) get them from a discovery tool on the same server (e.g. list_roblox_studios) — call that first, then pass the id on every later call to that server.\n- Batch independent calls together in one round (e.g. discovery + reads) to save round trips.`;
     }
     return { systemPrompt, userFileNote, mcpTools };
   };
@@ -484,7 +491,7 @@ Rules:
   const runLoop = async (
     agentHistory: Message[],
     systemPrompt: string,
-    mcpTools: Map<string, { server: McpServerConfig; tool: string }>,
+    mcpTools: Map<string, McpToolEntry>,
     abortCtrl: AbortController
   ): Promise<number> => {
     let ranTools = 0;
@@ -492,6 +499,16 @@ Rules:
     let nudgeCount = 0;
     let failStreak = 0;
     let lastFailSig = "";
+    // Per-tool failure accounting: a tool is benched after too many
+    // cumulative failures, but any success resets its count — one broken
+    // tool must not end the whole run.
+    const toolFailCounts = new Map<string, number>();
+    const TOOL_FAIL_LIMIT = 8;
+    const BANNED_TOOL_CALL_LIMIT = 3;
+    const bannedTools = new Set<string>();
+    let bannedToolCalls = 0;
+    let totalFails = 0;
+    let totalSuccesses = 0;
     // Per-turn cache of read-only results; cleared whenever a mutation runs.
     const readOnlyCache = new Map<string, { ok: boolean; output: string }>();
     const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
@@ -510,6 +527,7 @@ Rules:
                   id: c.id ?? `call_${toolRounds}_${i}`,
                   name: c.name,
                   arguments: c.arguments,
+                  thoughtSignature: c.thoughtSignature,
                 })),
               }
             : {}),
@@ -576,9 +594,24 @@ Rules:
 
         /** Execute one call — built-in filesystem/command tools or MCP tools. */
         const runToolCall = async (call: ToolCall) => {
+          // A benched tool is short-circuited: the model is told to move on
+          // instead of hammering it.
+          if (bannedTools.has(call.name)) {
+            bannedToolCalls++;
+            return {
+              ok: false,
+              output: `Tool "${call.name}" is disabled for the rest of this turn after repeated failures. Use a different tool, or answer from what you already have.`,
+            };
+          }
           if (isMcp(call.name)) {
             const entry = mcpTools.get(call.name);
-            if (!entry) return { ok: false, output: `Unknown MCP tool: ${call.name}` };
+            if (!entry)
+              return {
+                ok: false,
+                output: `Unknown MCP tool: ${call.name}. Available MCP tools: ${
+                  [...mcpTools.keys()].join(", ") || "(none)"
+                }`,
+              };
             return callMcpTool(entry.server, entry.tool, call.arguments);
           }
           return executeTool(call.name, call.arguments, effRoot, {
@@ -588,10 +621,14 @@ Rules:
           });
         };
 
-        // --- Read-only batch (parallel, cache-aware). MCP needs approval. -----
-        const readOnly = calls.filter(
-          ({ call }) => !isDestructive(call.name) && !isMcp(call.name)
-        );
+        // --- Read-only batch (parallel, cache-aware). MCP tools the server
+        // declares read-only (readOnlyHint) join this batch too; unknown MCP
+        // tools stay in the sequential/approval batch to be safe. -----------
+        const readOnly = calls.filter(({ call }) => {
+          if (isDestructive(call.name)) return false;
+          if (!isMcp(call.name)) return true;
+          return mcpTools.get(call.name)?.readOnly === true;
+        });
         readOnly.forEach(({ key }) => {
           if (readOnlyCache.has(key)) return; // cached — no spinner needed
           const id = activityIds.get(key);
@@ -617,7 +654,11 @@ Rules:
         );
 
         // --- Mutating batch (sequential, each behind user approval). ---------
-        const mutating = calls.filter(({ call }) => isDestructive(call.name) || isMcp(call.name));
+        const mutating = calls.filter(
+          ({ call }) =>
+            isDestructive(call.name) ||
+            (isMcp(call.name) && mcpTools.get(call.name)?.readOnly !== true)
+        );
         for (const { call, key } of mutating) {
           const id = activityIds.get(key);
           if (!id) continue;
@@ -683,15 +724,17 @@ Rules:
           }
         }
 
-        // Runaway guard: identical failures across consecutive rounds → stop.
+        // Runaway guard: identical failing calls across consecutive rounds.
+        // A round with ANY success proves progress — reset the streak.
+        const anySuccess = calls.some(({ key }) => resultsByKey.get(key)?.ok === true);
         const failSig = calls
           .filter(({ key }) => resultsByKey.get(key)?.ok === false)
           .map(({ call }) => `${call.name}:${JSON.stringify(call.arguments)}`)
           .sort()
           .join("|");
-        if (failSig && failSig === lastFailSig) {
+        if (failSig && failSig === lastFailSig && !anySuccess) {
           failStreak++;
-          if (failStreak >= 3) {
+          if (failStreak >= 4) {
             setError(
               "The same tool calls kept failing identically — stopping to avoid an endless loop. Try rephrasing the task or check that the files exist."
             );
@@ -700,6 +743,43 @@ Rules:
         } else {
           lastFailSig = failSig;
           failStreak = failSig ? 1 : 0;
+        }
+
+        // Per-tool failure accounting. Success resets a tool's strike count;
+        // reaching the limit only benches THAT tool — the turn continues with
+        // everything else. Hard stop only if the model keeps hammering benched
+        // tools, or nothing succeeds despite many failures.
+        for (const [key, r] of resultsByKey) {
+          const tool = key.slice(0, key.indexOf(":"));
+          if (r.ok) {
+            totalSuccesses++;
+            toolFailCounts.delete(tool);
+          } else if (!bannedTools.has(tool)) {
+            totalFails++;
+            toolFailCounts.set(tool, (toolFailCounts.get(tool) ?? 0) + 1);
+          }
+        }
+        for (const [tool, count] of toolFailCounts) {
+          if (count >= TOOL_FAIL_LIMIT) bannedTools.add(tool);
+        }
+        if (bannedTools.size > 0) {
+          agentHistory.push({
+            role: "user",
+            content: `Tools disabled for the rest of this turn after repeated failures: ${[
+              ...bannedTools,
+            ].join(", ")}. Do NOT call them again — use other tools, or summarize what you know and answer directly.`,
+          });
+        }
+        if (
+          bannedToolCalls >= BANNED_TOOL_CALL_LIMIT ||
+          (totalFails >= 12 && totalSuccesses === 0)
+        ) {
+          setError(
+            `Too many tool failures this turn (${totalFails} failed, ${totalSuccesses} succeeded${
+              bannedTools.size > 0 ? `; disabled: ${[...bannedTools].join(", ")}` : ""
+            }). Stopped to avoid an endless loop — try rephrasing or check the target system.`
+          );
+          break;
         }
 
         // Route results back in the original call order.

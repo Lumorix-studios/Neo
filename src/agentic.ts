@@ -27,6 +27,8 @@ export interface ToolCall {
   /** Known tool name, or a dynamic name such as `mcp_<server>_<tool>`. */
   name: string;
   arguments: Record<string, unknown>;
+  /** Gemini thinking models: opaque signature that must be echoed back. */
+  thoughtSignature?: string;
 }
 
 export interface ToolResult {
@@ -285,6 +287,8 @@ export interface NativeToolAcc {
   id: string;
   name: string;
   arguments: string;
+  /** Gemini: thoughtSignature captured from the emitting part. */
+  thoughtSignature?: string;
 }
 
 function parseArgBlob(raw: string): Record<string, unknown> {
@@ -313,6 +317,7 @@ export function nativeAccToCalls(acc: NativeToolAcc[]): ToolCall[] {
       id: a.id || undefined,
       name: a.name as ToolName,
       arguments: parseArgBlob(a.arguments),
+      ...(a.thoughtSignature ? { thoughtSignature: a.thoughtSignature } : {}),
     }));
 }
 
@@ -370,8 +375,19 @@ export function ingestNativeChunk(json: unknown, acc: NativeToolAcc[]): void {
     if (fc && typeof fc.name === "string") {
       acc.push({
         id: `gem_${acc.length}`,
-        name: fc.name,
+        // Some Gemini models prefix function names with the default
+        // namespace ("default_api:tool_name") — strip it so tool dispatch
+        // still matches.
+        name: fc.name.replace(/^default_api:/, ""),
         arguments: JSON.stringify(fc.args ?? fc.arguments ?? {}),
+        // Thinking models attach an opaque signature to the functionCall
+        // part; it must be echoed back when the call is replayed, or the
+        // next request fails with 400 "missing a thought_signature".
+        // Accept both REST spellings (camelCase / snake_case).
+        thoughtSignature:
+          (typeof p.thoughtSignature === "string" && p.thoughtSignature) ||
+          (typeof p.thought_signature === "string" && p.thought_signature) ||
+          undefined,
       });
     }
   }
@@ -380,7 +396,7 @@ export function ingestNativeChunk(json: unknown, acc: NativeToolAcc[]): void {
 export function agenticSystemPrompt(
   workspaceRoot?: string | null,
   editor?: EditorContext,
-  mcpTools?: Array<{ server: string; tool: string; description: string }>
+  mcpTools?: Array<{ server: string; tool: string; description: string; signature?: string }>
 ): string {
   const ws = workspaceRoot
     ? `Workspace root: ${workspaceRoot}\nPrefer paths relative to this root. Absolute paths also work.\n`
@@ -397,7 +413,7 @@ export function agenticSystemPrompt(
   if (mcpTools && mcpTools.length > 0) {
     mcp = "\\n\\n## 🔌 DYNAMIC MCP MODULES\\n" + 
           "The following external tools are available via MCP. Call them as `mcp_<server>_<tool>`:\\n" +
-          mcpTools.map(t => `- \`${t.server}_${t.tool}\`: ${t.description}`).join("\\n");
+          mcpTools.map(t => `- \`${t.server}_${t.tool}\`: ${t.description}${t.signature ? `\n  ${t.signature}` : ""}`).join("\\n");
   }
 
   return `${AGENTIC_PROMPT}\\n\\n${ws}${ed}${mcp}`;
