@@ -208,15 +208,21 @@ export async function stopStdio(id: string): Promise<void> {
   }
 }
 
-/** One correlated JSON-RPC request/response over stdio. */
+/**
+ * One correlated JSON-RPC request/response over stdio.
+ * `timeoutMs` bounds the wait for the matching response — longer for
+ * `tools/call` (Studio-side operations can be slow), shorter for the
+ * handshake and `tools/list`.
+ */
 async function stdioRpc(
   server: McpServerConfig,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  timeoutMs = 30_000
 ): Promise<JsonRpcResponse> {
   const wantId = body.id;
   await invoke("mcp_stdio_send", { id: server.id, line: JSON.stringify(body) });
 
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
     if (Date.now() > deadline) {
       throw new Error(`MCP server "${server.name}" timed out`);
@@ -265,6 +271,7 @@ export async function listMcpTools(server: McpServerConfig): Promise<McpToolInfo
       return extractTools(list.result);
     } catch (e) {
       stdioSessions.delete(server.id); // force a fresh spawn next time
+      void stopStdio(server.id); // reap the (likely dead) backend process
       throw e instanceof Error ? e : new Error(String(e));
     }
   }
@@ -322,12 +329,16 @@ export async function callMcpTool(
     if (server.transport === "stdio") {
       try {
         await ensureStdio(server);
-        const res = await stdioRpc(server, {
-          jsonrpc: "2.0",
-          id: 2,
-          method: "tools/call",
-          params: { name: toolName, arguments: args },
-        });
+        const res = await stdioRpc(
+          server,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: toolName, arguments: args },
+          },
+          120_000
+        );
         if (res.error) {
           return { ok: false, output: res.error.message ?? "MCP tool error" };
         }
@@ -335,6 +346,7 @@ export async function callMcpTool(
         return { ok: !isError, output: extractToolOutput(res.result) };
       } catch (e) {
         stdioSessions.delete(server.id); // force a fresh spawn next call
+        void stopStdio(server.id); // reap the (likely dead) backend process
         throw e instanceof Error ? e : new Error(String(e));
       }
     }

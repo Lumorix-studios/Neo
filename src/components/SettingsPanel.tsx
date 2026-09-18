@@ -424,6 +424,7 @@ export default function SettingsPanel({
   const [mcpHeaders, setMcpHeaders] = useState("");
   const [mcpCommand, setMcpCommand] = useState("");
   const [mcpArgs, setMcpArgs] = useState("");
+  const [mcpCwd, setMcpCwd] = useState("");
   const [mcpEnv, setMcpEnv] = useState("");
   const [mcpError, setMcpError] = useState("");
   const [mcpTest, setMcpTest] = useState<Record<string, string>>({});
@@ -534,6 +535,7 @@ export default function SettingsPanel({
         transport: "stdio",
         command,
         args,
+        cwd: mcpCwd.trim() || undefined,
         env: Object.keys(env).length > 0 ? env : undefined,
       };
     }
@@ -545,6 +547,7 @@ export default function SettingsPanel({
     setMcpHeaders("");
     setMcpCommand("");
     setMcpArgs("");
+    setMcpCwd("");
     setMcpEnv("");
   };
 
@@ -1126,6 +1129,14 @@ return (
                           className="min-w-0 flex-[1.6] rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                         />
                       </div>
+                      <input
+                        type="text"
+                        value={mcpCwd}
+                        onChange={(e) => setMcpCwd(e.target.value)}
+                        placeholder="Working directory (optional) — e.g. %LOCALAPPDATA%\Roblox"
+                        spellCheck={false}
+                        className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
+                      />
                       <input
                         type="text"
                         value={mcpEnv}

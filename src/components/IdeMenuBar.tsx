@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   IoCheckmark,
   IoContractOutline,
-  IoDiamondOutline,
   IoDocumentOutline,
   IoDocumentTextOutline,
   IoFolderOutline,

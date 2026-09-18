@@ -1215,18 +1215,184 @@ fn terminal_kill(state: tauri::State<'_, TerminalState>, id: u32) {
 // Persistent stdio sessions for MCP servers run as local commands — the standard
 // MCP stdio transport: one JSON-RPC message per line on stdin/stdout. Each
 // server process is kept alive across calls and torn down on stop/remove.
+//
+// Compatibility / robustness notes:
+//  • `%VAR%` (Windows) and `$VAR` / `${VAR}` (POSIX) refs in the command, args
+//    and cwd are expanded from the environment, so configs like
+//    `%LOCALAPPDATA%\Roblox\mcp.bat` work as typed.
+//  • Extension-less commands (`npx`, `node`, `python`…) are resolved against
+//    PATH; on Windows an `.exe` is spawned directly while `.cmd`/`.bat` shims
+//    (npm-style) are routed through `cmd.exe /c`.
+//  • `.bat`/`.cmd` targets are always executed via `cmd.exe /c`.
+//  • stderr is captured (capped ring of the last N lines) so a crashing server
+//    reports *why* it died instead of a bare "pipe is being closed" (os error
+//    232 on Windows).
 
+use std::collections::VecDeque;
 use std::io::BufRead;
 use std::process::ChildStdin;
 use std::sync::mpsc::{self, Receiver};
+use std::sync::Arc;
 
-struct McpProc {
+/// stdin/stdout child plumbing — locked separately so a read poll never blocks
+/// a send on the session map.
+struct McpProcIo {
     child: Child,
     stdin: ChildStdin,
-    rx: Receiver<String>,
 }
 
-struct McpState(Mutex<HashMap<String, McpProc>>);
+struct McpProc {
+    io: Mutex<McpProcIo>,
+    /// stdout lines pushed by the reader thread (bounded backlog). The
+    /// receiver is behind a mutex so the whole struct stays `Sync` (required
+    /// for Tauri managed state) while still allowing blocking waits.
+    rx: Mutex<Receiver<String>>,
+    /// Last N stderr lines, kept for crash diagnostics.
+    stderr_tail: Arc<Mutex<VecDeque<String>>>,
+}
+
+struct McpState(Mutex<HashMap<String, Arc<McpProc>>>);
+
+/// Maximum stderr lines kept for diagnostics.
+const STDERR_TAIL_LINES: usize = 40;
+/// Maximum characters kept per captured stderr line.
+const STDERR_LINE_MAX: usize = 2000;
+
+/// Expand `%VAR%` (Windows) and `$VAR` / `${VAR}` (POSIX) references from the
+/// environment. Unknown variables are left as written.
+fn expand_env_vars(input: &str) -> String {
+    if !input.contains('%') && !input.contains('$') {
+        return input.to_string();
+    }
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let (name, skip): (Option<String>, usize) = if c == '%' {
+            match chars[i + 1..].iter().position(|&ch| ch == '%') {
+                Some(end) if end > 0 => {
+                    let name: String = chars[i + 1..i + 1 + end].iter().collect();
+                    (Some(name), end + 2)
+                }
+                _ => (None, 0),
+            }
+        } else if c == '$' && i + 1 < chars.len() && chars[i + 1] == '{' {
+            match chars[i + 2..].iter().position(|&ch| ch == '}') {
+                Some(end) if end > 0 => {
+                    let name: String = chars[i + 2..i + 2 + end].iter().collect();
+                    (Some(name), end + 3)
+                }
+                _ => (None, 0),
+            }
+        } else if c == '$' {
+            let end = chars[i + 1..]
+                .iter()
+                .take_while(|ch| ch.is_ascii_alphanumeric() || **ch == '_')
+                .count();
+            if end > 0 {
+                let name: String = chars[i + 1..i + 1 + end].iter().collect();
+                (Some(name), end + 1)
+            } else {
+                (None, 0)
+            }
+        } else {
+            (None, 0)
+        };
+        if let Some(name) =
+            name.filter(|n| n.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_'))
+        {
+            if let Ok(val) = std::env::var(&name) {
+                out.push_str(&val);
+                i += skip;
+                continue;
+            }
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
+}
+
+/// Resolve `command` to a spawnable program. Returns the program plus any
+/// front args (e.g. `cmd /c`). Handles bare names (`npx`), full paths,
+/// `.bat`/`.cmd` files and `%VAR%`-expanded paths.
+#[cfg(windows)]
+fn resolve_command(command: &str) -> (String, Vec<String>) {
+    let expanded = expand_env_vars(command);
+    let lower = expanded.to_lowercase();
+    if lower.ends_with(".bat") || lower.ends_with(".cmd") {
+        return ("cmd.exe".to_string(), vec!["/c".to_string(), expanded]);
+    }
+    if Path::new(&expanded).extension().is_some() {
+        return (expanded, Vec::new());
+    }
+    // Extension-less: search the cwd, then PATH, for the real shim. `.exe`
+    // spawns directly; `.cmd`/`.bat` shims (npm-style) need `cmd.exe /c`.
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let dirs = std::env::current_dir().into_iter().chain(
+        path_var
+            .split(';')
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from),
+    );
+    for dir in dirs {
+        for ext in [".exe", ".cmd", ".bat"] {
+            let candidate = dir.join(format!("{expanded}{ext}"));
+            if candidate.is_file() {
+                let cand = candidate.to_string_lossy().into_owned();
+                if ext == ".exe" {
+                    return (cand, Vec::new());
+                }
+                return ("cmd.exe".to_string(), vec!["/c".to_string(), cand]);
+            }
+        }
+    }
+    (expanded, Vec::new())
+}
+
+/// Non-Windows: expand env references and spawn directly.
+#[cfg(not(windows))]
+fn resolve_command(command: &str) -> (String, Vec<String>) {
+    (expand_env_vars(command), Vec::new())
+}
+
+/// Join the captured stderr tail into a single diagnostic string.
+fn stderr_dump(tail: &Mutex<VecDeque<String>>) -> String {
+    match tail.lock() {
+        Ok(g) => g
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Err(_) => String::new(),
+    }
+}
+
+/// Explain why a stdio MCP server stopped producing output, if it exited.
+fn describe_exit(child: &mut Child, tail: &Mutex<VecDeque<String>>) -> String {
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            let err = stderr_dump(tail);
+            if err.is_empty() {
+                format!("The server process has exited ({status}).")
+            } else {
+                format!("The server process has exited ({status}). stderr:\n{err}")
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+/// Kill and reap a session's child process.
+fn kill_proc(proc: &McpProc) {
+    let mut io = match proc.io.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let _ = io.child.kill();
+    let _ = io.child.wait();
+}
 
 #[tauri::command]
 fn mcp_stdio_start(
@@ -1240,21 +1406,29 @@ fn mcp_stdio_start(
     // Tear down any previous process registered under this id.
     {
         let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-        if let Some(mut old) = guard.remove(&id) {
-            let _ = old.child.kill();
-            let _ = old.child.wait();
+        if let Some(old) = guard.remove(&id) {
+            kill_proc(&old);
         }
     }
 
-    let mut cmd = Command::new(&command);
-    cmd.args(&args)
+    // Windows shell compatibility: expand env refs, resolve shims, route
+    // .bat/.cmd files through cmd.exe.
+    let (program, front_args) = resolve_command(&command);
+    let args: Vec<String> = args.iter().map(|a| expand_env_vars(a)).collect();
+
+    let mut cmd = Command::new(&program);
+    cmd.args(front_args.iter().chain(args.iter()))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        // Capture stderr — a crashing server must be able to say why.
+        .stderr(Stdio::piped());
     if let Some(dir) = &cwd {
-        let p = PathBuf::from(dir);
+        let expanded = expand_env_vars(dir);
+        let p = PathBuf::from(&expanded);
         if p.is_dir() {
             cmd.current_dir(&p);
+        } else {
+            return Err(format!("MCP server cwd does not exist: {expanded}"));
         }
     }
     if let Some(vars) = &env {
@@ -1275,6 +1449,7 @@ fn mcp_stdio_start(
         .stdout
         .take()
         .ok_or_else(|| "Failed to open MCP server stdout".to_string())?;
+    let stderr = child.stderr.take();
 
     // Reader thread: pushes complete lines into a channel with a bounded
     // backlog so a chatty server can't grow memory without bound.
@@ -1296,11 +1471,38 @@ fn mcp_stdio_start(
         }
     });
 
+    // stderr capture: a small ring buffer of the last lines, so a crash can
+    // be diagnosed after the fact (this turns "os error 232" into a readable
+    // error message in the UI).
+    let stderr_tail: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+    if let Some(stderr) = stderr {
+        let tail = Arc::clone(&stderr_tail);
+        thread::spawn(move || {
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                let capped: String = line.chars().take(STDERR_LINE_MAX).collect();
+                if let Ok(mut guard) = tail.lock() {
+                    while guard.len() >= STDERR_TAIL_LINES {
+                        guard.pop_front();
+                    }
+                    guard.push_back(capped);
+                }
+            }
+        });
+    }
+
     state
         .0
         .lock()
         .map_err(|e| format!("State lock error: {e}"))?
-        .insert(id, McpProc { child, stdin, rx });
+        .insert(
+            id,
+            Arc::new(McpProc {
+                io: Mutex::new(McpProcIo { child, stdin }),
+                rx: Mutex::new(rx),
+                stderr_tail,
+            }),
+        );
     Ok(())
 }
 
@@ -1311,16 +1513,44 @@ fn mcp_stdio_send(
     id: String,
     line: String,
 ) -> Result<(), String> {
-    let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-    let session = guard
-        .get_mut(&id)
-        .ok_or_else(|| format!("MCP stdio session {id} is not running"))?;
-    session
-        .stdin
-        .write_all(line.as_bytes())
-        .and_then(|_| session.stdin.write_all(b"\n"))
-        .and_then(|_| session.stdin.flush())
-        .map_err(|e| format!("Failed to write to MCP server: {e}"))
+    // Clone the session Arc out of the map, then release the map lock — a
+    // slow/blocked read poll elsewhere must never stall a send.
+    let session = {
+        let guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+        guard
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| format!("MCP stdio session {id} is not running"))?
+    };
+    let write_result = {
+        let mut io = session
+            .io
+            .lock()
+            .map_err(|_| "MCP stdio session lock poisoned".to_string())?;
+        io.stdin
+            .write_all(line.as_bytes())
+            .and_then(|_| io.stdin.write_all(b"\n"))
+            .and_then(|_| io.stdin.flush())
+    };
+    if let Err(e) = write_result {
+        // The classic "The pipe is being closed (os error 232)" — the server
+        // process died. Explain why while we still hold the child handle.
+        let detail = {
+            let mut io = session
+                .io
+                .lock()
+                .map_err(|_| "MCP stdio session lock poisoned".to_string())?;
+            describe_exit(&mut io.child, &session.stderr_tail)
+        };
+        // The session is dead; drop it so the next start starts clean.
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(old) = guard.remove(&id) {
+                kill_proc(&old);
+            }
+        }
+        return Err(format!("Failed to write to MCP server: {e}. {detail}"));
+    }
+    Ok(())
 }
 
 /// Read the next stdout line from the server, waiting up to `timeout_ms`.
@@ -1331,16 +1561,38 @@ fn mcp_stdio_read(
     id: String,
     timeout_ms: u64,
 ) -> Result<Option<String>, String> {
-    let guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-    let session = guard
-        .get(&id)
-        .ok_or_else(|| format!("MCP stdio session {id} is not running"))?;
-    match session
-        .rx
-        .recv_timeout(std::time::Duration::from_millis(timeout_ms))
-    {
+    // Clone the session Arc out of the map, then release the map lock — the
+    // blocking wait below never blocks sends, starts or stops.
+    let session = {
+        let guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
+        guard
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| format!("MCP stdio session {id} is not running"))?
+    };
+    let wait_result = {
+        let rx = match session.rx.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        rx.recv_timeout(std::time::Duration::from_millis(timeout_ms))
+    };
+    match wait_result {
         Ok(line) => Ok(Some(line)),
-        Err(_) => Ok(None),
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            // stdout closed: the server exited (or closed its stdout). Report
+            // exit code + captured stderr instead of making the caller poll
+            // until its own timeout with no explanation.
+            let detail = {
+                let mut io = session
+                    .io
+                    .lock()
+                    .map_err(|_| "MCP stdio session lock poisoned".to_string())?;
+                describe_exit(&mut io.child, &session.stderr_tail)
+            };
+            Err(format!("MCP server stopped producing output. {detail}"))
+        }
     }
 }
 
@@ -1348,9 +1600,8 @@ fn mcp_stdio_read(
 #[tauri::command]
 fn mcp_stdio_stop(state: tauri::State<'_, McpState>, id: String) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| format!("State lock error: {e}"))?;
-    if let Some(mut session) = guard.remove(&id) {
-        let _ = session.child.kill();
-        let _ = session.child.wait();
+    if let Some(session) = guard.remove(&id) {
+        kill_proc(&session);
     }
     Ok(())
 }

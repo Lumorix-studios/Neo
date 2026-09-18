@@ -70,7 +70,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAdd, IoAlertSharp, IoBarChartOutline, IoBugOutline, IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, IoSparkles, IoStop, IoSettingsOutline, IoTerminal, IoThumbsDownSharp, IoThumbsUpSharp, IoSend } from "react-icons/io5";
+import { IoAdd, IoAlertSharp, IoBarChartOutline, IoBugOutline, IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, IoSparkles, IoStop, IoTerminal, IoThumbsDownSharp, IoThumbsUpSharp, IoSend, IoSettings } from "react-icons/io5";
 import { shortPath } from "./utils";
 
 type JsonDict = Record<string, unknown>;
@@ -1783,14 +1783,14 @@ ${[...mcpTools.keys()].map((k) => `- ${k}`).join(NL)}`;
           onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
         />
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {/* Activity bar — VS Code-style icon rail */}
+          {/* */}
           <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-(--border) bg-[var(--bg-panel)] py-1">
             <div className="w-full">
               <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
                 <IoTerminal size={17} />
               </RailButton>
               <RailButton active={settingsOpen} title="Settings (Ctrl+,)" onClick={() => setSettingsOpen(true)}>
-                <IoSettingsOutline size={16} />
+                <IoSettings size={16} />
               </RailButton>
             </div>
           </nav>
