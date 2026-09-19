@@ -6,7 +6,7 @@
  * Signed in: avatar, display-name editing, BYOK plan state, sign out.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   signInWithEmail,
@@ -15,6 +15,11 @@ import {
   resetPassword,
   signOut,
   updateProfile,
+  refreshEnabledProviders,
+  providerDisabledMessage,
+  providerLabel,
+  type AuthProvider,
+  type EnabledProviders,
   type NeoUser,
   type Profile,
 } from "../lib/auth";
@@ -207,6 +212,30 @@ function SignInUp(props: {
   const { mode, setMode, busy, setBusy, error, notice, setError, setNotice } = props;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  /**
+   * Which providers the Supabase project has switched on. `null` = still
+   * probing (or the probe failed) — buttons then behave normally.
+   */
+  const [providers, setProviders] = useState<EnabledProviders | null>(null);
+
+  /** Re-probe and update the buttons (used on mount and by the recheck link). */
+  const probeProviders = () => {
+    // refresh* rather than fetch*: the result is cached for the session, so a
+    // provider enabled in the dashboard in the meantime would stay "off".
+    void refreshEnabledProviders().then((p) => {
+      if (p) setProviders(p);
+    });
+  };
+
+  useEffect(() => {
+    let alive = true;
+    void refreshEnabledProviders().then((p) => {
+      if (alive && p) setProviders(p);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const runAuth = async (fn: () => Promise<unknown>, done?: (r: unknown) => void) => {
     setBusy(true);
@@ -228,6 +257,13 @@ function SignInUp(props: {
       <p className="pb-3 text-[11.5px] leading-5 text-[var(--text-muted)]">
         Sign in to sync your chats, settings and API keys across devices.
       </p>
+
+      {providers?.email === false && (
+        <p className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/[0.06] px-2.5 py-2 text-[10.5px] leading-4 text-amber-400/90">
+          Email sign-in is switched off for this Supabase project. Turn it on under
+          Dashboard → Authentication → Sign In / Providers.
+        </p>
+      )}
 
       <div className="flex flex-col gap-2 pb-3">
         <input
@@ -292,7 +328,12 @@ function SignInUp(props: {
           )}
         </div>
       </div>
-      <OAuthButtons busy={busy} runAuth={runAuth} />
+      <OAuthButtons
+        busy={busy}
+        runAuth={runAuth}
+        providers={providers}
+        onRecheck={probeProviders}
+      />
       {error && <p className="pt-2 text-[11px] leading-4 text-red-400/90">{error}</p>}
       {notice && !error && <p className="pt-2 text-[11px] leading-4 text-emerald-400/90">{notice}</p>}
     </div>
@@ -302,9 +343,13 @@ function SignInUp(props: {
 function OAuthButtons({
   busy,
   runAuth,
+  providers,
+  onRecheck,
 }: {
   busy: boolean;
   runAuth: (fn: () => Promise<unknown>, done?: (r: unknown) => void) => Promise<void>;
+  providers: EnabledProviders | null;
+  onRecheck: () => void;
 }) {
   return (
     <>

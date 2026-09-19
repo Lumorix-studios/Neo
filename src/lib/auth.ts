@@ -6,9 +6,91 @@
  * friendly message instead of throwing.
  */
 
-import { supabase, isSupabaseConfigured } from "./supabase";
+import {
+  supabase,
+  isSupabaseConfigured,
+  supabaseUrl,
+  supabaseAnonKey,
+} from "./supabase";
 
 export type AuthProvider = "github" | "google";
+
+/** Display label for an OAuth provider id ("github" → "GitHub"). */
+export function providerLabel(provider: AuthProvider): string {
+  return provider === "github" ? "GitHub" : "Google";
+}
+
+/** Which sign-in methods the Supabase project actually has switched on. */
+export interface EnabledProviders {
+  email: boolean;
+  github: boolean;
+  google: boolean;
+}
+
+let providersPromise: Promise<EnabledProviders | null> | null = null;
+
+/**
+ * Ask the project which sign-in providers are enabled.
+ *
+ * Needed because `signInWithOAuth({ skipBrowserRedirect: true })` builds the
+ * authorize URL entirely client-side and never contacts the server — so
+ * supabase-js reports `error: null` for a disabled provider, and the user is
+ * dropped into the system browser staring at raw GoTrue JSON:
+ * `{"code":400,"error_code":"validation_failed", …}`.
+ * GoTrue's public settings endpoint is the only way to know beforehand.
+ *
+ * Cached for the session. Resolves to `null` when the probe fails (offline,
+ * old project…), and callers should then simply let the user try.
+ */
+export function fetchEnabledProviders(): Promise<EnabledProviders | null> {
+  if (!isSupabaseConfigured) return Promise.resolve(null);
+  if (!providersPromise) {
+    providersPromise = fetch(`${supabaseUrl}/auth/v1/settings`, {
+      headers: { apikey: supabaseAnonKey },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { external?: Record<string, boolean> } | null) => {
+        const external = json?.external;
+        if (!external) return null;
+        return {
+          // `!== false` so an unexpected shape still lets the user try.
+          email: external.email !== false,
+          github: external.github === true,
+          google: external.google === true,
+        };
+      })
+      .catch(() => null);
+  }
+  return providersPromise;
+}
+
+/** True when the project is known to have this provider switched off. */
+export async function isProviderDisabled(provider: AuthProvider): Promise<boolean> {
+  const enabled = await fetchEnabledProviders();
+  return enabled ? !enabled[provider] : false;
+}
+
+/**
+ * Re-probe the project, ignoring the session cache.
+ *
+ * The cached result would otherwise pin a freshly-enabled provider to
+ * "disabled" until the app restarts, so callers that are about to show the
+ * sign-in form (or that offer a recheck) should use this instead.
+ */
+export function refreshEnabledProviders(): Promise<EnabledProviders | null> {
+  providersPromise = null;
+  return fetchEnabledProviders();
+}
+
+/** Actionable message for a provider that isn't enabled on the project. */
+export function providerDisabledMessage(provider: AuthProvider): string {
+  return (
+    `${providerLabel(provider)} sign-in isn't enabled on this Supabase project yet. ` +
+    "Turn it on in Dashboard → Authentication → Sign In / Providers, paste the OAuth " +
+    "Client ID and Client Secret, add the callback URL shown there to your OAuth app, " +
+    "then try again."
+  );
+}
 
 export interface NeoUser {
   id: string;
@@ -61,6 +143,19 @@ function toNeoUser(
 
 export function authErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
+
+  // Supabase returns this until the provider is switched on in the dashboard.
+  // The raw text names the API ("Unsupported provider: provider is not
+  // enabled"), not the button the user has to click — so translate it.
+  if (/provider is not enabled|unsupported provider/i.test(msg)) {
+    return "This sign-in provider isn't enabled on your Supabase project yet — turn it on in Dashboard → Authentication → Sign In / Providers, then try again.";
+  }
+
+  // redirect_to rejected because it isn't in the allow list.
+  if (/redirect/i.test(msg) && /(not allowed|not in|invalid|whitelist)/i.test(msg)) {
+    return "Your project's Redirect URLs allow list doesn't include this app's callback — add agenticcoder://auth/callback in Dashboard → Authentication → URL Configuration.";
+  }
+
   return msg
     .replace(/Email logins are disabled/, "Email sign-in is disabled for this project")
     .replace(/Invalid login credentials/, "Incorrect email or password.")
@@ -115,19 +210,25 @@ export async function ensureProfile(): Promise<void> {
   const { data: existing } = await sb.from("profiles").select("id").eq("id", user.id).maybeSingle();
   if (existing) return;
   const meta = user.user_metadata ?? {};
-  await sb.from("profiles").upsert({
-    id: user.id,
-    email: user.email ?? "",
-    display_name:
-      (typeof meta.full_name === "string" && meta.full_name) ||
-      (typeof meta.user_name === "string" && meta.user_name) ||
-      user.email?.split("@")[0] ||
-      "Account",
-    avatar_url:
-      (typeof meta.avatar_url === "string" && meta.avatar_url) ||
-      (typeof meta.picture === "string" && meta.picture) ||
-      null,
-  });
+  // `ignoreDuplicates` turns this into INSERT … ON CONFLICT DO NOTHING, so it
+  // only needs INSERT privileges — the client has no UPDATE grant on `id` or on
+  // the entitlement columns (see supabase/migrations/0002_harden_profiles.sql).
+  await sb.from("profiles").upsert(
+    {
+      id: user.id,
+      email: user.email ?? "",
+      display_name:
+        (typeof meta.full_name === "string" && meta.full_name) ||
+        (typeof meta.user_name === "string" && meta.user_name) ||
+        user.email?.split("@")[0] ||
+        "Account",
+      avatar_url:
+        (typeof meta.avatar_url === "string" && meta.avatar_url) ||
+        (typeof meta.picture === "string" && meta.picture) ||
+        null,
+    },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
 }
 
 /** Update display name / avatar in the profiles table. */
@@ -215,6 +316,11 @@ export async function signInWithOAuth(provider: AuthProvider): Promise<string> {
   if (!isSupabaseConfigured) throw new Error("Supabase is not configured — see SUPABASE_SETUP.md.");
   const sb = supabase();
   if (!sb) throw new Error("Supabase is not configured.");
+
+  // Pre-flight. `signInWithOAuth` below cannot fail locally, so without this
+  // check the user gets sent to the browser to read a raw JSON error page.
+  if (await isProviderDisabled(provider)) throw new Error(providerDisabledMessage(provider));
+
   const { data, error } = await sb.auth.signInWithOAuth({
     provider,
     options: {
@@ -222,7 +328,14 @@ export async function signInWithOAuth(provider: AuthProvider): Promise<string> {
       skipBrowserRedirect: true, // we open the URL ourselves via the OS browser
     },
   });
-  if (error) throw new Error(authErrorMessage(error));
+  if (error) {
+    // The dashboard error is generic and never names the provider, but we know
+    // which button was pressed — so say exactly which one needs enabling.
+    if (/provider is not enabled|unsupported provider/i.test(error.message)) {
+      throw new Error(providerDisabledMessage(provider));
+    }
+    throw new Error(authErrorMessage(error));
+  }
   if (!data?.url) throw new Error("Could not start the sign-in flow — try again.");
   return data.url;
 }

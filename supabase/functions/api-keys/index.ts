@@ -83,22 +83,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (authErr || !authData.user) return json({ error: "Unauthorized." }, 401);
     const userId = authData.user.id;
 
-    // Enforce the paywall flag from the profile row.
-    const { data: profile, error: profileErr } = await sb
-      .from("profiles")
-      .select("byok_enabled")
-      .eq("id", userId)
-      .maybeSingle();
-    if (profileErr) return json({ error: "Could not load profile." }, 500);
-    if (profile && profile.byok_enabled === false) {
-      return json({ error: "BYOK requires an upgraded plan.", paywalled: true }, 402);
-    }
-
-    // Service-role client for the (RLS-locked) api_keys table.
+    // Service-role client: the only role allowed to touch the policy-less
+    // `user_api_keys` table, and the authoritative reader for the paywall.
     const admin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+
+    // Enforce the paywall flag from the profile row. Read it with the service
+    // role on purpose: 0002_harden_profiles revokes client UPDATE on
+    // `plan` / `byok_enabled`, but the gate must never depend on RLS being
+    // configured correctly — this read is the one that actually stops a
+    // downgraded user from pulling a decrypted key.
+    const { data: profile, error: profileErr } = await admin
+      .from("profiles")
+      .select("byok_enabled, plan")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profileErr) return json({ error: "Could not load profile." }, 500);
+    if (profile?.byok_enabled === false) {
+      return json({ error: "BYOK requires an upgraded plan.", paywalled: true }, 402);
+    }
 
     const url = new URL(req.url);
     // The client sends the provider as a header (supabase-js `functions.invoke`

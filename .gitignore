@@ -116,3 +116,6 @@ CMakeLists.txt.user*
 .env
 .env.*
 !.env.example
+
+# Supabase CLI scratch files — regenerated locally by `supabase link`.
+supabase/.temp/

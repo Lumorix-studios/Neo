@@ -1,7 +1,7 @@
 
 //author of this entire codebase is Madhusudhan thapa (madhusudhant207@gmail.com) and coding agents 
-//Licensed under the MIT License. See LICENSE file in the project root for full license information.
-//Completely opensource code and free to use and modify. Please give credit to the author if you use this codebase in your project.
+// See LICENSE file in the project root for full license information.
+
 //cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
 //also cant assure you this will always stay opensource
 //            9/18/26

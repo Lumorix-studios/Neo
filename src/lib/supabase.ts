@@ -12,16 +12,19 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? "";
-const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? "";
+/** Project URL, e.g. https://abcdefgh.supabase.co (empty when unconfigured). */
+export const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? "";
+/** The public anon key belonging to `supabaseUrl` (empty when unconfigured). */
+export const supabaseAnonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? "";
 
-export const isSupabaseConfigured = url.length > 0 && anonKey.length > 0;
+export const isSupabaseConfigured = supabaseUrl.length > 0 && supabaseAnonKey.length > 0;
 
 let client: SupabaseClient | null = null;
 if (isSupabaseConfigured) {
   // persistSession: keep the login across app restarts (like VS Code sign-in).
   // autoRefreshToken: silently refresh JWTs in the background.
-  client = createClient(url, anonKey, {
+  client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
