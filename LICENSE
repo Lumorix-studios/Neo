@@ -1,21 +1,169 @@
-MIT License
+# NEO Source-Available License 1.0
 
-Copyright (c) 2026 Lumorix Studios
+Copyright © 2026 Lumorix Studios
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## 1. Definitions
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+For purposes of this License:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+**"Software"** means the NEO software, including its source code, object code, binaries, documentation, configuration files, and other materials distributed by Lumorix Studios under this License.
+
+**"Modified Version"** means any version of the Software that has been modified, adapted, translated, extended, or otherwise changed from the version distributed by Lumorix Studios.
+
+**"Personal Use"** means use of the Software by an individual for their own personal, educational, experimental, research, or private development activities, where the Software or a Modified Version is not distributed or made available to the public or to a substantial number of third parties.
+
+**"Non-Commercial Distribution"** means distribution of the Software or a Modified Version without charging a fee, subscription, license payment, access fee, or other monetary consideration for the Software itself, and without distributing it as a substantial component of a commercial product or service.
+
+**"Commercial Distribution"** means distributing, publishing, selling, licensing, sublicensing, renting, leasing, hosting, providing access to, bundling, or otherwise making the Software or a Modified Version available to a substantial number of third parties in connection with a commercial product, service, business, paid offering, subscription, or other revenue-generating activity.
+
+Commercial Distribution includes, but is not limited to:
+
+* Selling the Software or a Modified Version.
+* Offering the Software as a paid download.
+* Bundling the Software into a paid product or service.
+* Offering a hosted or managed version of the Software to customers.
+* Providing the Software to customers, users, or members as part of a paid service.
+* Distributing the Software at large scale as part of a commercial offering.
+* Operating a service whose primary functionality is substantially provided by the Software or a Modified Version.
+
+**"Substantial Number of Third Parties"** means distribution beyond the individual's private use or a limited group of collaborators and includes public distribution through websites, application stores, package repositories, public download services, commercial products, or similar channels.
+
+## 2. Copyright License
+
+Subject to the terms and conditions of this License, Lumorix Studios grants you a worldwide, non-exclusive, royalty-free license to:
+
+1. Use the Software for Personal Use.
+2. Study and inspect the source code.
+3. Modify the Software for Personal Use.
+4. Create Modified Versions for Personal Use.
+5. Make private copies of the Software and Modified Versions.
+6. Share the Software or Modified Versions with a limited number of individuals for non-commercial development, testing, education, or collaboration.
+7. Distribute the Software or Modified Versions for non-commercial purposes, provided that this License and the applicable copyright notices remain included.
+
+These permissions do not grant permission for Commercial Distribution.
+
+## 3. Commercial Distribution
+
+Commercial Distribution of the Software or a Modified Version is prohibited without prior written permission from Lumorix Studios.
+
+No person or organization may, without prior written permission from Lumorix Studios:
+
+1. Sell the Software or a Modified Version.
+2. Publish the Software or a Modified Version as a commercial download.
+3. Include the Software or a Modified Version as a substantial component of a commercial product or service.
+4. Offer a hosted, managed, or remotely accessible version of the Software or a Modified Version to third parties as part of a commercial service.
+5. Redistribute the Software or a Modified Version to a substantial number of third parties for commercial purposes.
+6. License, sublicense, rent, lease, or otherwise transfer commercial rights to the Software or a Modified Version.
+7. Remove, disable, circumvent, or replace licensing mechanisms for the purpose of commercially redistributing the Software or a Modified Version.
+
+Nothing in this section prohibits Personal Use merely because the person using the Software is employed by, affiliated with, or operating a business, provided that the Software remains within the person's private or limited development environment and is not commercially distributed.
+
+## 4. Private and Internal Use
+
+A person or organization may use the Software privately without obtaining additional permission, provided that the Software is not distributed to a substantial number of third parties.
+
+Private internal use includes, for example:
+
+* Developing software privately.
+* Testing the Software internally.
+* Learning from the Software.
+* Modifying the Software for internal use.
+* Using the Software within a private development team.
+* Using a Modified Version internally without distributing it externally.
+
+Private internal use does not grant permission to redistribute the Software or a Modified Version as a commercial product or service.
+
+## 5. Modification
+
+You may modify the Software for Personal Use and private internal use.
+
+Modified Versions remain subject to this License if they contain substantial portions of the original NEO code.
+
+You must retain applicable copyright notices and a copy of this License in any permitted redistribution.
+
+## 6. Attribution
+
+When redistributing the Software or a Modified Version in a manner permitted by this License, you must:
+
+1. Retain the original copyright notices.
+2. Include a copy of this License.
+3. Clearly state that the redistributed software is based on NEO.
+4. Clearly identify substantial modifications from the version distributed by Lumorix Studios.
+
+## 7. NEO Name and Branding
+
+This License does not grant permission to use the names, logos, trademarks, service marks, product names, or branding of Lumorix Studios or NEO except as reasonably necessary to identify the original Software.
+
+You may not represent a Modified Version as the official NEO product or imply that Lumorix Studios endorses, sponsors, or maintains a Modified Version without prior written permission.
+
+Modified Versions intended for redistribution should use a distinct product name and branding.
+
+## 8. No Circumvention of Commercial Restrictions
+
+You may not circumvent the commercial restrictions of this License by:
+
+1. Repackaging the Software under another name.
+2. Splitting the Software into multiple components for the purpose of avoiding the restrictions of this License.
+3. Removing or replacing licensing or subscription functionality for the purpose of commercial redistribution.
+4. Combining the Software with other software where the resulting distribution is substantially equivalent to distributing NEO itself for a commercial purpose.
+5. Providing substantially equivalent access to NEO functionality through a hosted or remote service for commercial purposes.
+
+## 9. Contributions
+
+Unless otherwise agreed in writing, contributions submitted to the NEO project may be incorporated into the Software and distributed by Lumorix Studios under this License or under a different license selected by Lumorix Studios for future versions.
+
+By intentionally submitting a contribution to the NEO project for inclusion in the Software, you represent that you have the necessary rights to submit the contribution.
+
+## 10. Third-Party Software
+
+This License applies only to code owned or controlled by Lumorix Studios and distributed as part of NEO.
+
+Third-party libraries, dependencies, frameworks, and other components remain subject to their respective licenses.
+
+Nothing in this License modifies or overrides the license of third-party software.
+
+## 11. Termination
+
+Your rights under this License automatically terminate if you materially violate its terms.
+
+Upon termination, you must cease exercising the rights granted by this License and stop distributing the Software or Modified Versions.
+
+Rights that were lawfully granted to other recipients before termination are not automatically revoked solely because your rights have terminated.
+
+Lumorix Studios may, at its discretion, provide written permission restoring rights under this License or granting separate commercial rights.
+
+## 12. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+IN NO EVENT SHALL LUMORIX STUDIOS OR ITS CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE OR THE USE OR INABILITY TO USE THE SOFTWARE.
+
+## 13. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LUMORIX STUDIOS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, BUSINESS, GOODWILL, OR OTHER INTANGIBLE LOSSES ARISING FROM THE SOFTWARE OR THIS LICENSE.
+
+## 14. No Additional Rights
+
+Except for the rights expressly granted by this License, no other rights are granted, whether by implication, estoppel, or otherwise.
+
+## 15. Reservation of Rights
+
+All rights not expressly granted under this License are reserved by Lumorix Studios.
+
+## 16. Commercial Licensing
+
+Lumorix Studios may grant separate commercial licenses or permissions for use, distribution, hosting, bundling, or commercialization of NEO.
+
+Commercial licensing terms are determined separately by Lumorix Studios.
+
+## 17. Acceptance
+
+By using, modifying, or distributing the Software, you acknowledge that you have read and agree to the terms of this License.
+
+If you do not agree to this License, you may not use, modify, or distribute the Software under the permissions granted herein.
+
+---
+
+Copyright © 2026 Lumorix Studios.
+
+NEO and associated Lumorix Studios branding are the property of their respective owners.
