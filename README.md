@@ -8,13 +8,11 @@
 
 > **NEO is currently in beta and under active development.**
 
-NEO is a lightweight agentic coding environment built with React, TypeScript, Tauri, and Rust.
+NEO is a lightweight agentic coding environment built with **React, TypeScript, Tauri, and Rust**.
 
-It combines an integrated code editor, AI agent, filesystem tools, Git integration, terminals, debugging infrastructure, MCP support, configurable model providers, and local model support into a single development environment.
+It brings an AI agent, code editor, filesystem tools, Git integration, terminals, debugging infrastructure, MCP support, configurable AI providers, local models, and project management into a single desktop environment.
 
-NEO is designed around local data ownership and user-controlled AI infrastructure. The application does not require a NEO-operated cloud service for storing application data, conversations, configuration, or project information.
-
-<!-- SCREENSHOT: Main NEO interface -->
+NEO is designed to give AI models access to real development tools while keeping the developer in control of their workspace and changes.
 
 <p align="center">
   <img src="src/assets/images/preview sss.png" alt="NEO coding environment" width="900" />
@@ -22,22 +20,27 @@ NEO is designed around local data ownership and user-controlled AI infrastructur
 
 ---
 
-## Overview
+# Overview
 
-NEO provides an AI-assisted development environment where models can interact with projects through controlled tools rather than being limited to generating code in a chat interface.
+Traditional AI coding assistants are often centered around a chat interface.
 
-The agent can inspect files, search workspaces, propose and apply modifications, interact with development environments, and work with Git while keeping the developer in control of changes.
+NEO takes a different approach.
 
-The application is designed around the following principles:
+Instead of only generating code in a conversation, the agent can interact with a development workspace through controlled tools.
 
-* Local-first application data
-* User-controlled AI providers
-* Explicit file access
-* Permission-controlled modifications
-* Transparent agent activity
-* Native desktop integration
-* Extensible tooling through MCP
-* Support for local AI models
+It can:
+
+* Inspect project files
+* Search through workspaces
+* Create and modify files
+* Review changes
+* Work with Git
+* Run commands through a terminal
+* Interact with local development environments
+* Connect to external tools through MCP
+* Use cloud or locally hosted AI models
+
+The goal is to provide an environment where AI-assisted development happens alongside the tools developers already use.
 
 ---
 
@@ -45,9 +48,9 @@ The application is designed around the following principles:
 
 ## Agentic Coding
 
-NEO provides models with filesystem tools for interacting with development projects.
+NEO provides filesystem tools that allow the agent to interact with development projects.
 
-Available tools include:
+Available operations include:
 
 ```text
 read_file
@@ -67,36 +70,37 @@ The agent can use these tools to inspect and modify projects according to the us
 
 Destructive operations require explicit user approval.
 
-Agent operations are displayed through an activity timeline with tool status and output.
+Agent activity is displayed through an activity timeline showing tool calls, status, and output.
 
-<!-- SCREENSHOT: Agent activity / tool timeline -->
+<p align="center">
+  <img src="src/assets/images/previewss2.0.png" alt="NEO agent activity and change review" width="850" />
+</p>
 
 ---
 
 ## Context Management
 
-NEO provides controlled context access rather than automatically exposing an entire repository to the model.
+NEO does not automatically expose an entire repository to an AI model.
 
-The agent can work with:
+The agent can access project information through controlled context sources such as:
 
 * Files currently open in the editor
 * Explicitly selected files
 * Files discovered through search
-* Files accessed through agentic filesystem tools
+* Files accessed through filesystem tools
 
-This approach allows users to control the information available to the model while reducing unnecessary context.
+This allows developers to control what information is provided to the model while avoiding unnecessary context.
 
 ---
 
-## Integrated Code Editor
+# Integrated Code Editor
 
-NEO includes a built-in code editor designed to operate alongside the agent.
+NEO includes a built-in code editor designed to work alongside the agent.
 
 Features include:
 
 * Workspace file explorer
 * Folder-based workspaces
-* Individual file opening
 * Multi-tab editing
 * Up to 10 simultaneously open tabs
 * LRU tab eviction
@@ -120,61 +124,53 @@ Toggle the editor with:
 Ctrl + Shift + E
 ```
 
-<!-- SCREENSHOT: Code editor + file explorer -->
-
 <p align="center">
   <img src="src/assets/images/IDE.png" alt="NEO integrated code editor" width="900" />
 </p>
 
 ---
 
-## Change Review
+# Change Review
 
-NEO provides explicit visibility into agent-generated modifications.
+NEO provides visibility into modifications made during an agent session.
 
-Before applying changes, the user can review proposed modifications through the application's change and diff interfaces.
+Before changes are applied, users can review proposed modifications through the application's change and diff interfaces.
 
-Typical agent activity may appear as:
+A typical agent workflow may look like:
 
 ```text
-{reading file}
-
-{searching files}
-
-{added changes}
-
-Apply?
+Reading file
+      ↓
+Searching workspace
+      ↓
+Preparing changes
+      ↓
+Review changes
+      ↓
+Apply
 ```
 
-This allows users to review modifications before they become part of the project.
-
-<!-- SCREENSHOT: Change review / diff -->
-
-<p align="center">
-  <img src="src/assets/images/previewss2.0.png" alt="NEO change review interface" width="850" />
-</p>
+This gives developers an opportunity to inspect changes before they become part of the project.
 
 ---
 
-## Git Integration
+# Git Integration
 
 NEO integrates Git into the development workflow.
 
 Git functionality provides repository awareness and change visibility while working with the agent.
 
-The integrated diff interface allows users to inspect modifications produced during an agent session.
+The integrated diff interface can be used to inspect modifications produced during an agent session.
 
 Git can also be used independently through the integrated terminal.
 
 ---
 
-## Integrated PowerShell Terminal
+# Integrated PowerShell Terminal
 
 NEO includes an integrated PowerShell terminal backed by a native PTY implementation.
 
-The terminal provides an interactive shell environment capable of running the development tools installed on the user's system.
-
-Examples include:
+The terminal can run development tools installed on the user's machine, including:
 
 ```text
 PowerShell
@@ -186,34 +182,37 @@ Rust
 Cargo
 ```
 
-NEO supports multiple PowerShell sessions, allowing users to maintain separate interactive environments for development servers, commands, debugging, and other processes.
+NEO supports multiple PowerShell sessions, allowing developers to maintain separate environments for:
 
-NEO does not bundle complete compiler toolchains into the application. It instead works with the development environments available on the user's machine.
+* Development servers
+* Build commands
+* Debugging
+* Git operations
+* Scripts
+* Other development processes
 
-<!-- SCREENSHOT: Terminal + multiple sessions -->
-
-
+NEO does not bundle complete compiler toolchains into the application. It works with the development environments already installed on the user's machine.
 
 ---
 
-## Debugging and Development Infrastructure
+# Development Infrastructure
 
-NEO provides development-oriented infrastructure for working with local projects.
+NEO includes development-oriented infrastructure for working with local projects.
 
 This includes:
 
-* Debugging support
 * Process management
 * Port awareness
 * Multiple terminal sessions
 * Local project execution
 * Native process integration
+* Debugging infrastructure
 
-The application is designed to work with the tools and runtimes already installed on the user's system.
+The application is designed to work with the tools and runtimes available on the user's system.
 
 ---
 
-## Model Providers
+# AI Providers
 
 NEO is designed to be provider-independent.
 
@@ -227,33 +226,42 @@ Configuration can include:
 * System prompts
 * Provider-specific configuration
 
-This allows users to select the AI infrastructure appropriate for their workflow.
+This allows developers to choose the AI infrastructure that fits their workflow.
 
 ---
 
-## Local Models
+# Local AI Models
 
-NEO supports locally hosted models through Ollama.
+NEO supports locally hosted AI models through **Ollama**.
 
-Users can run an Ollama server on their own machine, pull models through their local Ollama installation, and configure NEO to use those models.
+Users can run an Ollama server on their own machine, install models locally, and configure NEO to communicate with the local endpoint.
 
 When using a local model, inference can remain entirely on the user's device.
 
 ---
 
-## MCP Support
+# MCP Support
 
-NEO supports the Model Context Protocol (MCP), allowing additional tools and services to be connected to the agent environment.
+NEO supports the **Model Context Protocol (MCP)**.
 
-MCP provides an extensible mechanism for adding capabilities without requiring each integration to be implemented directly into the NEO application.
+MCP allows additional tools and services to be connected to the agent without requiring every integration to be implemented directly inside NEO.
+
+This provides an extensible way to expand the capabilities available to the agent.
+
+Supported MCP configurations can include:
+
+```text
+Remote Streamable HTTP endpoints
+Local stdio commands
+```
 
 ---
 
-## Command Palette
+# Command Palette
 
 NEO includes a keyboard-driven command palette for accessing application functionality.
 
-Open the command palette with:
+Open it with:
 
 ```text
 Ctrl + Shift + P
@@ -273,123 +281,218 @@ Ctrl + Shift + P
 
 ---
 
-# Privacy and Local Data
+# Accounts and Cloud Services
 
-NEO is designed around local application data and user-controlled infrastructure.
+NEO uses a combination of local desktop functionality and hosted services.
 
-Application data is stored locally on the user's device, including:
+The desktop application handles development operations locally through Tauri and Rust, while cloud services are used for account-related and application functionality.
 
-* Chat history
-* Application settings
-* API configuration
-* Model configuration
-* System prompts
-* Other persisted application data
+NEO uses **Supabase** for backend services such as:
 
-NEO does not require a NEO cloud account to store application data.
+* Authentication
+* User accounts
+* Persistent application data
+* Cloud-synchronized data
+* Subscription-related application state
+
+Workspace files remain on the user's machine and are accessed locally by the desktop application.
+
+Opening a project in NEO does not mean that the entire workspace is automatically uploaded to Supabase.
+
+---
+
+# Privacy and Data
+
+NEO is designed to keep development operations local while allowing users to use cloud-based application services and AI providers.
 
 ## Workspace Data
 
-The integrated editor and agentic filesystem tools operate on files within the workspace explicitly opened by the user or individual files selected by the user.
+Project files are accessed locally through the NEO desktop application.
 
-File operations are performed locally through the Tauri and Rust application layer.
+Filesystem operations are performed through the Tauri/Rust application layer.
 
-NEO does not operate a server that receives or stores user workspace files.
+NEO does not require uploading an entire project simply to use the editor or local development tools.
+
+However, files or project information may be sent to an AI provider when required to fulfill an AI request.
+
+---
 
 ## AI Provider Data
 
-When a user requests that an AI model process project information, the relevant information may be transmitted to the AI endpoint configured by the user.
+When an AI model processes project information, relevant information may be transmitted to the AI endpoint configured by the user.
 
 For example:
 
 ```text
                     NEO
                      |
-             Agent / Model Layer
+                Agent Layer
                      |
           +----------+----------+
           |                     |
-       Ollama              Configured API
+       Ollama            Configured API
           |                     |
-    Local inference       Third-party provider
+    Local inference       AI provider
 ```
 
-Data sent to third-party AI providers is subject to the privacy policies, infrastructure, and terms of those providers.
+When using Ollama locally, inference can remain on the user's device.
 
-NEO does not control how third-party providers process information sent to their endpoints.
+When using a third-party AI provider, information sent to that provider is subject to that provider's privacy policy, infrastructure, and terms.
+
+NEO does not control how third-party AI providers process information sent to their endpoints.
+
+---
+
+# Authentication and Application Data
+
+NEO uses Supabase for account and application backend functionality.
+
+Depending on the feature, information stored through the backend may include:
+
+* Account information
+* Application preferences
+* Chat history
+* Subscription state
+* Cloud-synchronized application data
+* Other application metadata
+
+The exact data stored may change as NEO develops.
+
+---
+
+# Billing
+
+NEO uses **Stripe** for payment processing and subscription management.
+
+Stripe handles payment processing infrastructure, while NEO uses subscription information to determine access to paid functionality.
+
+NEO does not directly handle or store users' complete payment card information.
+
+Billing and subscription functionality may require an active NEO account.
 
 ---
 
 # Architecture
 
-NEO uses a hybrid web and native architecture.
+NEO uses a hybrid web, native, and cloud architecture.
 
 ```text
-+--------------------------------------------------+
-|                      NEO                         |
-|                                                  |
-|              React / TypeScript / TSX            |
-|                         |                        |
-|                         v                        |
-|                      Tauri                       |
-|                         |                        |
-|                         v                        |
-|                       Rust                       |
-|                         |                        |
-|       +-----------------+----------------+        |
-|       |                 |                |        |
-|       v                 v                v        |
-|   Filesystem           Git              PTY       |
-|       |                 |                |        |
-|       +-----------------+----------------+        |
-|                         |                        |
-|                         v                        |
-|                  Agent Runtime                   |
-|                         |                        |
-|              +----------+----------+             |
-|              |                     |             |
-|              v                     v             |
-|         Cloud Providers          Ollama           |
-|                                    |             |
-|                              Local Models        |
-+--------------------------------------------------+
++------------------------------------------------------+
+|                        NEO                           |
+|                                                      |
+|              React / TypeScript / TSX                |
+|                         |                            |
+|                         v                            |
+|                       Tauri                          |
+|                         |                            |
+|                         v                            |
+|                        Rust                          |
+|                         |                            |
+|        +----------------+----------------+            |
+|        |                |                |            |
+|        v                v                v            |
+|   Filesystem           Git              PTY          |
+|        |                |                |            |
+|        +----------------+----------------+            |
+|                         |                            |
+|                         v                            |
+|                   Agent Runtime                      |
+|                         |                            |
+|              +----------+----------+                 |
+|              |                     |                 |
+|              v                     v                 |
+|       Configured Providers       Ollama              |
+|                                    |                 |
+|                              Local Models            |
+|                                                      |
++--------------------------+---------------------------+
+                           |
+                           v
+                    Backend Services
+                           |
+                     +-----+-----+
+                     |           |
+                  Supabase     Stripe
 ```
 
-## Frontend
+---
+
+# Frontend
 
 <p align="left">
   <img src="https://skillicons.dev/icons?i=react,ts,tsx,vite,tailwind,css" alt="React, TypeScript, TSX, Vite, Tailwind CSS, CSS" />
 </p>
 
-React and TypeScript provide the primary application interface and component architecture.
+The NEO interface is primarily built with:
+
+* React
+* TypeScript
+* TSX
+* Vite
+* Tailwind CSS
+
+React provides the application interface and component architecture.
 
 Vite provides the frontend development and build environment.
 
-Tailwind CSS and CSS are used for application styling and interface components.
+---
 
-## Native Application Layer
+# Native Application Layer
 
 <p align="left">
   <img src="https://skillicons.dev/icons?i=tauri,rust" alt="Tauri and Rust" />
 </p>
 
-Tauri provides the native application layer while Rust handles native functionality, filesystem operations, process management, PTY integration, and other system-level functionality.
+Tauri provides the native desktop application layer.
 
-## Mobile
+Rust handles native functionality including:
+
+* Filesystem operations
+* Process management
+* PTY integration
+* Native system interaction
+* Other desktop-level functionality
+
+---
+
+# Mobile
 
 <p align="left">
   <img src="https://skillicons.dev/icons?i=kotlin" alt="Kotlin" />
 </p>
 
-Kotlin is used for Android-specific functionality within the broader project ecosystem.
+Kotlin is used for Android-specific functionality within the broader NEO project ecosystem.
 
-## Configuration
+---
+
+# Backend
+
+NEO uses **Supabase** for backend infrastructure.
+
+Supabase provides functionality such as:
+
+* Authentication
+* Database services
+* Persistent application data
+* Backend application infrastructure
+
+---
+
+# Payments
+
+NEO uses **Stripe** for subscription and payment infrastructure.
+
+Stripe handles payment processing while NEO uses subscription information to manage access to paid application functionality.
+
+---
+
+# Configuration
 
 <p align="left">
   <img src="https://skillicons.dev/icons?i=toml" alt="TOML" />
 </p>
 
-TOML and `.config` files are used throughout project configuration and platform-specific infrastructure.
+TOML and configuration files are used throughout the project for application, platform, and build configuration.
 
 ---
 
@@ -409,6 +512,8 @@ Typical development environments include:
 * Git
 
 Additional project-specific runtimes and toolchains can be installed independently.
+
+---
 
 ## Clone
 
@@ -433,9 +538,9 @@ npm run tauri dev
 
 # Project Status
 
-NEO is currently in **beta**.
+NEO is currently in **beta** and under active development.
 
-Development began in **May 2026** and the project remains under active development.
+Development began in **May 2026**.
 
 The application's architecture, interface, agent capabilities, APIs, platform support, and internal systems may change between releases.
 
@@ -449,6 +554,8 @@ Current development areas include:
 * Local model support
 * Development workflows
 * Performance
+* Cloud infrastructure
+* Billing infrastructure
 * Cross-platform support
 * Interface refinement
 * Stability
@@ -465,7 +572,7 @@ Planned and ongoing areas include:
 
 * Improved agent reliability
 * More efficient context handling
-* Expanded tool capabilities
+* Expanded filesystem tools
 * Additional model providers
 * Expanded MCP functionality
 * Improved debugging workflows
@@ -473,13 +580,16 @@ Planned and ongoing areas include:
 * Performance improvements
 * Improved project management
 * Agent observability
+* Cloud synchronization
+* Account functionality
+* Subscription features
 * Stability improvements
 
 ---
 
 # Repository
 
-Source code is available on GitHub:
+Source code:
 
 https://github.com/Lumorix-studios/Neo
 
@@ -489,3 +599,13 @@ https://github.com/Lumorix-studios/Neo
   <strong>NEO</strong><br>
   Lightweight Agentic Coding Environment
 </p>
+
+# License
+
+NEO is licensed under the **Apache License 2.0**.
+
+You are free to use, modify, distribute, and commercially use the software, subject to the terms and conditions of the license.
+
+See the [`LICENSE`](LICENSE) file for the complete license text.
+
+Copyright © 2026 Lumorix Studios
