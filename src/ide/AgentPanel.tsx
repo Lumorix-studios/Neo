@@ -25,6 +25,7 @@ import {
 import type { AgenticActivity as AgenticActivityType } from "../agentic";
 import type { NativeToolAcc, ToolCall } from "../agentic";
 import { computeLineDiff } from "../diff";
+import { checkRateLimit, estimateTokens, recordUsage } from "../tokenUsage";
 import {
   loadMcpServers,
   listMcpTools,
@@ -39,9 +40,13 @@ type JsonDict = Record<string, unknown>;
 /** Newline character (avoids escape-sequence issues in generated code). */
 const NL = String.fromCharCode(10);
 
-/** Tool-execution budget per user request (plain-prose rounds are free). */
-const MAX_TOOL_ROUNDS = 15;
-const MAX_TOOL_OUTPUT = 24000;
+/** Tool-execution budget per user request (plain-prose rounds are free).
+ * When the cap is reached mid-task, the run is granted a fresh budget
+ * ("checkpoint") up to MAX_CHECKPOINTS times as long as it keeps making
+ * progress — long tasks continue instead of dead-ending. */
+const MAX_TOOL_ROUNDS = 50;
+const MAX_TOOL_OUTPUT = 36000;
+const MAX_CHECKPOINTS = 3;
 
 function truncateToolOutput(output: string): string {
   if (output.length <= MAX_TOOL_OUTPUT) return output;
@@ -242,6 +247,11 @@ export default function AgentPanel({
     const effective: AISettings = { ...settingsRef.current, systemPrompt };
     const body = s.buildBody(effective, history, { enableTools });
 
+    // Token budget guard — pause the agent before spending when a configured
+    // limit (Settings → Dashboard) would be exceeded by this request.
+    const limitErr = checkRateLimit(estimateTokens(JSON.stringify(body)));
+    if (limitErr) throw new Error(limitErr);
+
     let res: Response;
     try {
       res = await platformFetch(endpoint, {
@@ -290,6 +300,9 @@ export default function AgentPanel({
 
     const nativeAcc: NativeToolAcc[] = [];
     let round = "";
+    let usageIn = 0;
+    let usageOut = 0;
+    let sawUsage = false;
     const show = (text: string) =>
       setLastAssistant(stabilizeStreamingMarkdown(stripToolCalls(text)));
 
@@ -299,6 +312,13 @@ export default function AgentPanel({
       if (data) {
         ingestNativeChunk(data, nativeAcc);
         round = s.extractContent(data);
+        const u = s.extractUsage?.(data);
+        void recordUsage(
+          settingsRef.current.provider,
+          settingsRef.current.model,
+          u?.input ?? estimateTokens(JSON.stringify(body)),
+          u?.output ?? estimateTokens(round)
+        );
         if (round) show(round);
       }
       return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
@@ -325,6 +345,12 @@ export default function AgentPanel({
             // Accumulate native function-calling chunks so tool-only rounds
             // are not lost when no text deltas are emitted.
             ingestNativeChunk(json, nativeAcc);
+            const u = s.extractUsage?.(json);
+            if (u && (u.input != null || u.output != null)) {
+              usageIn += u.input ?? 0;
+              usageOut += u.output ?? 0;
+              sawUsage = true;
+            }
             const delta = s.extractDelta(json);
             if (delta) {
               round += delta;
@@ -360,6 +386,12 @@ export default function AgentPanel({
           if (data) {
             round = s.extractContent(data);
             ingestNativeChunk(data, nativeAcc);
+            const u = s.extractUsage?.(data);
+            if (u && (u.input != null || u.output != null)) {
+              usageIn = u.input ?? 0;
+              usageOut = u.output ?? 0;
+              sawUsage = true;
+            }
             if (round) show(round);
           }
         }
@@ -368,6 +400,14 @@ export default function AgentPanel({
       }
     }
 
+    if (!signal.aborted) {
+      void recordUsage(
+        settingsRef.current.provider,
+        settingsRef.current.model,
+        sawUsage && usageIn > 0 ? usageIn : estimateTokens(JSON.stringify(body)),
+        sawUsage && usageOut > 0 ? usageOut : estimateTokens(round)
+      );
+    }
     return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
   };
 
@@ -408,7 +448,7 @@ Rules:
       if (!Array.isArray(arr)) return null;
       const steps = (arr as Record<string, unknown>[])
         .filter((s) => typeof s?.title === "string" && (s.title as string).trim().length > 0)
-        .slice(0, 8)
+        .slice(0, 12)
         .map((s) => ({ title: String(s.title), detail: String(s.detail ?? "") }));
       return steps.length > 0 ? steps : null;
     } catch {
@@ -509,6 +549,11 @@ Rules:
     let bannedToolCalls = 0;
     let totalFails = 0;
     let totalSuccesses = 0;
+    // Budget checkpoints: each checkpoint refills the round budget so long
+    // tasks never dead-end mid-run while they keep making progress.
+    let checkpointsUsed = 0;
+    let lastCheckpointSuccesses = 0;
+    let totalRounds = 0;
     // Per-turn cache of read-only results; cleared whenever a mutation runs.
     const readOnlyCache = new Map<string, { ok: boolean; output: string }>();
     const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
@@ -568,12 +613,25 @@ Rules:
         }
 
         if (toolRounds >= MAX_TOOL_ROUNDS) {
+          if (checkpointsUsed < MAX_CHECKPOINTS && totalSuccesses > lastCheckpointSuccesses) {
+            // Still making progress — grant a fresh budget and keep working
+            // instead of dead-ending mid-task.
+            checkpointsUsed++;
+            lastCheckpointSuccesses = totalSuccesses;
+            toolRounds = 0;
+            agentHistory.push({
+              role: "user",
+              content: `Checkpoint: you have used ${totalRounds} tool rounds. Your tool budget has been EXTENDED — keep working autonomously until the task is fully complete. Do not stop to summarize or ask for confirmation. If the task is already done, write the final summary now.`,
+            });
+            continue;
+          }
           setError(
             "The agent used all of its tool turns for this request. Send a follow-up message to continue where it left off."
           );
           break;
         }
         toolRounds++;
+        totalRounds++;
 
         // Plan the activity rows for this round.
         const activityIds = new Map<string, string>();
@@ -772,7 +830,7 @@ Rules:
         }
         if (
           bannedToolCalls >= BANNED_TOOL_CALL_LIMIT ||
-          (totalFails >= 12 && totalSuccesses === 0)
+          (totalFails >= 16 && totalSuccesses === 0)
         ) {
           setError(
             `Too many tool failures this turn (${totalFails} failed, ${totalSuccesses} succeeded${

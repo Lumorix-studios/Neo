@@ -41,10 +41,20 @@ import {
 } from "../extensions";
 import LocalModels from "../../components/LocalModels";
 
-import { IoApps, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoSearch, IoShieldCheckmarkOutline, IoTerminal } from "react-icons/io5";
+import { IoApps, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
+import {
+  formatTokens,
+  getCachedRateSettings,
+  getUsageSnapshot,
+  loadTokenRateSettings,
+  resetUsage,
+  saveTokenRateSettings,
+  type TokenRateSettings,
+} from "../tokenUsage";
 
 
 export type SectionId =
+  | "dashboard"
   | "appearance"
   | "ai"
   | "editor"
@@ -328,6 +338,13 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> =
       <IoCode size={13} />
     ),
   },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: (
+      <IoStatsChartOutline className="h-3.5 w-3.5" />
+    ),
+  },
 
   {
     id: "files",
@@ -435,6 +452,23 @@ export default function SettingsPanel({
 
   const [isCheckingPorts, setIsCheckingPorts] = useState(false);
   const [discoveredPort, setDiscoveredPort] = useState<string | null>(null);
+
+  // --- Dashboard (token usage + rate limits) state ---
+  const [usageTick, setUsageTick] = useState(0);
+  const [rateSettings, setRateSettings] = useState<TokenRateSettings>(() =>
+    getCachedRateSettings()
+  );
+
+  // Load persisted rate settings once, and live-refresh usage numbers while
+  // the dashboard tab is open (agent runs keep recording in the background).
+  useEffect(() => {
+    void loadTokenRateSettings().then(setRateSettings);
+  }, []);
+  useEffect(() => {
+    if (section !== "dashboard") return;
+    const id = window.setInterval(() => setUsageTick((t) => t + 1), 2000);
+    return () => window.clearInterval(id);
+  }, [section]);
 
   // --- "About builds" popover (sidebar footer) ---
   const [buildsInfoOpen, setBuildsInfoOpen] = useState(false);
@@ -623,6 +657,10 @@ export default function SettingsPanel({
   const theme = allThemes.find((t) => t.id === settings.themeId) ?? allThemes[0];
 
   const q = extQuery.trim().toLowerCase();
+  // Token usage snapshot for the Dashboard tab; usageTick only forces a
+  // re-render every 2s while the tab is open.
+  const usageSnapshot = getUsageSnapshot();
+  void usageTick;
   const visibleExtensions = EXTENSIONS.filter((e) => {
     if (extCategory === "Installed" && !extState.installed.includes(e.id)) return false;
     if (extCategory !== "All" && extCategory !== "Installed" && e.category !== extCategory) return false;
@@ -1402,6 +1440,149 @@ return (
 
                 <p className="pt-2 text-[10.5px] text-[var(--text-faint)]">
                   Changes apply instantly to open terminals; new terminals pick them up automatically.
+                </p>
+              </div>
+            )}
+
+            {section === "dashboard" && (
+              <div>
+                <SectionTitle>Usage today</SectionTitle>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Requests", value: usageSnapshot.today.requests },
+                    { label: "Input tokens", value: usageSnapshot.today.input },
+                    { label: "Output tokens", value: usageSnapshot.today.output },
+                  ].map((s) => (
+                    <div
+                      key={s.label}
+                      className="rounded-lg border border-(--border) bg-(--fill-1) px-3 py-2.5"
+                    >
+                      <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+                        {s.label}
+                      </p>
+                      <p className="mt-1 text-[15px] font-semibold tabular-nums text-[var(--text-primary)]">
+                        {formatTokens(s.value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <SectionTitle>Last 7 days</SectionTitle>
+                <div className="flex h-24 items-end gap-1.5">
+                  {usageSnapshot.last7.map((d) => {
+                    const total = d.input + d.output;
+                    const max = Math.max(
+                      ...usageSnapshot.last7.map((x) => x.input + x.output),
+                      1
+                    );
+                    const dayLabel = new Date(`${d.date}T00:00:00`).toLocaleDateString(undefined, {
+                      weekday: "narrow",
+                    });
+                    return (
+                      <div
+                        key={d.date}
+                        className="flex min-w-0 flex-1 flex-col items-center gap-1"
+                        title={`${d.date}: ${total.toLocaleString()} tokens · ${d.requests} requests`}
+                      >
+                        <span className="text-[9px] tabular-nums text-[var(--text-faint)]">
+                          {total > 0 ? formatTokens(total) : ""}
+                        </span>
+                        <div
+                          className="w-full rounded-t-sm bg-(--accent)/70"
+                          style={{ height: `${Math.max(4, Math.round((total / max) * 72))}px` }}
+                        />
+                        <span className="text-[9.5px] text-[var(--text-faint)]">{dayLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <SectionTitle>Rate limits</SectionTitle>
+                <Row title="Enforce token limits" description="Pause AI requests when a limit below is hit.">
+                  <Toggle
+                    checked={rateSettings.enabled}
+                    onChange={(v) => {
+                      const next = { ...rateSettings, enabled: v };
+                      setRateSettings(next);
+                      void saveTokenRateSettings(next);
+                    }}
+                  />
+                </Row>
+                <Row title="Tokens per minute" description="Rolling 60-second window. 0 = unlimited.">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={rateSettings.maxTokensPerMinute}
+                    onChange={(e) => {
+                      const next = {
+                        ...rateSettings,
+                        maxTokensPerMinute: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                      };
+                      setRateSettings(next);
+                      void saveTokenRateSettings(next);
+                    }}
+                    className="w-24 rounded-md border border-(--border-strong) bg-(--fill-1) px-2 py-1 text-right text-[11.5px] tabular-nums text-[var(--text-primary)] outline-none"
+                  />
+                </Row>
+                <Row title="Tokens per day" description="Calendar-day budget. 0 = unlimited.">
+                  <input
+                    type="number"
+                    min={0}
+                    step={10000}
+                    value={rateSettings.maxTokensPerDay}
+                    onChange={(e) => {
+                      const next = {
+                        ...rateSettings,
+                        maxTokensPerDay: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                      };
+                      setRateSettings(next);
+                      void saveTokenRateSettings(next);
+                    }}
+                    className="w-24 rounded-md border border-(--border-strong) bg-(--fill-1) px-2 py-1 text-right text-[11.5px] tabular-nums text-[var(--text-primary)] outline-none"
+                  />
+                </Row>
+
+                <SectionTitle>Recent requests</SectionTitle>
+                {usageSnapshot.recent.length === 0 ? (
+                  <p className="text-[11.5px] text-[var(--text-muted)]">
+                    No AI requests recorded yet.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {usageSnapshot.recent.slice(0, 8).map((r, i) => (
+                      <div
+                        key={`${r.at}-${i}`}
+                        className="flex items-center justify-between rounded-md border border-(--border) px-3 py-1.5 text-[11px]"
+                      >
+                        <span className="min-w-0 truncate text-[var(--text-secondary)]">
+                          {r.provider} · {r.model}
+                        </span>
+                        <span className="ml-3 shrink-0 tabular-nums text-[var(--text-muted)]">
+                          {new Date(r.at).toLocaleTimeString()} · ↑{formatTokens(r.input)} ↓
+                          {formatTokens(r.output)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Row title="Reset usage data" description="Clears all recorded token usage history.">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void resetUsage();
+                      setUsageTick((t) => t + 1);
+                    }}
+                    className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+                  >
+                    Reset
+                  </button>
+                </Row>
+
+                <p className="pt-2 text-[10.5px] text-[var(--text-faint)]">
+                  Counts include chat and agent rounds — exact when the provider reports usage,
+                  char/4 estimates otherwise. Stored only on this device.
                 </p>
               </div>
             )}

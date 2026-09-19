@@ -9,17 +9,25 @@ export type ToolName =
   | "write_file"
   | "append_file"
   | "replace_in_file"
+  | "edit_file_lines"
   | "delete_file"
   | "delete_dir"
   | "create_dir"
   | "list_dir"
   | "search_files"
   | "rename"
+  | "copy_file"
+  | "file_info"
   | "run_command"
+  | "git_status"
+  | "git_diff"
+  | "git_commit"
   | "get_open_files"
   | "read_active_file"
   | "web_search"
   | "web_fetch"
+  | "http_request"
+  | "env_info"
   | "analyze_project_structure";
 
 export interface ToolCall {
@@ -64,11 +72,15 @@ const DESTRUCTIVE: ToolName[] = [
   "write_file",
   "append_file",
   "replace_in_file",
+  "edit_file_lines",
   "delete_file",
   "delete_dir",
   "create_dir",
   "rename",
+  "copy_file",
   "run_command",
+  "http_request",
+  "git_commit",
 ];
 
 export function isDestructive(name: string): boolean {
@@ -81,17 +93,25 @@ const TOOL_NAME_SET = new Set<string>([
   "write_file",
   "append_file",
   "replace_in_file",
+  "edit_file_lines",
   "delete_file",
   "delete_dir",
   "create_dir",
   "list_dir",
   "search_files",
   "rename",
+  "copy_file",
+  "file_info",
   "run_command",
+  "git_status",
+  "git_diff",
+  "git_commit",
   "get_open_files",
   "read_active_file",
   "web_search",
   "web_fetch",
+  "http_request",
+  "env_info",
   "analyze_project_structure",
 ]);
 
@@ -170,13 +190,18 @@ export const TOOL_JSON_SCHEMAS: Record<ToolName, { description: string; paramete
     },
   },
   replace_in_file: {
-    description: "Replace the first exact occurrence of search with replace.",
+    description:
+      "Replace exact occurrence(s) of search with replace. Replaces the first occurrence, or every occurrence when all=true.",
     parameters: {
       type: "object",
       properties: {
         path: pathProp,
         search: { type: "string", description: "Exact text to find." },
         replace: { type: "string", description: "Replacement text." },
+        all: {
+          type: "boolean",
+          description: "Replace every occurrence instead of just the first (default false).",
+        },
       },
       required: ["path", "search", "replace"],
     },
@@ -220,6 +245,80 @@ export const TOOL_JSON_SCHEMAS: Record<ToolName, { description: string; paramete
       required: ["path", "new_path"],
     },
   },
+  copy_file: {
+    description: "Copy a file to a new location (creates parent folders).",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        new_path: { type: "string", description: "Destination path." },
+      },
+      required: ["path", "new_path"],
+    },
+  },
+  file_info: {
+    description: "Get a file's or folder's size, type and last-modified time.",
+    parameters: { type: "object", properties: { path: pathProp }, required: ["path"] },
+  },
+  edit_file_lines: {
+    description:
+      "Replace an inclusive line range with new content. end_line=0 means from start_line to EOF.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: pathProp,
+        start_line: { type: "integer", description: "1-based start line." },
+        end_line: { type: "integer", description: "1-based end line, or 0 for EOF." },
+        content: { type: "string", description: "Replacement content for the range." },
+      },
+      required: ["path", "start_line", "content"],
+    },
+  },
+  git_status: {
+    description: "Show the git branch and changed files of the open workspace.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  git_diff: {
+    description: "Show the current (or staged, staged=true) git diff of the workspace.",
+    parameters: {
+      type: "object",
+      properties: {
+        staged: { type: "boolean", description: "Show staged changes instead (default false)." },
+      },
+      required: [],
+    },
+  },
+  git_commit: {
+    description: "Stage ALL workspace changes (git add -A) and commit with the given message.",
+    parameters: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The commit message." },
+      },
+      required: ["message"],
+    },
+  },
+  http_request: {
+    description:
+      "Perform an arbitrary HTTP request to any API (REST, JSON…). Requires approval. Never use for plain web page reading — use web_fetch.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Absolute http(s) URL." },
+        method: { type: "string", description: "HTTP method (default GET)." },
+        headers: {
+          type: "string",
+          description: "Request headers, one per line, 'Name: Value' format.",
+        },
+        body: { type: "string", description: "Request body (e.g. JSON payload) for POST/PUT." },
+      },
+      required: ["url"],
+    },
+  },
+  env_info: {
+    description: "Report the environment: OS/platform, locale, current local time, workspace root.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
   run_command: {
     description:
       "Run a shell command (builds, tests, git, package managers…) and capture stdout/stderr.",
@@ -228,7 +327,7 @@ export const TOOL_JSON_SCHEMAS: Record<ToolName, { description: string; paramete
       properties: {
         command: { type: "string", description: "The shell command to run." },
         cwd: { type: "string", description: "Working directory. Defaults to the workspace root." },
-        timeout_secs: { type: "integer", description: "Timeout in seconds (1-300, default 60)." },
+        timeout_secs: { type: "integer", description: "Timeout in seconds (1-900, default 120). Use a long timeout for builds, installs and test suites." },
       },
       required: ["command"],
     },
@@ -735,16 +834,151 @@ export async function executeTool(
           content: String(args.content ?? ""),
         });
         return { ok: true, output: `Appended ${String(args.content ?? "").length} chars to ${String(args.path)}.` };
-      case "replace_in_file":
+      case "replace_in_file": {
+        const replaceAll = args.all === true;
         await invoke("fs_replace_in_file", {
           path: String(args.path ?? ""),
           search: String(args.search ?? ""),
           replace: String(args.replace ?? ""),
+          all: replaceAll,
         });
-        return { ok: true, output: `Replaced text in ${String(args.path)}.` };
+        return {
+          ok: true,
+          output: `Replaced ${replaceAll ? "all occurrences" : "first occurrence"} in ${String(args.path)}.`,
+        };
+      }
       case "delete_file":
         await invoke("fs_delete_file", { path: String(args.path ?? "") });
         return { ok: true, output: `Deleted file ${String(args.path)}.` };
+      case "copy_file":
+        await invoke("fs_copy_file", {
+          path: String(args.path ?? ""),
+          newPath: String(args.new_path ?? ""),
+        });
+        return { ok: true, output: `Copied ${String(args.path)} → ${String(args.new_path)}.` };
+      case "file_info": {
+        const stat = await invoke<{
+          path: string;
+          isDir: boolean;
+          size: number | null;
+          modified: number | null;
+        }>("fs_stat", { path: String(args.path ?? "") });
+        const lines = [
+          `Path: ${stat.path}`,
+          `Type: ${stat.isDir ? "directory" : "file"}`,
+          stat.isDir ? null : `Size: ${stat.size ?? "?"} bytes`,
+          stat.modified ? `Modified: ${new Date(stat.modified).toISOString()}` : null,
+        ].filter((l): l is string => l !== null);
+        return { ok: true, output: lines.join("\n"), data: stat };
+      }
+      case "edit_file_lines": {
+        const startL = Number(args.start_line ?? 1);
+        const endL = Number(args.end_line ?? 0);
+        await invoke("fs_write_file_range", {
+          path: String(args.path ?? ""),
+          startLine: startL,
+          endLine: endL,
+          content: String(args.content ?? ""),
+        });
+        return {
+          ok: true,
+          output: `Replaced lines ${startL}-${endL === 0 ? "EOF" : endL} in ${String(args.path)}.`,
+        };
+      }
+      case "git_status":
+      case "git_diff":
+      case "git_commit": {
+        if (!workspaceRoot) {
+          return { ok: false, output: "No workspace folder is open, so git tools are unavailable." };
+        }
+        const runGit = async (command: string, timeoutSecs = 60) =>
+          invoke<{ exitCode: number; stdout: string; stderr: string; timedOut: boolean }>(
+            "run_command",
+            { command, cwd: workspaceRoot, timeoutSecs }
+          );
+        if (name === "git_status") {
+          const r = await runGit("git status --porcelain=v1 -b", 30);
+          return {
+            ok: r.exitCode === 0,
+            output:
+              r.exitCode === 0
+                ? r.stdout.trim() || "(clean working tree — no changes)"
+                : `git status failed:\n${(r.stderr || r.stdout).slice(0, 4000)}`,
+          };
+        }
+        if (name === "git_diff") {
+          const r = await runGit(args.staged === true ? "git diff --cached" : "git diff", 60);
+          const out = `${r.stdout}\n${r.stderr}`.trim();
+          const MAX_DIFF = 12000;
+          return {
+            ok: r.exitCode === 0,
+            output:
+              r.exitCode === 0
+                ? out.length <= MAX_DIFF
+                  ? out || "(no changes)"
+                  : `${out.slice(0, MAX_DIFF)}\n... [${out.length - MAX_DIFF} chars truncated]`
+                : `git diff failed:\n${out.slice(0, 4000)}`,
+          };
+        }
+        // git_commit
+        const message = String(args.message ?? "").trim();
+        if (!message) {
+          return { ok: false, output: "git_commit requires a non-empty commit message." };
+        }
+        const add = await runGit("git add -A", 60);
+        if (add.exitCode !== 0) {
+          return {
+            ok: false,
+            output: `git add -A failed:\n${(add.stderr || add.stdout).slice(0, 4000)}`,
+          };
+        }
+        const commit = await runGit(`git commit -m ${JSON.stringify(message)}`, 60);
+        return {
+          ok: commit.exitCode === 0,
+          output:
+            commit.exitCode === 0
+              ? (commit.stdout || "Committed.").trim()
+              : `git commit failed:\n${(commit.stderr || commit.stdout).slice(0, 4000)}`,
+        };
+      }
+      case "http_request": {
+        const method = String(args.method ?? "GET").toUpperCase();
+        const url = String(args.url ?? "").trim();
+        if (!/^https?:\/\//i.test(url)) {
+          return { ok: false, output: "http_request requires an absolute http(s) URL." };
+        }
+        const headers: Record<string, string> = { ...BROWSER_HEADERS };
+        const headerText = typeof args.headers === "string" ? args.headers : "";
+        for (const line of headerText.split("\n")) {
+          const idx = line.indexOf(":");
+          if (idx > 0) headers[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        }
+        const bodyText = typeof args.body === "string" ? args.body : "";
+        const hasBody = bodyText.length > 0 && method !== "GET" && method !== "HEAD";
+        const res = await platformFetch(url, {
+          method,
+          headers,
+          ...(hasBody ? { body: bodyText } : {}),
+        });
+        const text = (await res.text().catch(() => "")) ?? "";
+        const MAX_HTTP = 16000;
+        const excerpt =
+          text.length <= MAX_HTTP
+            ? text
+            : `${text.slice(0, MAX_HTTP)}\n... [${text.length - MAX_HTTP} chars truncated]`;
+        return { ok: res.ok, output: `HTTP ${res.status} ${res.statusText}\n${excerpt}` };
+      }
+      case "env_info": {
+        const nav = navigator as Navigator & { platform?: string };
+        const lines = [
+          `User agent: ${nav.userAgent}`,
+          `Platform: ${nav.platform ?? "unknown"}`,
+          `Languages: ${navigator.languages?.join(", ") ?? navigator.language}`,
+          workspaceRoot ? `Workspace: ${workspaceRoot}` : "Workspace: (none open)",
+          `Local time: ${new Date().toString()}`,
+        ];
+        return { ok: true, output: lines.join("\n") };
+      }
       case "delete_dir":
         await invoke("fs_delete_dir", { path: String(args.path ?? "") });
         return { ok: true, output: `Deleted directory ${String(args.path)}.` };
@@ -1360,15 +1594,23 @@ export const TOOL_LABELS: Record<ToolName, string> = {
   write_file: "Write file",
   append_file: "Append to file",
   replace_in_file: "Replace in file",
+  edit_file_lines: "Edit line range",
   delete_file: "Delete file",
   delete_dir: "Delete folder",
   create_dir: "Create folder",
   list_dir: "List folder",
   search_files: "Search files",
   rename: "Rename / move",
+  copy_file: "Copy file",
+  file_info: "File info",
   run_command: "Run command",
+  git_status: "Git status",
+  git_diff: "Git diff",
+  git_commit: "Git commit",
   web_search: "Web search",
   web_fetch: "Web fetch",
+  http_request: "HTTP request",
+  env_info: "Environment info",
   analyze_project_structure: "Analyze project",
 };
 
@@ -1380,16 +1622,24 @@ export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   read_file_range: 'read_file_range(path, start_line, end_line) — read a line range (end_line=0 means to EOF).',
   write_file: 'write_file(path, content) — create or overwrite a file (creates parent folders).',
   append_file: 'append_file(path, content) — append text to a file, creating it if missing.',
-  replace_in_file: 'replace_in_file(path, search, replace) — replace the first exact occurrence of search with replace.',
+  replace_in_file: 'replace_in_file(path, search, replace, all=false) — replace the first occurrence of search with replace, or every occurrence when all=true.',
+  edit_file_lines: 'edit_file_lines(path, start_line, end_line, content) — replace a line range with new content (end_line=0 means to EOF).',
   delete_file: 'delete_file(path) — permanently delete a file.',
   delete_dir: 'delete_dir(path) — recursively delete a folder.',
   create_dir: 'create_dir(path) — create a folder (and parents).',
   list_dir: 'list_dir(path) — list files and folders in a directory.',
   search_files: 'search_files(path, pattern, content=false) — recursively search for pattern in file paths (or file contents when content=true).',
   rename: 'rename(path, new_path) — rename or move a file/folder.',
-  run_command: 'run_command(command, cwd?, timeout_secs?) — run a shell command (npm test, cargo build, git status…) and capture its output.',
+  copy_file: 'copy_file(path, new_path) — copy a file to a new location.',
+  file_info: 'file_info(path) — get a path\'s size, type and last-modified time.',
+  run_command: 'run_command(command, cwd?, timeout_secs=120) — run a shell command (npm test, cargo build, git status…) and capture its output. Timeout is 1-900s; use a long timeout for builds and test suites.',
+  git_status: 'git_status() — show the workspace git branch and changed files.',
+  git_diff: 'git_diff(staged=false) — show the current (or staged) diff.',
+  git_commit: 'git_commit(message) — stage all workspace changes and commit with the message.',
   web_search: 'web_search(query) — search the web for real-time info or latest docs.',
   web_fetch: 'web_fetch(url) — fetch and extract text from a specific URL.',
+  http_request: 'http_request(url, method?, headers?, body?) — call any HTTP API (REST, JSON) and return status + body.',
+  env_info: 'env_info() — report OS/platform, locale, current local time and workspace root.',
   analyze_project_structure: 'analyze_project_structure() — deep scan of the workspace to map architecture.',
 };
 
@@ -1404,10 +1654,15 @@ Web:
 - \`web_search(query)\` — search the web for live info, news, docs, latest versions.
 - \`web_fetch(url)\` — fetch and read a specific page. Only use URLs that web_search returned; NEVER guess URLs.
 Files:
-- \`list_dir(path)\`, \`read_file(path)\`, \`read_file_range(path, start_line, end_line)\`, \`write_file(path, content)\`, \`append_file(path, content)\`, \`replace_in_file(path, search, replace)\`, \`delete_file(path)\`, \`delete_dir(path)\`, \`create_dir(path)\`, \`rename(path, new_path)\`, \`search_files(path, pattern)\`
+- \`list_dir(path)\`, \`read_file(path)\`, \`read_file_range(path, start_line, end_line)\`, \`write_file(path, content)\`, \`append_file(path, content)\`, \`replace_in_file(path, search, replace, all?)\`, \`edit_file_lines(path, start_line, end_line, content)\`, \`delete_file(path)\`, \`delete_dir(path)\`, \`create_dir(path)\`, \`rename(path, new_path)\`, \`copy_file(path, new_path)\`, \`file_info(path)\`, \`search_files(path, pattern)\`
 - \`read_active_file()\`, \`get_open_files()\`
+Web:
+- \`http_request(url, method?, headers?, body?)\` — call any REST/JSON API directly.
+Git (workspace):
+- \`git_status()\`, \`git_diff(staged?)\`, \`git_commit(message)\`
 System:
 - \`run_command(command, cwd?, timeout_secs?)\`
+- \`env_info()\`
 - \`analyze_project_structure()\`
 
 ## HOW TO ACT (strict)
@@ -1419,6 +1674,14 @@ System:
 3. The system replies with a <tool_result> block. Then answer the user using those results, citing URLs you actually received.
 4. NEVER emit an empty code block. NEVER describe a call ("here is the JSON that would...") instead of emitting it — descriptions do nothing and no tool will run.
 5. NEVER invent URLs. NEVER retry a failed call unchanged — rephrase the arguments or try a different tool/target.
+
+## AUTONOMY & HORIZON (big tasks)
+1. Work multi-step tasks END TO END in one turn. Do not stop halfway to ask for confirmation — the user already approved the goal.
+2. Plan silently, then execute step by step until the task is fully complete. Do not stop after the first file or first fix when more are obviously needed.
+3. Batch independent read-only tool calls in a single reply when possible — fewer round trips, faster completion.
+4. After code changes, VERIFY your work: run the project's build / typecheck / tests via \`run_command\` with a generous \`timeout_secs\`, and fix whatever fails.
+5. If you receive a "Checkpoint" message, that is the system EXTENDING your budget — keep working autonomously; do not switch to summarizing.
+6. Only finish when the task is complete or you are genuinely blocked; then write a concise summary of what changed and what the user should verify.
 `.trim();
 
 /** Generate a unique activity id. */

@@ -62,6 +62,7 @@ import {
   type McpToolEntry,
 } from "./mcp";
 import { computeLineDiff } from "./diff";
+import { checkRateLimit, estimateTokens, recordUsage } from "./tokenUsage";
 import { resolveFsPath } from "./agentic";
 import type { EditorTab } from "./components/CodeEditor";
 import { ensureOllamaReady } from "./localModels";
@@ -312,8 +313,11 @@ export default function App() {
     resolve: (approved: boolean) => void;
   } | null>(null);
   // Cap the number of tool-executing rounds to avoid runaway loops. Rounds
-  // where the model only streams prose (no tool calls) don't count.
+  // where the model only streams prose (no tool calls) don't count. When the
+  // cap is reached mid-task, the run gets a fresh budget (checkpoint) up to
+  // MAX_CHECKPOINTS times while it keeps making progress.
   const MAX_TOOL_ROUNDS = 75;
+  const MAX_CHECKPOINTS = 2;
 
   // The active streaming request's abort controller, so we can cancel it.
   const streamControllerRef = useRef<AbortController | null>(null);
@@ -899,6 +903,11 @@ ${promptSuffix}` : ""}`,
    
     const body = s.buildBody(effectiveSettings, history, { enableTools: agentic });
 
+    // Token budget guard — pause the run before spending when a configured
+    // limit (Settings → Dashboard) would be exceeded by this request.
+    const limitErr = checkRateLimit(estimateTokens(JSON.stringify(body)));
+    if (limitErr) throw new Error(limitErr);
+
     // Use the signal from sendMessage so cancellation is handled by a single
     // source of truth (no separate per-round AbortController).
     let res: Response;
@@ -996,11 +1005,26 @@ ${promptSuffix}` : ""}`,
     }
 
     const bodyStream = res.body;
+    let usageIn = 0;
+    let usageOut = 0;
+    let sawUsage = false;
     if (!bodyStream) {
       const data = (await res.json().catch(() => null)) as JsonDict | null;
       const acc0: NativeToolAcc[] = [];
       if (data) {
         ingestNativeChunk(data, acc0);
+        const u = s.extractUsage?.(data);
+        if (u && (u.input != null || u.output != null)) {
+          usageIn = u.input ?? 0;
+          usageOut = u.output ?? 0;
+          sawUsage = true;
+        }
+        void recordUsage(
+          settings.provider,
+          settings.model,
+          sawUsage && usageIn > 0 ? usageIn : estimateTokens(JSON.stringify(body)),
+          sawUsage && usageOut > 0 ? usageOut : estimateTokens(s.extractContent(data))
+        );
         return { text: s.extractContent(data), nativeCalls: nativeAccToCalls(acc0) };
       }
       return { text: "", nativeCalls: [] };
@@ -1040,6 +1064,12 @@ ${promptSuffix}` : ""}`,
             // Accumulate native function-calling chunks so tool-only rounds
             // are not lost when no text deltas are emitted.
             ingestNativeChunk(json, nativeAcc);
+            const u = s.extractUsage?.(json);
+            if (u && (u.input != null || u.output != null)) {
+              usageIn += u.input ?? 0;
+              usageOut += u.output ?? 0;
+              sawUsage = true;
+            }
             const delta = s.extractDelta(json);
             if (delta) {
               round += delta;
@@ -1078,6 +1108,12 @@ ${promptSuffix}` : ""}`,
           if (data) {
             round = s.extractContent(data);
             ingestNativeChunk(data, nativeAcc);
+            const u = s.extractUsage?.(data);
+            if (u && (u.input != null || u.output != null)) {
+              usageIn = u.input ?? 0;
+              usageOut = u.output ?? 0;
+              sawUsage = true;
+            }
           }
         }
       } catch {
@@ -1085,6 +1121,14 @@ ${promptSuffix}` : ""}`,
       }
     }
 
+    if (!signal.aborted) {
+      void recordUsage(
+        settings.provider,
+        settings.model,
+        sawUsage && usageIn > 0 ? usageIn : estimateTokens(JSON.stringify(body)),
+        sawUsage && usageOut > 0 ? usageOut : estimateTokens(round)
+      );
+    }
     return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
   };
   const handleAnimationComplete = () => {
@@ -1308,6 +1352,11 @@ MCP call rules:
       let bannedToolCalls = 0;
       let totalFails = 0;
       let totalSuccesses = 0;
+      // Budget checkpoints: each checkpoint refills the round budget so long
+      // tasks never dead-end mid-run while they keep making progress.
+      let checkpointsUsed = 0;
+      let lastCheckpointSuccesses = 0;
+      let totalRounds = 0;
       // Per-turn cache of read-only tool results. Weak models frequently
       // re-emit identical read calls in later rounds; serving them from cache
       // skips redundant filesystem work. Cleared whenever a mutating tool runs.
@@ -1380,12 +1429,25 @@ MCP call rules:
         // Plain prose rounds (thinking out loud between calls) don't consume
         // the budget — only rounds that actually execute tools do.
         if (toolRounds >= MAX_TOOL_ROUNDS) {
+          if (checkpointsUsed < MAX_CHECKPOINTS && totalSuccesses > lastCheckpointSuccesses) {
+            // Still making progress — grant a fresh budget and keep working
+            // instead of dead-ending mid-task.
+            checkpointsUsed++;
+            lastCheckpointSuccesses = totalSuccesses;
+            toolRounds = 0;
+            agentHistory.push({
+              role: "user",
+              content: `Checkpoint: you have used ${totalRounds} tool rounds. Your tool budget has been EXTENDED — keep working autonomously until the task is fully complete. Do not stop to summarize or ask for confirmation. If the task is already done, write the final summary now.`,
+            });
+            continue;
+          }
           setError(
             "Neo used all of its tool turns for this request and paused. Send a follow-up message to continue where it left off."
           );
           break;
         }
         toolRounds++;
+        totalRounds++;
 
         const activityIds = new Map<string, string>();
         const planned: AgenticActivityType[] = calls.map(({ call }) => {

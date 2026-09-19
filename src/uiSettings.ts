@@ -37,6 +37,11 @@ export const THEMES: ThemePreset[] = [
   { id: "graphite", label: "Graphite", base: "#111214", panel: "#16181b", elevated: "#1d2024", active: "#26292e" },
   { id: "charcoal", label: "Charcoal", base: "#131110", panel: "#191614", elevated: "#211d1a", active: "#2b2622" },
   { id: "slate", label: "Slate", base: "#0f1115", panel: "#14171c", elevated: "#1b1f26", active: "#242a33" },
+  { id: "aurora", label: "Aurora", base: "#0b1512", panel: "#0f1d18", elevated: "#16291f", active: "#1e3527" },
+  { id: "plum", label: "Plum", base: "#150f1d", panel: "#1b1426", elevated: "#241a33", active: "#2e2242" },
+  { id: "ember", label: "Ember", base: "#171010", panel: "#1f1616", elevated: "#2a1d1d", active: "#372626" },
+  { id: "paper", label: "Paper", base: "#f4f1ea", panel: "#ece8df", elevated: "#e2ddd2", active: "#d6cfc1" },
+  { id: "sky", label: "Sky", base: "#eef4fa", panel: "#e3ecf4", elevated: "#d7e3ee", active: "#c6d7e6" },
 ];
 
 export const ACCENT_SWATCHES: Array<{ label: string; value: string }> = [
@@ -46,6 +51,12 @@ export const ACCENT_SWATCHES: Array<{ label: string; value: string }> = [
   { label: "Cyan", value: "#22d3ee" },
   { label: "Amber", value: "#f59e0b" },
   { label: "Rose", value: "#f43f5e" },
+  { label: "Lime", value: "#a3e635" },
+  { label: "Magenta", value: "#e879f9" },
+  { label: "Orange", value: "#fb923c" },
+  { label: "Sky", value: "#38bdf8" },
+  { label: "Gold", value: "#facc15" },
+  { label: "Mint", value: "#6ee7b7" },
 ];
 
 export const DEFAULT_UI_SETTINGS: UiSettings = {
@@ -179,6 +190,22 @@ export function onAccentInk(accent: string): string {
   return contrastRatio(accent, "#ffffff") >= 3 ? "#ffffff" : "#111111";
 }
 
+/**
+ * Nudge an accent until it is readable against `bg` (WCAG >= target, default
+ * 3:1). The hue is preserved — only lightness moves: accents that are too
+ * close in luminance to the background get pushed AWAY from it (lightened on
+ * dark themes, darkened on light ones). Bounded so it always terminates.
+ */
+export function harmonizeAccent(accent: string, bg: string, target = 3): string {
+  let c = normalizeHex(accent);
+  const bgLum = luminance(bg);
+  for (let i = 0; i < 32 && contrastRatio(c, bg) < target; i++) {
+    const dir = luminance(c) > bgLum ? 1 : -1;
+    c = shade(c, 0.05 * dir);
+  }
+  return c;
+}
+
 /** Brightness safety nudge in [-1,1]: lifts dark bases, deepens light ones. */
 export function applyBrightness(hex: string, delta: number): string {
   if (!delta) return hex;
@@ -256,6 +283,16 @@ export function resolveThemeVars(s: UiSettings): Record<string, string> {
   const dark = d.isDark;
   const tok = dark ? DARK_TOK : LIGHT_TOK;
   const alpha = (a: number) => (dark ? "rgba(255,255,255," : "rgba(0,0,0,") + a + ")";
+  // Contrast-harmonize the accent against the (possibly derived) background:
+  // a very dark accent gets lifted on dark themes, a very bright one gets
+  // deepened on light themes — every accent choice stays readable while
+  // keeping its hue.
+  const accent = harmonizeAccent(s.accent, d.base);
+  // Soft-fill visibility adapts to how loud the accent is: quieter on neon
+  // accents (they self-announce), stronger on muted ones so tints stay
+  // perceptible.
+  const accentContrast = contrastRatio(accent, d.base);
+  const accentSoftAlpha = accentContrast >= 6 ? 0.12 : accentContrast >= 4 ? 0.16 : 0.2;
   return {
     "--bg-base": d.base,
     // Hand-tuned presets keep their panels; custom colors get fully derived ones.
@@ -274,9 +311,9 @@ export function resolveThemeVars(s: UiSettings): Record<string, string> {
     "--text-secondary": d.textSecondary,
     "--text-muted": d.textMuted,
     "--text-faint": d.textFaint,
-    "--accent": s.accent,
-    "--accent-soft": hexToRgba(s.accent, 0.12),
-    "--on-accent": d.onAccent,
+    "--accent": accent,
+    "--accent-soft": hexToRgba(accent, accentSoftAlpha),
+    "--on-accent": onAccentInk(accent),
     "--code-kw": tok.kw,
     "--code-str": tok.str,
     "--code-num": tok.num,

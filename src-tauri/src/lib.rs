@@ -789,14 +789,25 @@ fn fs_append_file(path: String, content: String) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Replace the first exact occurrence of `search` with `replace` in a file.
+/// Replace exact occurrence(s) of `search` with `replace` in a file.
+/// Replaces the first occurrence, or every occurrence when `all` is true.
 #[tauri::command]
-fn fs_replace_in_file(path: String, search: String, replace: String) -> Result<bool, String> {
+fn fs_replace_in_file(
+    path: String,
+    search: String,
+    replace: String,
+    all: Option<bool>,
+) -> Result<bool, String> {
     let content = fs::read_to_string(&path).map_err(|e| format!("Failed to read {path}: {e}"))?;
     if !content.contains(&search) {
         return Err(format!("Search text not found in {path}"));
     }
-    let updated = content.replacen(&search, &replace, 1);
+    let count = if all.unwrap_or(false) {
+        content.matches(&search).count()
+    } else {
+        1
+    };
+    let updated = content.replacen(&search, &replace, count);
     fs::write(&path, updated).map_err(|e| format!("Failed to write {path}: {e}"))?;
     Ok(true)
 }
@@ -806,6 +817,68 @@ fn fs_replace_in_file(path: String, search: String, replace: String) -> Result<b
 fn fs_delete_file(path: String) -> Result<bool, String> {
     fs::remove_file(&path).map_err(|e| format!("Failed to delete {path}: {e}"))?;
     Ok(true)
+}
+
+/// Stat a path: type, byte size and modification time (unix ms).
+#[tauri::command]
+fn fs_stat(path: String) -> Result<serde_json::Value, String> {
+    let meta = fs::metadata(&path).map_err(|e| format!("Failed to stat {path}: {e}"))?;
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64);
+    Ok(serde_json::json!({
+        "path": path,
+        "isDir": meta.is_dir(),
+        "size": if meta.is_dir() { serde_json::Value::Null } else { serde_json::json!(meta.len()) },
+        "modified": modified,
+    }))
+}
+
+/// Copy a file to a new location (creates parent folders of the destination).
+#[tauri::command]
+fn fs_copy_file(path: String, new_path: String) -> Result<bool, String> {
+    if let Some(parent) = std::path::Path::new(&new_path).parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::copy(&path, &new_path)
+        .map_err(|e| format!("Failed to copy {path} → {new_path}: {e}"))?;
+    Ok(true)
+}
+
+/// Replace an inclusive line range with new content. `end_line = 0` means
+/// "from start_line to EOF". Returns the new file size in bytes.
+#[tauri::command]
+fn fs_write_file_range(
+    path: String,
+    start_line: usize,
+    end_line: usize,
+    content: String,
+) -> Result<usize, String> {
+    let text = fs::read_to_string(&path).map_err(|e| format!("Failed to read {path}: {e}"))?;
+    let nl: &str = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let lines: Vec<&str> = text.split(nl).collect();
+    let start = start_line.max(1).saturating_sub(1); // 1-based → 0-based
+    let end = if end_line == 0 {
+        lines.len()
+    } else {
+        end_line.min(lines.len())
+    };
+    let start = start.min(end);
+    let replacement: Vec<&str> = content.split('\n').collect();
+    let mut out: Vec<&str> = Vec::with_capacity(lines.len() - (end - start) + replacement.len());
+    out.extend_from_slice(&lines[..start]);
+    out.extend_from_slice(&replacement);
+    out.extend_from_slice(&lines[end..]);
+    let mut joined = out.join(nl);
+    // Preserve a trailing newline when the replaced range reached EOF and the
+    // original file ended with one.
+    if end == lines.len() && text.ends_with(nl) && !joined.ends_with(nl) {
+        joined.push_str(nl);
+    }
+    fs::write(&path, &joined).map_err(|e| format!("Failed to write {path}: {e}"))?;
+    Ok(joined.len())
 }
 
 /// Recursively delete a folder and everything inside it.
@@ -1630,6 +1703,9 @@ pub fn run() {
             fs_write_file,
             fs_append_file,
             fs_replace_in_file,
+            fs_stat,
+            fs_copy_file,
+            fs_write_file_range,
             fs_delete_file,
             fs_delete_dir,
             fs_create_dir,

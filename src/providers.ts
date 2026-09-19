@@ -43,6 +43,10 @@ export interface ProviderSpec {
   extractDelta: (json: unknown) => string | null;
   /** Extract full content from a complete (non-streaming) JSON response. */
   extractContent: (json: unknown) => string;
+  /** Pull token usage counters out of a stream chunk / complete response.
+   * Return null when the chunk carries no usage info. Optional — when absent
+   * (or silent) the caller falls back to char/4 estimates. */
+  extractUsage?: (json: unknown) => { input?: number; output?: number } | null;
   /** Validate the API key format. Return a user-facing error string, or `null` when valid. */
   validateAuth: (apiKey: string) => string | null;
   /** Produce a provider-specific hint appended to HTTP auth / config errors. */
@@ -71,6 +75,51 @@ interface GoogleShape {
 interface OllamaShape {
   done?: boolean;
   message?: { content?: string };
+}
+
+/* ── Token-usage extractors (one per wire format) ───────────────────── */
+
+/** OpenAI-compatible: `usage` on the final chunk (needs include_usage) or
+ * any complete response object. */
+function openAiUsage(j: unknown): { input?: number; output?: number } | null {
+  const u = (j as { usage?: { prompt_tokens?: number; completion_tokens?: number } })?.usage;
+  if (!u || (u.prompt_tokens == null && u.completion_tokens == null)) return null;
+  return { input: u.prompt_tokens ?? undefined, output: u.completion_tokens ?? undefined };
+}
+
+/** Google Gemini: `usageMetadata` on each chunk / complete response. */
+function googleUsage(j: unknown): { input?: number; output?: number } | null {
+  const u = (j as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } })
+    ?.usageMetadata;
+  if (!u) return null;
+  return { input: u.promptTokenCount, output: u.candidatesTokenCount };
+}
+
+/** Anthropic: input tokens arrive in `message_start`, output tokens
+ * accumulate in each `message_delta`. */
+function anthropicUsage(j: unknown): { input?: number; output?: number } | null {
+  const o = j as {
+    type?: string;
+    message?: { usage?: { input_tokens?: number } };
+    usage?: { input_tokens?: number; output_tokens?: number };
+  };
+  if (o?.type === "message_start" && o.message?.usage?.input_tokens != null) {
+    return { input: o.message.usage.input_tokens };
+  }
+  if (o?.type === "message_delta" && o.usage?.output_tokens != null) {
+    return { output: o.usage.output_tokens };
+  }
+  if (o?.usage?.input_tokens != null || o?.usage?.output_tokens != null) {
+    return { input: o.usage?.input_tokens, output: o.usage?.output_tokens };
+  }
+  return null;
+}
+
+/** Ollama: counters only on the final chunk (`done: true`). */
+function ollamaUsage(j: unknown): { input?: number; output?: number } | null {
+  const o = j as { done?: boolean; prompt_eval_count?: number; eval_count?: number };
+  if (!o?.done) return null;
+  return { input: o.prompt_eval_count, output: o.eval_count };
 }
 
 export interface BuildBodyOptions {
@@ -291,6 +340,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
+      stream_options: { include_usage: true },
       ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
@@ -298,6 +348,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       return typeof c === "string" && c.length > 0 ? c : null;
     },
     extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
+    extractUsage: openAiUsage,
     validateAuth: (k) =>
       !k
         ? "An OpenAI API key is required (get one at platform.openai.com/api-keys)."
@@ -334,6 +385,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       return typeof c === "string" && c.length > 0 ? c : null;
     },
     extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
+    extractUsage: openAiUsage,
     validateAuth: (k) =>
       !k
         ? "An OpenRouter API key is required (get one at openrouter.ai/keys)."
@@ -400,6 +452,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       return typeof t === "string" && t.length > 0 ? t : null;
     },
     extractContent: (j) => (j as AnthropicShape)?.content?.[0]?.text ?? "",
+    extractUsage: anthropicUsage,
     validateAuth: (k) =>
       !k
         ? "An Anthropic API key is required (get one at console.anthropic.com/settings/keys)."
@@ -440,6 +493,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     },
     extractContent: (j) =>
       (j as GoogleShape)?.candidates?.[0]?.content?.parts?.[0]?.text ?? "",
+    extractUsage: googleUsage,
     validateAuth: (k) =>
       !k
         ? "A Google API key is required (get one from Google Cloud / AI Studio)."
@@ -476,6 +530,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       return typeof c === "string" && c.length > 0 ? c : null;
     },
     extractContent: (j) => (j as OllamaShape)?.message?.content ?? "",
+    extractUsage: ollamaUsage,
     validateAuth: () => null,
     authErrorHint: (status, s) =>
       `Connection failed (${status}). Ensure Ollama is running on "${s.baseUrl}" and that the model "${s.model}" is pulled (try: ollama pull ${s.model}).`,
@@ -505,6 +560,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       return typeof c === "string" && c.length > 0 ? c : null;
     },
     extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
+    extractUsage: openAiUsage,
     validateAuth: (k) => (!k ? "An API key is required." : null),
     authErrorHint: (status) =>
       `Request failed (${status}). Check your base URL, API key, and model in the AI Settings sidebar.`,
