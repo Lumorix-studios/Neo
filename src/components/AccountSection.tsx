@@ -32,6 +32,7 @@ type Mode = "sign-in" | "sign-up";
 function formatPlan(plan: string | null | undefined): string {
   const clean = (plan ?? "free").trim();
   if (!clean) return "Free";
+  if (clean.toLowerCase() === "unavailable") return "Unavailable";
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
@@ -104,6 +105,15 @@ export default function AccountSection({
               {account.email || account.provider}
               {profile ? ` · ${planLabel} plan` : " · checking plan"}
             </p>
+            {profile?.dbError && (
+              <p className="pt-1 text-[11px] leading-4 text-red-400/90">
+                Could not load your plan from the database: {profile.dbError}. Run
+                <code className="mx-1 rounded bg-(--fill-2) px-1 py-px text-[10.5px]">
+                  supabase/migrations/0003_restore_table_grants.sql
+                </code>
+                in the Supabase SQL editor, then sign out and back in.
+              </p>
+            )}
           </div>
         </div>
 

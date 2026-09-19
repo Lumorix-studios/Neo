@@ -156,3 +156,10 @@ create policy "chats_all_own" on public.chats
 
 -- user_api_keys — no direct-table policies on purpose: reads/writes go through
 -- the edge function (service role). Direct client access stays denied.
+
+-- PostgREST checks table GRANTs before RLS. Without these, signed-in users
+-- get 42501 "permission denied for table …" and the app invents a Free plan.
+grant usage on schema public to anon, authenticated;
+grant select on table public.profiles to anon, authenticated;
+grant select, insert, update, delete on table public.chats to authenticated;
+grant select, insert, update, delete on table public.user_settings to authenticated;

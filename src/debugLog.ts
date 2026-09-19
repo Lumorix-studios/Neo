@@ -1,13 +1,9 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { invoke } from "@tauri-apps/api/core";
 
-// Local debug ingest endpoint — fire-and-forget; all failures are silently
-// swallowed so debug logging never affects app behavior. The endpoint only
-// exists while a local debug session is running.
-const INGEST = "http://127.0.0.1:7279/ingest/a98f2217-f136-45e1-8320-be7e702db860";
-// Relative path so the log lands next to the project instead of a hardcoded
-// absolute user directory.
-const FILE = "debug-d3490d.log";
+const INGEST = "http://127.0.0.1:7443/ingest/d4dbbf5f-7ae0-41df-8b66-abd1f6a3c703";
+const FILE = "C:/Users/madyx/AgenticCoder/debug-919218.log";
+const SESSION = "919218";
 
 /**
  * Debug-session logger: posts to the local ingest server (both webview fetch
@@ -21,7 +17,7 @@ export function debugLog(
   data: Record<string, unknown>
 ): void {
   const payload = {
-    sessionId: "d3490d",
+    sessionId: SESSION,
     hypothesisId,
     location,
     message,
@@ -31,12 +27,12 @@ export function debugLog(
   const body = JSON.stringify(payload);
   fetch(INGEST, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d3490d" },
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": SESSION },
     body,
   }).catch(() => {});
   tauriFetch(INGEST, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d3490d" },
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": SESSION },
     body,
   }).catch(() => {});
   const line = body + String.fromCharCode(10);

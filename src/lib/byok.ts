@@ -11,6 +11,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from "./supabase";
+import { debugLog } from "../debugLog";
 
 const LOCAL_BYOK_KEY = "neo.byok.keys.v1";
 
@@ -88,11 +89,26 @@ export async function fetchRemoteKey(provider: string): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
   const sb = supabase();
   if (!sb) return null;
-  const { data } = await sb.functions.invoke("api-keys", {
+  const { data, error } = await sb.functions.invoke("api-keys", {
     method: "GET",
     headers: { "x-neo-provider": provider },
   });
-  const payload = data as { apiKey?: string } | null;
+  const payload = data as { apiKey?: string; error?: string; paywalled?: boolean } | null;
+  // #region agent log
+  debugLog("D", "byok.ts:fetchRemoteKey", "api-keys GET", {
+    provider,
+    hasKey: !!payload?.apiKey,
+    invokeError: error?.message ?? null,
+    bodyError: payload?.error ?? null,
+    paywalled: payload?.paywalled ?? false,
+  });
+  // #endregion
+  if (error) {
+    throw new Error(await invokeErrorMessage(error, "Could not load the key from your account."));
+  }
+  if (payload?.error) {
+    throw new Error(payload.error);
+  }
   if (payload?.apiKey) memoryKeys.set(provider, payload.apiKey);
   return payload?.apiKey ?? null;
 }
@@ -158,7 +174,7 @@ export async function resolveApiKey(
   if (signedIn) {
     if (!byokEnabled) return "";
     if (memoryKeys.has(provider)) return memoryKeys.get(provider) ?? "";
-    const remote = await fetchRemoteKey(provider).catch(() => null);
+    const remote = await fetchRemoteKey(provider);
     if (remote) return remote;
     // No key on the account yet — the user may still have a key this device
     // kept from before they signed in.

@@ -33,11 +33,11 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 function encryptionKey(): Promise<CryptoKey> {
-  const hex = Deno.env.get("BYOK_ENCRYPTION_KEY");
-  if (!hex || hex.length !== 64) {
+  const hex = Deno.env.get("BYOK_ENCRYPTION_KEY")?.trim() ?? "";
+  if (!/^[0-9a-f]{64}$/i.test(hex)) {
     throw new Error("BYOK_ENCRYPTION_KEY secret is missing or not 64 hex chars.");
   }
-  const raw = new Uint8Array(hex.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
+  const raw = new Uint8Array(hex.match(/.{2}/g)!.map((b) => Number.parseInt(b, 16)));
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 

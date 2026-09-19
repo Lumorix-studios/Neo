@@ -10,6 +10,7 @@
 
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { BYOK_PROVIDERS } from "./byok";
+import { debugLog } from "../debugLog";
 import type { AISettings, ChatSession } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 
@@ -81,6 +82,14 @@ export async function fetchChats(): Promise<ChatSession[] | null> {
     .select("id, title, messages, settings, created_at, updated_at")
     .order("updated_at", { ascending: false })
     .limit(500);
+  // #region agent log
+  debugLog("E", "cloudSync.ts:fetchChats", "chats select", {
+    ok: !error,
+    count: data?.length ?? 0,
+    error: error?.message ?? null,
+    code: error?.code ?? null,
+  });
+  // #endregion
   if (error) return null;
   return (data as unknown as CloudChatRow[]).map(rowToSession);
 }
@@ -171,6 +180,14 @@ export async function upsertSettings(settings: AISettings): Promise<boolean> {
     },
     { onConflict: "user_id" }
   );
+  // #region agent log
+  debugLog("E", "cloudSync.ts:upsertSettings", "settings upsert", {
+    userId: uid,
+    ok: !error,
+    error: error?.message ?? null,
+    code: error?.code ?? null,
+  });
+  // #endregion
   return !error;
 }
 

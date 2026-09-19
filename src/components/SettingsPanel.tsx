@@ -512,6 +512,10 @@ export default function SettingsPanel({
       setByokDraft("");
     } catch (e) {
       let message = e instanceof Error ? e.message : String(e);
+      if (/BYOK_ENCRYPTION_KEY secret is missing or not 64 hex chars/i.test(message)) {
+        message =
+          "API-key storage is not configured on the server. Set the Supabase secret BYOK_ENCRYPTION_KEY to 64 hexadecimal characters, then redeploy the api-keys function.";
+      }
       if (
         signedIn &&
         accountProfile?.byokEnabled !== false &&

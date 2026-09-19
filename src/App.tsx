@@ -45,6 +45,7 @@ import {
 import * as cloudSync from "./lib/cloudSync";
 import { useDeepLinkAuth } from "./lib/deepLink";
 import * as byok from "./lib/byok";
+import { debugLog } from "./debugLog";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { isTauri } from "@tauri-apps/api/core";
 import { getProviderSpec, buildAuthHeaders, PROVIDER_OPTIONS, providerById } from "./providers";
@@ -608,6 +609,13 @@ export default function App() {
       .then((key) => {
         if (cancelled) return;
         setSettings((prev) => (prev.apiKey === key ? prev : { ...prev, apiKey: key }));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        debugLog("E", "App.tsx:resolveApiKey", "Could not load the provider API key", {
+          provider: settings.provider,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
     return () => {
       cancelled = true;
