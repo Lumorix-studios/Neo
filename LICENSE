@@ -1,201 +1,169 @@
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
+# NEO Source-Available License 1.0
 
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+Copyright © 2026 Lumorix Studios
 
-   1. Definitions.
+## 1. Definitions
 
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
+For purposes of this License:
 
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
+**"Software"** means the NEO software, including its source code, object code, binaries, documentation, configuration files, and other materials distributed by Lumorix Studios under this License.
 
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
+**"Modified Version"** means any version of the Software that has been modified, adapted, translated, extended, or otherwise changed from the version distributed by Lumorix Studios.
 
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
+**"Personal Use"** means use of the Software by an individual for their own personal, educational, experimental, research, or private development activities, where the Software or a Modified Version is not distributed or made available to the public or to a substantial number of third parties.
 
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
+**"Non-Commercial Distribution"** means distribution of the Software or a Modified Version without charging a fee, subscription, license payment, access fee, or other monetary consideration for the Software itself, and without distributing it as a substantial component of a commercial product or service.
 
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
+**"Commercial Distribution"** means distributing, publishing, selling, licensing, sublicensing, renting, leasing, hosting, providing access to, bundling, or otherwise making the Software or a Modified Version available to a substantial number of third parties in connection with a commercial product, service, business, paid offering, subscription, or other revenue-generating activity.
 
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
+Commercial Distribution includes, but is not limited to:
 
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
+* Selling the Software or a Modified Version.
+* Offering the Software as a paid download.
+* Bundling the Software into a paid product or service.
+* Offering a hosted or managed version of the Software to customers.
+* Providing the Software to customers, users, or members as part of a paid service.
+* Distributing the Software at large scale as part of a commercial offering.
+* Operating a service whose primary functionality is substantially provided by the Software or a Modified Version.
 
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
+**"Substantial Number of Third Parties"** means distribution beyond the individual's private use or a limited group of collaborators and includes public distribution through websites, application stores, package repositories, public download services, commercial products, or similar channels.
 
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
+## 2. Copyright License
 
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
+Subject to the terms and conditions of this License, Lumorix Studios grants you a worldwide, non-exclusive, royalty-free license to:
 
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
+1. Use the Software for Personal Use.
+2. Study and inspect the source code.
+3. Modify the Software for Personal Use.
+4. Create Modified Versions for Personal Use.
+5. Make private copies of the Software and Modified Versions.
+6. Share the Software or Modified Versions with a limited number of individuals for non-commercial development, testing, education, or collaboration.
+7. Distribute the Software or Modified Versions for non-commercial purposes, provided that this License and the applicable copyright notices remain included.
 
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
+These permissions do not grant permission for Commercial Distribution.
 
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
+## 3. Commercial Distribution
 
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
+Commercial Distribution of the Software or a Modified Version is prohibited without prior written permission from Lumorix Studios.
 
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
+No person or organization may, without prior written permission from Lumorix Studios:
 
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
+1. Sell the Software or a Modified Version.
+2. Publish the Software or a Modified Version as a commercial download.
+3. Include the Software or a Modified Version as a substantial component of a commercial product or service.
+4. Offer a hosted, managed, or remotely accessible version of the Software or a Modified Version to third parties as part of a commercial service.
+5. Redistribute the Software or a Modified Version to a substantial number of third parties for commercial purposes.
+6. License, sublicense, rent, lease, or otherwise transfer commercial rights to the Software or a Modified Version.
+7. Remove, disable, circumvent, or replace licensing mechanisms for the purpose of commercially redistributing the Software or a Modified Version.
 
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
+Nothing in this section prohibits Personal Use merely because the person using the Software is employed by, affiliated with, or operating a business, provided that the Software remains within the person's private or limited development environment and is not commercially distributed.
 
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
+## 4. Private and Internal Use
 
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
+A person or organization may use the Software privately without obtaining additional permission, provided that the Software is not distributed to a substantial number of third parties.
 
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
+Private internal use includes, for example:
 
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
+* Developing software privately.
+* Testing the Software internally.
+* Learning from the Software.
+* Modifying the Software for internal use.
+* Using the Software within a private development team.
+* Using a Modified Version internally without distributing it externally.
 
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
+Private internal use does not grant permission to redistribute the Software or a Modified Version as a commercial product or service.
 
-   END OF TERMS AND CONDITIONS
+## 5. Modification
 
-   APPENDIX: How to apply the Apache License to your work.
+You may modify the Software for Personal Use and private internal use.
 
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
+Modified Versions remain subject to this License if they contain substantial portions of the original NEO code.
 
-   Copyright [yyyy] [name of copyright owner]
+You must retain applicable copyright notices and a copy of this License in any permitted redistribution.
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+## 6. Attribution
 
-       http://www.apache.org/licenses/LICENSE-2.0
+When redistributing the Software or a Modified Version in a manner permitted by this License, you must:
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+1. Retain the original copyright notices.
+2. Include a copy of this License.
+3. Clearly state that the redistributed software is based on NEO.
+4. Clearly identify substantial modifications from the version distributed by Lumorix Studios.
+
+## 7. NEO Name and Branding
+
+This License does not grant permission to use the names, logos, trademarks, service marks, product names, or branding of Lumorix Studios or NEO except as reasonably necessary to identify the original Software.
+
+You may not represent a Modified Version as the official NEO product or imply that Lumorix Studios endorses, sponsors, or maintains a Modified Version without prior written permission.
+
+Modified Versions intended for redistribution should use a distinct product name and branding.
+
+## 8. No Circumvention of Commercial Restrictions
+
+You may not circumvent the commercial restrictions of this License by:
+
+1. Repackaging the Software under another name.
+2. Splitting the Software into multiple components for the purpose of avoiding the restrictions of this License.
+3. Removing or replacing licensing or subscription functionality for the purpose of commercial redistribution.
+4. Combining the Software with other software where the resulting distribution is substantially equivalent to distributing NEO itself for a commercial purpose.
+5. Providing substantially equivalent access to NEO functionality through a hosted or remote service for commercial purposes.
+
+## 9. Contributions
+
+Unless otherwise agreed in writing, contributions submitted to the NEO project may be incorporated into the Software and distributed by Lumorix Studios under this License or under a different license selected by Lumorix Studios for future versions.
+
+By intentionally submitting a contribution to the NEO project for inclusion in the Software, you represent that you have the necessary rights to submit the contribution.
+
+## 10. Third-Party Software
+
+This License applies only to code owned or controlled by Lumorix Studios and distributed as part of NEO.
+
+Third-party libraries, dependencies, frameworks, and other components remain subject to their respective licenses.
+
+Nothing in this License modifies or overrides the license of third-party software.
+
+## 11. Termination
+
+Your rights under this License automatically terminate if you materially violate its terms.
+
+Upon termination, you must cease exercising the rights granted by this License and stop distributing the Software or Modified Versions.
+
+Rights that were lawfully granted to other recipients before termination are not automatically revoked solely because your rights have terminated.
+
+Lumorix Studios may, at its discretion, provide written permission restoring rights under this License or granting separate commercial rights.
+
+## 12. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+IN NO EVENT SHALL LUMORIX STUDIOS OR ITS CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE OR THE USE OR INABILITY TO USE THE SOFTWARE.
+
+## 13. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LUMORIX STUDIOS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, BUSINESS, GOODWILL, OR OTHER INTANGIBLE LOSSES ARISING FROM THE SOFTWARE OR THIS LICENSE.
+
+## 14. No Additional Rights
+
+Except for the rights expressly granted by this License, no other rights are granted, whether by implication, estoppel, or otherwise.
+
+## 15. Reservation of Rights
+
+All rights not expressly granted under this License are reserved by Lumorix Studios.
+
+## 16. Commercial Licensing
+
+Lumorix Studios may grant separate commercial licenses or permissions for use, distribution, hosting, bundling, or commercialization of NEO.
+
+Commercial licensing terms are determined separately by Lumorix Studios.
+
+## 17. Acceptance
+
+By using, modifying, or distributing the Software, you acknowledge that you have read and agree to the terms of this License.
+
+If you do not agree to this License, you may not use, modify, or distribute the Software under the permissions granted herein.
+
+---
+
+Copyright © 2026 Lumorix Studios.
+
+NEO and associated Lumorix Studios branding are the property of their respective owners.
