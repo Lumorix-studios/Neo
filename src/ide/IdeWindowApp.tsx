@@ -1,3 +1,6 @@
+//might be obvious what this file functions as lol
+//Main ide window interface 
+
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -104,10 +107,10 @@ export default function IdeWindowApp() {
   const [gitOpen, setGitOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- AI agent panel (docked right, Cursor-style) --------------------------
+  // --- AI agent panel (docked right, Cursor-style) 
   const AGENT_OPEN_KEY = "neo.ide.agentOpen";
   const [agentOpen, setAgentOpen] = useState(
-    () => localStorage.getItem(AGENT_OPEN_KEY) !== "0"
+    () => localStorage.getItem(AGENT_OPEN_KEY) !== "1"
   );
   const [agentBusy, setAgentBusy] = useState(false);
   const AGENT_WIDTH_KEY = "neo.ide.agentWidth";
@@ -142,11 +145,9 @@ export default function IdeWindowApp() {
     localStorage.setItem(AGENT_WIDTH_KEY, String(agentWidth));
   }, [agentWidth]);
 
-  // --- command palette -------------------------------------------------------
+  // --- command palette 
   const [paletteOpen, setPaletteOpen] = useState(false);
-
-
-  // --- editor tabs ---------------------------------------------------------
+  // --- editor tabs 
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
   const [revealLine, setRevealLine] = useState<{ path: string; line: number } | null>(null);
@@ -158,7 +159,6 @@ export default function IdeWindowApp() {
   // Bumped when extensions are installed/toggled so contributed UI re-evaluates.
   const [, setExtensionTick] = useState(0);
   const uiSettingsLoadedRef = useRef(false);
-
   // Load persisted UI + AI settings once on mount (shared with the chat window).
   useEffect(() => {
     let cancelled = false;

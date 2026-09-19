@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ACCENT_SWATCHES,
   DEFAULT_UI_SETTINGS,
@@ -436,6 +436,27 @@ export default function SettingsPanel({
   const [isCheckingPorts, setIsCheckingPorts] = useState(false);
   const [discoveredPort, setDiscoveredPort] = useState<string | null>(null);
 
+  // --- "About builds" popover (sidebar footer) ---
+  const [buildsInfoOpen, setBuildsInfoOpen] = useState(false);
+  const buildsInfoRef = useRef<HTMLDivElement>(null);
+
+  // Close the popover on outside click or Escape.
+  useEffect(() => {
+    if (!buildsInfoOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!buildsInfoRef.current?.contains(e.target as Node)) setBuildsInfoOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setBuildsInfoOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [buildsInfoOpen]);
+
   useEffect(() => {
     if (open) {
       setBgDraft(settings.customBackground ?? resolveThemeVars(settings)["--bg-base"]);
@@ -644,7 +665,47 @@ return (
               </button>
             ))}
           </nav>
-          <div className="mt-auto px-2 py-1 text-[10px] text-[var(--text-faint)]">Neo v1.0.7</div>
+          <div className="mt-auto px-2 py-1 text-[10px] text-[var(--text-faint)]">
+            <div ref={buildsInfoRef} className="relative sm:text-right">
+              <button
+                type="button"
+                aria-label="About Neo builds"
+                aria-expanded={buildsInfoOpen}
+                className="inline-flex items-center text-[var(--text-faint)] transition hover:text-[var(--text-secondary)]"
+                onClick={() => setBuildsInfoOpen((v) => !v)}
+              >
+                <IoInformationCircleOutline className="h-4 w-4" />
+              </button>
+
+              {buildsInfoOpen && (
+                <div className="absolute bottom-0 left-full z-50 ml-2 w-72 rounded-lg border border-(--border-strong) bg-[var(--bg-elevated)] p-4 text-left shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+                  <p className="text-xs font-medium text-[var(--text-primary)]">
+                    About builds
+                  </p>
+
+                  <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                    Neo is a free and open-source project. The official builds are
+                    published by Lumorix Studios and are signed with a verified
+                    certificate. The official GitHub repository is{" "}
+                    <a
+                      href="https://github.com/Lumorix-studios/Neo"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--text-primary)] hover:underline"
+                    >
+                      here
+                    </a>
+                  </p>
+
+                  <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                    The "Nightly" builds are automatically generated from the
+                    latest code in the main branch. They may contain new features
+                    and bug fixes, but they are not guaranteed to be stable.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </aside>
 
         {/* ── Content */}
@@ -1406,22 +1467,22 @@ return (
             {section === "about" && (
               <div>
                 <div className="flex items-center gap-3 py-2">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-(--accent-soft) text-[20px] font-bold text-(--accent)">
-                    N
+                  <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-(--accent-soft)">
+                    <img src="/app-icon.png" alt="Neo logo" className="h-full w-full object-contain" />
                   </div>
                   <div>
                     <p className="text-[14px] font-semibold text-[var(--text-primary)]">Neo</p>
-                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.0.8 (Beta) · AI-native code workspace</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.0.8 (Beta)</p>
                   </div>
                 </div>
 
-                <SectionTitle>About</SectionTitle>
+                <SectionTitle>Important information</SectionTitle>
                 <p className="text-[11.5px] leading-5 text-[var(--text-secondary)]">
-                  Neo is a local-first, Tauri-powered code editor with a built-in AI assistant,
-                  integrated terminal, git panel and a VS Code-style extension library. Your files,
-                  keys and settings never leave this machine.
+                 No data is collected or sent to any server by Neo. All settings, extensions, and AI API keys are stored locally on this device. The AI provider you choose may collect data according to their own privacy policy.
                 </p>
-
+                <p className = "text-[11.5px] leading-5 text-[var(--text-secondary)]">
+                  App is still very premature so functions might fail sometimes and you might encounter bugs. Functions might work differently than expected and are not that optimized as expected. Please report any bugs you encounter on the GitHub repository.
+                </p>
                 <SectionTitle>Links</SectionTitle>
                 <div className="flex flex-col gap-1">
                   {[
@@ -1441,22 +1502,19 @@ return (
                   ))}
                 </div>
 
-                <SectionTitle>Built with</SectionTitle>
-                <div className="flex flex-wrap gap-1.5">
+                {/* <SectionTitle>Built with</SectionTitle> */}
+                {/* <div className="flex flex-wrap gap-1.5">
                   {["Tauri 2", "React 19", "TypeScript", "Rust", "Tailwind CSS 4", "xterm.js", "portable-pty"].map((t) => (
                     <span key={t} className="rounded-full border border-(--border) px-2.5 py-0.5 text-[10.5px] text-[var(--text-secondary)]">
                       {t}
                     </span>
                   ))}
-                </div>
-
+                </div> */}
                 <p className="pt-4 text-[10.5px] text-[var(--text-faint)]">
-                
                 </p>
               </div>
             )}
           </div>
-
           {/* Footer */}
           <footer className="flex h-11 shrink-0 items-center justify-between border-t border-(--border) px-4">
             <span className="text-[10.5px] text-[var(--text-faint)]">Changes apply instantly</span>

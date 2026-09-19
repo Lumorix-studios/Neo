@@ -1,4 +1,4 @@
-
+//main agent panel interface for the IDE window specifically
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";

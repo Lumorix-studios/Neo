@@ -1,3 +1,7 @@
+//this file functions as the topmenu bar prop in the main chatinterface window
+//all the menu items are defined here and the actions are passed as props to this component
+
+
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useErrorHandler } from "../src/errorContext";
@@ -38,7 +42,7 @@ interface MenuDef {
 
 export default function TopMenu({
   onOpenInfoPanel,
-  onOpenPrivacyPolicy,
+  // onOpenPrivacyPolicy,  //this was the actual tab prop but that isnt needed and is deprecated
   onOpenTab2,
   onOpenAiSettings,
   onOpenChatHistory,
@@ -65,7 +69,13 @@ export default function TopMenu({
       reportError(error);
     }
   };
-
+const openPrivacyPolicy = async () => {
+    try {
+      await openUrl("https://lumorix-studios.github.io/LumorixStudiosHq/privacypolicyandterms");
+    } catch (error) {
+      reportError(error);
+    }
+  };
   const pinned = new Set(pinnedPaths ?? []);
   /** Workspace entries for the Context menu — files are pinnable, folders are informational. */
   const contextItems: MenuDef["items"] = (contextEntries ?? []).slice(0, 25).map((e) => ({
@@ -129,7 +139,7 @@ export default function TopMenu({
       items: [
         { label: "Documentation", action: openDocs },
         { label: "About & Contact", action: onOpenInfoPanel },
-        { label: "Privacy Policy", action: onOpenPrivacyPolicy },
+        { label: "Privacy Policy", action: openPrivacyPolicy },
         { label: "Rate Neo", action: onOpenTab2 },
       ],
     },

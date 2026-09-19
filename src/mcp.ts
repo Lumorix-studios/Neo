@@ -1,6 +1,6 @@
 
 /**
- * Real MCP (Model Context Protocol) client — two transports:
+ * (Model Context Protocol) client — two transports:
  *
  *  • "http"  — Streamable HTTP servers (JSON-RPC over POST, optional SSE
  *              responses, Mcp-Session-Id handling). Custom request headers

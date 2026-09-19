@@ -1,3 +1,10 @@
+
+//author of this entire codebase is Madhusudhan thapa (madhusudhant207@gmail.com) and coding agents 
+//Licensed under the MIT License. See LICENSE file in the project root for full license information.
+//Completely opensource code and free to use and modify. Please give credit to the author if you use this codebase in your project.
+//cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
+//also cant assure you this will always stay opensource
+//            9/18/26
 import { useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -71,7 +78,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAdd, IoAlertSharp, IoBarChartOutline, IoBugOutline, IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, IoSparkles, IoStop, IoTerminal, IoThumbsDownSharp, IoThumbsUpSharp, IoSend, IoSettings } from "react-icons/io5";
+import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ IoStop, IoTerminal, IoThumbsDownSharp, IoThumbsUpSharp, IoSend, IoSettings } from "react-icons/io5";
 import { shortPath } from "./utils";
 
 type JsonDict = Record<string, unknown>;
@@ -210,20 +217,20 @@ const CONTEXT_LIMITS: Array<[string, number]> = [
 ];
 
 /** Small icon used on the welcome-screen action cards. */
-function CardIcon({ name }: { name: string }) {
-  const cls = "shrink-0 opacity-60";
-  const color = "var(--accent)";
-  switch (name) {
-    case "folder":
-      return <IoFolderOutline size={13} className={cls} color={color} />;
-    case "chart":
-      return <IoBarChartOutline size={13} className={cls} color={color} />;
-    case "bug":
-      return <IoBugOutline size={13} className={cls} color={color} />;
-    default:
-      return <IoSparkles size={13} className={cls} color={color} />;
-  }
-}
+// function CardIcon({ name }: { name: string }) {
+//   const cls = "shrink-0 opacity-60";
+//   const color = "var(--accent)";
+//   switch (name) {
+//     case "folder":
+//       return <IoFolderOutline size={13} className={cls} color={color} />;
+//     case "chart":
+//       return <IoBarChartOutline size={13} className={cls} color={color} />;
+//     case "bug":
+//       return <IoBugOutline size={13} className={cls} color={color} />;
+//     default:
+//       return <IoSparkles size={13} className={cls} color={color} />;
+//   }
+// }
 
 function contextLimitFor(model: string): number {
   const m = model.toLowerCase();
@@ -1918,7 +1925,7 @@ MCP call rules:
                 <span className="text-[10px] uppercase tracking-wider font-bold">Context:</span>
               </div>
               {workspaceRoot && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[var(--text-primary)] text-[10px] font-mono">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded border border-zinc-800 text-[var(--text-primary)] text-[10px] font-mono">
                   <span><IoFolderOutline/>
                   </span> {shortPath(workspaceRoot)}
                 </div>
@@ -1951,7 +1958,7 @@ MCP call rules:
                     <div className="relative z-0 flex items-center justify-center" data-debug="welcome-heading">
                       <BlurText
                         text="Ready to start working?"
-                        delay={20}
+                        delay={70}
                         animateBy="letters"
                         direction="top"
                         onAnimationComplete={handleAnimationComplete}
@@ -2005,7 +2012,7 @@ MCP call rules:
                         
                          
                       <span className="flex items-center gap-2">
-                        <CardIcon name="folder" />
+                        <IoAdd size={14} className="text-[var(--text-accent)]" />
                         <span className="block text-[12.5px] font-medium text-[var(--text-primary)]">Open a project</span>
                       </span>
                       
@@ -2054,7 +2061,7 @@ MCP call rules:
                     </div>
 
                     {/* Keyboard shortcuts */}
-                    <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[10.5px] text-[var(--text-muted)]">
+                    {/* <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[10.5px] text-[var(--text-muted)]">
                       <span className="flex items-center gap-1.5">
                         <span className="kbd">Ctrl</span>
                         <span className="kbd">Shift</span>
@@ -2071,7 +2078,7 @@ MCP call rules:
                         <span className="kbd">B</span>
                         AI config
                       </span>
-                    </div>
+                    </div> */}
                   </div>
                 </div>
               ) : (

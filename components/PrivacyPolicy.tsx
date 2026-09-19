@@ -1,6 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useErrorHandler } from "../src/errorContext";
-import { IoClose, IoInformationCircleOutline, IoLogoGithub, IoOpenOutline } from "react-icons/io5";
+import { IoClose, IoInformationCircle, IoInformationCircleOutline,  IoOpenOutline } from "react-icons/io5";
 
 interface InfoPanelProps {
   isOpen: boolean;
@@ -35,27 +35,27 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          <div className="flex flex-col gap-3">
-            <Section>
+       
+          
+           
               <ActionButton
                 icon={
-                  <IoLogoGithub size={15} />
+                  <IoInformationCircle size={15} />
                 }
                 onClick={async () => {
                   try {
-                    await openUrl("https://github.com/Lumorix-studios/Neo/blob/main/PRIVACYPOLICY.MD");
+                    await openUrl("https://lumorix-studios.github.io/LumorixStudiosHq/privacypolicyandterms");
                   } catch (error) {
                     reportError(error);
                   }
                 }}
-                label="View our Policies GitHub"
+                label="View our Policies"
                 sublabel="If you have any concerns upon our policies please contact us"
-                accent="green"
+                accent = "cream"
               />
-            </Section>
-          </div>
-        </div>
+            
+         
+      
 
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-white/[0.08]">
           <span className="text-[11px] text-[#777873]">© 2026 Lumorix Studios</span>
