@@ -71,13 +71,7 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
   );
 }
 
-function Section({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="bg-white/[0.025] border border-white/[0.06] rounded-xl p-4">
-      {children}
-    </div>
-  );
-}
+/* ── Small shared bits ─────────────────────────────────────────────────────── */
 
 function ActionButton({
   icon,

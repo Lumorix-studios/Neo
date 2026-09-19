@@ -40,8 +40,16 @@ import {
   type ExtensionState,
 } from "../extensions";
 import LocalModels from "../../components/LocalModels";
+import AccountSection from "./AccountSection";
+import type { NeoUser, Profile as AccountProfile } from "../lib/auth";
+import {
+  getLocalKey,
+  saveRemoteKey,
+  removeRemoteKey,
+} from "../lib/byok";
+import * as cloudSync from "../lib/cloudSync";
 
-import { IoApps, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
+import { IoApps, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
 import {
   formatTokens,
   getCachedRateSettings,
@@ -63,6 +71,7 @@ export type SectionId =
   | "files"
   | "data"
   | "shortcuts"
+  | "account"
   | "about";
 
 interface SettingsPanelProps {
@@ -82,6 +91,12 @@ interface SettingsPanelProps {
   onClose: () => void;
   /** Fired whenever an extension is installed / uninstalled / toggled. */
   onExtensionsChanged?: () => void;
+  /** Signed-in account (null when signed out). */
+  account?: NeoUser | null;
+  /** Full profile incl. the BYOK entitlement flag. */
+  accountProfile?: AccountProfile | null;
+  /** Re-read the account/profile after edits in the Account tab. */
+  onAccountRefresh?: () => void;
 }
 
 /* ── Small building blocks ─────────────────────────────────────────── */
@@ -325,6 +340,13 @@ function exportSettingsSnapshot(ui: UiSettings, ai: AISettings, ext: ExtensionSt
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> = [
   {
+    id: "account",
+    label: "Account",
+    icon: (
+      <IoPersonCircleOutline className="h-3.5 w-3.5" />
+    ),
+  },
+  {
     id: "appearance",
     label: "Appearance",
     icon: (
@@ -427,6 +449,9 @@ export default function SettingsPanel({
   initialSection,
   onClose,
   onExtensionsChanged,
+  account = null,
+  accountProfile = null,
+  onAccountRefresh,
 }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionId>("appearance");
   const [bgDraft, setBgDraft] = useState(settings.customBackground ?? "#0e0e0e");
@@ -449,6 +474,59 @@ export default function SettingsPanel({
   const [extState, setExtState] = useState<ExtensionState>(() => loadExtensionState());
   const [extQuery, setExtQuery] = useState("");
   const [extCategory, setExtCategory] = useState<ExtensionCategory | "All" | "Installed">("All");
+  // --- BYOK key management state (Account-aware) ---
+  const signedIn = !!account;
+  const [byokDraft, setByokDraft] = useState("");
+  const [byokBusy, setByokBusy] = useState(false);
+  const [byokMsg, setByokMsg] = useState<string | null>(null);
+  // --- Cloud data management state ---
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudMsg, setCloudMsg] = useState<string | null>(null);
+
+  // Reset the BYOK draft when the provider (or auth state) changes.
+  useEffect(() => {
+    setByokDraft("");
+    setByokMsg(null);
+  }, [aiSettings.provider, signedIn]);
+
+  const keyConfigured =
+    !!aiSettings.apiKey || (!signedIn && !!getLocalKey(aiSettings.provider));
+  const byokPaywalled = signedIn && accountProfile?.byokEnabled === false;
+
+  /** Persist the BYOK key: encrypted server-side when signed in, local otherwise. */
+  const handleSaveByokKey = async () => {
+    setByokBusy(true);
+    setByokMsg(null);
+    try {
+      if (signedIn) {
+        await saveRemoteKey(aiSettings.provider, byokDraft);
+        onAiChange({ ...aiSettings, apiKey: byokDraft.trim() });
+        setByokMsg("Key saved to your account (encrypted server-side).");
+      } else {
+        onAiChange({ ...aiSettings, apiKey: byokDraft });
+        setByokMsg("Key saved on this device.");
+      }
+      setByokDraft("");
+    } catch (e) {
+      setByokMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setByokBusy(false);
+    }
+  };
+
+  const handleRemoveByokKey = async () => {
+    setByokBusy(true);
+    setByokMsg(null);
+    try {
+      if (signedIn) await removeRemoteKey(aiSettings.provider);
+      onAiChange({ ...aiSettings, apiKey: "" });
+      setByokMsg(signedIn ? "Key removed from your account." : "Key removed.");
+    } catch (e) {
+      setByokMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setByokBusy(false);
+    }
+  };
 
   const [isCheckingPorts, setIsCheckingPorts] = useState(false);
   const [discoveredPort, setDiscoveredPort] = useState<string | null>(null);
@@ -972,6 +1050,13 @@ return (
                 </div>
               </div>
             )}
+            {section === "account" && (
+              <AccountSection
+                account={account}
+                profile={accountProfile}
+                onAccountRefresh={() => onAccountRefresh?.()}
+              />
+            )}
             {section === "ai" &&
               (showLocalModels ? (
                 <div className="h-full">
@@ -1057,25 +1142,80 @@ return (
                     className="w-56 shrink-0 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                   />
                 </Row>
-                <Row title="API key" description={aiNeedsKey ? "Stored locally on this device." : "Not required for this provider."}>
-                  <div className="relative shrink-0">
-                    <input
-                      type={showAiKey ? "text" : "password"}
-                      value={aiSettings.apiKey}
-                      onChange={(e) => updateAi("apiKey", e.target.value)}
-                      placeholder={aiNeedsKey ? "Enter API key" : "Not required"}
-                      spellCheck={false}
-                      className="w-56 rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-2.5 pr-14 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowAiKey((v) => !v)}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10.5px] text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
-                    >
-                      {showAiKey ? "Hide" : "Show"}
-                    </button>
-                  </div>
+                <Row title="API key" description={
+                  !aiNeedsKey
+                    ? "Not required for this provider."
+                    : signedIn
+                      ? "Stored encrypted (AES-256-GCM) in your account — never written to disk."
+                      : "Stored locally on this device. Sign in to store it encrypted in your account."
+                }>
+                  {aiNeedsKey && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          keyConfigured ? "bg-emerald-500" : "bg-zinc-600"
+                        }`}
+                      />
+                      <span className="text-[10.5px] text-[var(--text-muted)]">
+                        {keyConfigured ? "configured" : "not set"}
+                      </span>
+                    </div>
+                  )}
                 </Row>
+                {aiNeedsKey && !byokPaywalled && (
+                  <div className="flex flex-col gap-1.5 pb-3">
+                    <div className="flex gap-1.5">
+                      <div className="relative flex-1">
+                        <input
+                          type={showAiKey ? "text" : "password"}
+                          value={byokDraft}
+                          onChange={(e) => setByokDraft(e.target.value)}
+                          placeholder={
+                            keyConfigured ? "•••••••••••• (enter a new key to replace)" : "Enter API key"
+                          }
+                          spellCheck={false}
+                          autoComplete="off"
+                          className="w-full rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-2.5 pr-14 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAiKey((v) => !v)}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10.5px] text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+                        >
+                          {showAiKey ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={byokBusy || !byokDraft.trim()}
+                        onClick={() => void handleSaveByokKey()}
+                        className="shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition disabled:opacity-40"
+                        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+                      >
+                        Save
+                      </button>
+                      {keyConfigured && (
+                        <button
+                          type="button"
+                          disabled={byokBusy}
+                          onClick={() => void handleRemoveByokKey()}
+                          className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {byokMsg && (
+                      <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">{byokMsg}</p>
+                    )}
+                  </div>
+                )}
+                {aiNeedsKey && byokPaywalled && (
+                  <p className="pb-3 text-[11px] leading-4 text-[var(--text-muted)]">
+                    BYOK requires an upgraded plan — your keys stay safely stored but
+                    can no longer be edited until the plan is active again.
+                  </p>
+                )}
 
                 <SectionTitle>Model</SectionTitle>
                 <Row title="Model ID" description="Model identifier sent to the provider.">
@@ -1260,7 +1400,9 @@ return (
                 </div>
 
                 <p className="pt-1 text-[10.5px] text-[var(--text-faint)]">
-                  AI settings are stored locally on this device.
+                  {signedIn
+                    ? "AI settings sync to your account. API keys are stored separately."
+                    : "AI settings are stored locally on this device. Sign in to sync them across devices."}
                 </p>
               </div>
               ))}
@@ -1640,8 +1782,50 @@ return (
                 </Row>
 
                 <p className="pt-2 text-[10.5px] text-[var(--text-faint)]">
-                  Everything lives on this device — no account, no cloud sync, no telemetry.
+                  {signedIn
+                    ? "Chats, AI settings and your profile sync to your account. Everything else lives on this device."
+                    : "Signed out: everything lives on this device — no cloud sync, no telemetry."}
                 </p>
+
+                {signedIn && (
+                  <>
+                    <SectionTitle>Cloud data</SectionTitle>
+                    <Row
+                      title="Delete cloud data"
+                      description="Permanently removes your chats, synced AI settings and stored API keys from your account. Local data is kept."
+                    >
+                      <button
+                        type="button"
+                        disabled={cloudBusy}
+                        onClick={async () => {
+                          if (
+                            !window.confirm(
+                              "Delete all chats, synced settings and stored API keys from your account? This cannot be undone."
+                            )
+                          ) {
+                            return;
+                          }
+                          setCloudBusy(true);
+                          setCloudMsg(null);
+                          try {
+                            await cloudSync.deleteAllCloudData();
+                            setCloudMsg("Cloud data deleted.");
+                          } catch (e) {
+                            setCloudMsg(e instanceof Error ? e.message : String(e));
+                          } finally {
+                            setCloudBusy(false);
+                          }
+                        }}
+                        className="shrink-0 rounded-md border border-red-400/40 px-2.5 py-1 text-[11px] text-red-400/90 transition hover:bg-red-400/10 disabled:opacity-40"
+                      >
+                        {cloudBusy ? "Deleting…" : "Delete"}
+                      </button>
+                    </Row>
+                    {cloudMsg && (
+                      <p className="pt-1 text-[10.5px] leading-4 text-[var(--text-muted)]">{cloudMsg}</p>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -1659,7 +1843,11 @@ return (
 
                 <SectionTitle>Important information</SectionTitle>
                 <p className="text-[11.5px] leading-5 text-[var(--text-secondary)]">
-                 No data is collected or sent to any server by Neo. All settings, extensions, and AI API keys are stored locally on this device. The AI provider you choose may collect data according to their own privacy policy.
+                 UI settings, extensions, MCP servers, token usage and terminal state are stored
+                 locally on this device. When you sign in, your chats, AI settings, profile and
+                 BYOK API keys are stored in your Supabase account (API keys encrypted
+                 server-side). No telemetry is collected. The AI provider you choose may collect
+                 data according to their own privacy policy.
                 </p>
                 <p className = "text-[11.5px] leading-5 text-[var(--text-secondary)]">
                   App is still very premature so functions might fail sometimes and you might encounter bugs. Functions might work differently than expected and are not that optimized as expected. Please report any bugs you encounter on the GitHub repository.

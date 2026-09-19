@@ -1,0 +1,22 @@
+# ───────────────────────────────────────────────────────────────────────────
+# Neo (AgenticCoder) — Supabase CLI project config.
+#
+# The app only uses Supabase for Auth, Postgres (RLS) and one Edge Function,
+# so this file stays deliberately small; the CLI fills in its defaults.
+#
+# After `supabase login` run:
+#   supabase link --project-ref <YOUR_PROJECT_REF>
+# (find the ref in Dashboard → Project Settings → General, or `supabase projects list`)
+# ───────────────────────────────────────────────────────────────────────────
+
+# Local dev project name (used for `supabase start`). Linking a remote project
+# does NOT change this — `supabase link --project-ref <ref>` records the ref in
+# supabase/.temp/project-ref instead.
+project_id = "agenticcoder"
+
+[functions.api-keys]
+# Kept explicit on purpose: `verify_jwt = true` is the CLI default and is what
+# we want — the app calls this function with the signed-in user's JWT, and the
+# function additionally validates it with sb.auth.getUser() and enforces the
+# profiles.byok_enabled paywall flag.
+verify_jwt = true

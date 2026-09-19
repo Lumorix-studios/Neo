@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
+import { setLocalKey } from "./lib/byok";
 
 const SETTINGS_KEY = "neochat.settings.v2";
 const SESSIONS_KEY = "neochat.sessions.v1";
@@ -39,6 +40,14 @@ function lsWrite(key: string, value: string): void {
   localStorage.setItem(STORAGE_PREFIX + key, value);
 }
 
+/** Settings persisted to disk never contain the API key — BYOK keys live in
+ *  their own store (cloud when signed in, local fallback otherwise). */
+function stripApiKey(s: AISettings): AISettings {
+  const { apiKey, ...rest } = s;
+  void apiKey;
+  return { ...DEFAULT_SETTINGS, ...rest, apiKey: "" };
+}
+
 /**
  * Settings
  */
@@ -53,7 +62,9 @@ export async function loadSettings(): Promise<AISettings> {
 }
 
 export async function saveSettings(settings: AISettings): Promise<void> {
-  const raw = JSON.stringify(settings);
+  const raw = JSON.stringify(stripApiKey(settings));
+  // Keep the key available for the signed-out fallback store.
+  if (settings.apiKey) setLocalKey(settings.provider, settings.apiKey);
   if (inTauri()) {
     const ok = await diskWrite(SETTINGS_KEY, raw);
     if (!ok) lsWrite(SETTINGS_KEY, raw);
@@ -77,7 +88,15 @@ export async function loadSessions(): Promise<ChatSession[]> {
 }
 
 export async function saveSessions(sessions: ChatSession[]): Promise<void> {
-  const raw = JSON.stringify(sessions);
+  // Sessions embed a per-chat settings snapshot — strip API keys there too.
+  const cleaned = sessions.map((s) => {
+    const { apiKey, ...rest } = s.settings ?? ({} as AISettings);
+    void apiKey;
+    return s.settings
+      ? { ...s, settings: { ...rest, apiKey: "" } as AISettings }
+      : s;
+  });
+  const raw = JSON.stringify(cleaned);
   if (inTauri()) {
     const ok = await diskWrite(SESSIONS_KEY, raw);
     if (!ok) lsWrite(SESSIONS_KEY, raw);

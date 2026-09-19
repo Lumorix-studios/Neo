@@ -8,6 +8,8 @@
   ],
   "permissions": [
     "core:default",
+    "core:event:default",
+    "deep-link:default",
     "core:window:allow-create",
     "core:window:allow-close",
     "core:window:allow-set-focus",

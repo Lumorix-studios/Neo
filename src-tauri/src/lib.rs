@@ -1682,6 +1682,16 @@ fn mcp_stdio_stop(state: tauri::State<'_, McpState>, id: String) -> Result<(), S
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // A second launch (e.g. the browser bouncing `agenticcoder://…` back
+            // from an OAuth sign-in) must hand the URL to the running window
+            // instead of opening a duplicate app — that is what makes the
+            // sign-in flow land in the app the user is already looking at.
+            if let Some(url) = argv.iter().find(|a| a.starts_with("agenticcoder://")) {
+                let _ = app.emit("neo:deep-link", url.clone());
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
@@ -1723,6 +1733,14 @@ pub fn run() {
             mcp_stdio_stop
         ])
         .setup(|app| {
+            // Desktop: make `agenticcoder://` resolve to *this* executable so
+            // OAuth callbacks work without a reinstall (Linux/Windows only —
+            // macOS registers the scheme at install time from the bundle).
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+            }
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

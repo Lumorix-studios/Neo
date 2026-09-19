@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+# ── vite + tauri defaults ───────────────────────────────────────────────────
 # Logs
 logs
 *.log
@@ -23,7 +23,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-=======
+# ── generated-file defaults ─────────────────────────────────────────────────
 # This file is used to ignore files which are generated
 # ----------------------------------------------------------------------------
 
@@ -108,6 +108,11 @@ CMakeLists.txt.user*
 .uic/
 /build*/
 /.qtcreator/
->>>>>>> 6b0377ee51276360ed2d1bfe5c9b3f6b8fa17a79
+# (merge-conflict markers removed — both rule sets above are active)
 *.keystore
 *.jks
+# Environment variables — never commit real Supabase credentials.
+# `.env.example` is the template and stays tracked.
+.env
+.env.*
+!.env.example

@@ -11,6 +11,8 @@ interface Props {
   onSelectSession: (id: string) => void;
   onNewChat: () => void;
   onDeleteSession: (id: string) => void;
+  /** True when the user is signed in — chats then sync to their account. */
+  signedIn?: boolean;
 }
 
 function formatDate(ts: number): string {
@@ -36,8 +38,12 @@ export default function ChatHistorySidebar({
   onSelectSession,
   onNewChat,
   onDeleteSession,
+  signedIn = false,
 }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const syncFooterText = signedIn
+    ? "Chats sync to your account across devices."
+    : "Chats are stored locally on this device.";
 
   const sorted = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -159,7 +165,7 @@ export default function ChatHistorySidebar({
           {/* Footer hint */}
           <footer className="border-t border-(--border) px-3 py-2">
             <p className="text-center text-[10px] leading-4 text-[var(--text-faint)]">
-              Chats are stored locally on this device.
+              {syncFooterText}
             </p>
           </footer>
         </div>

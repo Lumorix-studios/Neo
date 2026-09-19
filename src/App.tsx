@@ -33,6 +33,19 @@ import {
   loadActiveSessionId,
   saveActiveSessionId,
 } from "./store";
+import {
+  getCurrentUser,
+  getProfile,
+  onAuthChanged,
+  handleOAuthRedirect,
+  type NeoUser,
+  type Profile as AccountProfile,
+} from "./lib/auth";
+import * as cloudSync from "./lib/cloudSync";
+import { useDeepLinkAuth } from "./lib/deepLink";
+import * as byok from "./lib/byok";
+import { isSupabaseConfigured } from "./lib/supabase";
+import { isTauri } from "@tauri-apps/api/core";
 import { getProviderSpec, buildAuthHeaders, PROVIDER_OPTIONS, providerById } from "./providers";
 import type { ProviderSpec } from "./providers";
 import AgenticActivity from "./components/AgenticActivity";
@@ -303,6 +316,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  // --- Account (Supabase) state ---
+  const [account, setAccount] = useState<NeoUser | null>(null);
+  const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null);
+  const signedIn = !!account;
+  /** updatedAt of the last cloud push per chat id — avoids re-uploading unchanged chats. */
+  const cloudPushedAtRef = useRef<Map<string, number>>(new Map());
   const [activities, setActivities] = useState<AgenticActivityType[]>([]);
   const [pendingApproval, setPendingApproval] =
     useState<AgenticActivityType | null>(null);
@@ -475,21 +494,130 @@ export default function App() {
     };
   }, []);
 
+  // Browser build only. In the desktop app the deep-link hook owns OAuth
+  // callbacks (tokens arrive via `agenticcoder://`, never in the webview URL),
+  // so this is a fast no-op there; see useDeepLinkAuth() below.
+  useEffect(() => {
+    if (isTauri()) return;
+    if (!isSupabaseConfigured) return;
+    void handleOAuthRedirect();
+  }, []);
+
+  // VS Code style sign-in: `agenticcoder://auth/callback` lands here, the
+  // session is restored, onAuthChanged fires and bootstrapCloud refreshes.
+  useDeepLinkAuth();
+
+  // ── Cloud bootstrap ───────────────────────────────────────────────────────
+  // Runs once after local restore: if the user is signed in, pull their cloud
+  // chats/settings and merge them over the local snapshot (newer updatedAt wins
+  // per chat). If the cloud is empty (first sign-in) this device's data seeds
+  // the account instead.
+  const bootstrapCloud = async () => {
+    if (!isSupabaseConfigured) return;
+    const user = await getCurrentUser();
+    setAccount(user);
+    if (!user) {
+      setAccountProfile(null);
+      return;
+    }
+    const profile = await getProfile();
+    setAccountProfile(profile);
+    const snapshot = await cloudSync.loadAll();
+    if (snapshot.settings) {
+      setSettings((prev) => ({ ...prev, ...snapshot.settings! }));
+    }
+    if (snapshot.chats.length > 0) {
+      setSessions((prev) => {
+        const map = new Map(prev.map((s) => [s.id, s]));
+        for (const c of snapshot.chats) {
+          const local = map.get(c.id);
+          if (!local || c.updatedAt > local.updatedAt) map.set(c.id, c);
+          // Remember cloud timestamps so the save-effect doesn't re-upload them.
+          cloudPushedAtRef.current.set(c.id, Math.max(c.updatedAt, local?.updatedAt ?? 0));
+        }
+        return [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+      });
+    } else {
+      // First sign-in on a fresh account: seed the cloud from this device.
+      const [localSessions, localSettings] = await Promise.all([loadSessions(), loadSettings()]);
+      if (localSessions.length > 0) {
+        void cloudSync.upsertChats(localSessions);
+        for (const s of localSessions) cloudPushedAtRef.current.set(s.id, s.updatedAt);
+      }
+      void cloudSync.upsertSettings(localSettings);
+    }
+  };
+
   useEffect(() => {
     if (!restored) return;
-    const t = setTimeout(() => {      saveSettings(settings);
+    void bootstrapCloud();
+    // Live subscription: refresh account state on sign-in/out from any window.
+    const off = onAuthChanged((user) => {
+      setAccount(user);
+      if (!user) {
+        setAccountProfile(null);
+        byok.clearMemoryKeys();
+      } else {
+        void bootstrapCloud();
+      }
+    });
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored]);
+
+  /** Re-read account + profile (called after Account-tab edits). */
+  const refreshAccount = async () => {
+    if (!isSupabaseConfigured) return;
+    setAccount(await getCurrentUser());
+    setAccountProfile(await getProfile());
+  };
+
+  // ── BYOK key injection ─────────────────────────────────────────────────────
+  // The API key is never persisted with settings — it is resolved at runtime
+  // from the encrypted cloud store (signed in) or the local fallback store.
+  useEffect(() => {
+    if (!restored) return;
+    let cancelled = false;
+    // A paywalled plan resolves to no key at all (`byokEnabled === false`).
+    void byok
+      .resolveApiKey(settings.provider, signedIn, accountProfile?.byokEnabled ?? true)
+      .then((key) => {
+        if (cancelled) return;
+        setSettings((prev) => (prev.apiKey === key ? prev : { ...prev, apiKey: key }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.provider, signedIn, accountProfile?.byokEnabled, restored]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const t = setTimeout(() => {
+      saveSettings(settings);
+      // Mirror AI settings to the account (API key excluded — BYOK is separate).
+      if (signedIn) void cloudSync.upsertSettings(settings);
     }, 250);
     return () => clearTimeout(t);
-  }, [settings, restored]);
+  }, [settings, restored, signedIn]);
 
   // Persist sessions whenever they change.
   useEffect(() => {
     if (!restored) return;
     const t = setTimeout(() => {
       saveSessions(sessions);
+      // Push only chats that changed since the last cloud push.
+      if (signedIn) {
+        const changed = sessions.filter(
+          (s) => (cloudPushedAtRef.current.get(s.id) ?? 0) < s.updatedAt
+        );
+        if (changed.length > 0) {
+          for (const s of changed) cloudPushedAtRef.current.set(s.id, s.updatedAt);
+          void cloudSync.upsertChats(changed);
+        }
+      }
     }, 250);
     return () => clearTimeout(t);
-  }, [sessions, restored]);
+  }, [sessions, restored, signedIn]);
 
   // Persist active session id.
   useEffect(() => {
@@ -668,6 +796,8 @@ export default function App() {
 
   const deleteSession = (id: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
+    // Remove it from the account too.
+    if (signedIn) void cloudSync.deleteChat(id);
     if (activeSessionId === id) {
       setActiveSessionId(null);
       setMessages([]);
@@ -1954,6 +2084,9 @@ MCP call rules:
           initialSection={settingsSection}
           onClose={() => setSettingsOpen(false)}
           onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
+          account={account}
+          accountProfile={accountProfile}
+          onAccountRefresh={() => void refreshAccount()}
         />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* */}
@@ -1975,6 +2108,7 @@ MCP call rules:
             onSelectSession={selectSession}
             onNewChat={newChat}
             onDeleteSession={deleteSession}
+            signedIn={signedIn}
           />
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-base)]">
             {/* --- CONTEXT STRIP --- */}
