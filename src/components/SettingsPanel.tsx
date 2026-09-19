@@ -95,6 +95,8 @@ interface SettingsPanelProps {
   account?: NeoUser | null;
   /** Full profile incl. the BYOK entitlement flag. */
   accountProfile?: AccountProfile | null;
+  /** True while the app is checking/restoring the auth session. */
+  accountLoading?: boolean;
   /** Re-read the account/profile after edits in the Account tab. */
   onAccountRefresh?: () => void;
 }
@@ -451,6 +453,7 @@ export default function SettingsPanel({
   onExtensionsChanged,
   account = null,
   accountProfile = null,
+  accountLoading = false,
   onAccountRefresh,
 }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionId>("appearance");
@@ -490,8 +493,8 @@ export default function SettingsPanel({
   }, [aiSettings.provider, signedIn]);
 
   const keyConfigured =
-    !!aiSettings.apiKey || (!signedIn && !!getLocalKey(aiSettings.provider));
-  const byokPaywalled = signedIn && accountProfile?.byokEnabled === false;
+    !!aiSettings.apiKey || (!signedIn && !accountLoading && !!getLocalKey(aiSettings.provider));
+  const byokPaywalled = !accountLoading && signedIn && accountProfile?.byokEnabled === false;
 
   /** Persist the BYOK key: encrypted server-side when signed in, local otherwise. */
   const handleSaveByokKey = async () => {
@@ -508,7 +511,16 @@ export default function SettingsPanel({
       }
       setByokDraft("");
     } catch (e) {
-      setByokMsg(e instanceof Error ? e.message : String(e));
+      let message = e instanceof Error ? e.message : String(e);
+      if (
+        signedIn &&
+        accountProfile?.byokEnabled !== false &&
+        /upgraded plan|paywall|byok requires/i.test(message)
+      ) {
+        message =
+          "Your account plan has API-key access, but the deployed api-keys function still returned a paywall. Redeploy the Supabase function, or set byok_enabled=true for this account until the new function is live.";
+      }
+      setByokMsg(message);
     } finally {
       setByokBusy(false);
     }
@@ -1054,6 +1066,7 @@ return (
               <AccountSection
                 account={account}
                 profile={accountProfile}
+                authLoading={accountLoading}
                 onAccountRefresh={() => onAccountRefresh?.()}
               />
             )}
@@ -1145,7 +1158,9 @@ return (
                 <Row title="API key" description={
                   !aiNeedsKey
                     ? "Not required for this provider."
-                    : signedIn
+                    : accountLoading
+                      ? "Checking your account before choosing local or encrypted storage."
+                      : signedIn
                       ? "Stored encrypted (AES-256-GCM) in your account — never written to disk."
                       : "Stored locally on this device. Sign in to store it encrypted in your account."
                 }>
@@ -1162,7 +1177,12 @@ return (
                     </div>
                   )}
                 </Row>
-                {aiNeedsKey && !byokPaywalled && (
+                {aiNeedsKey && accountLoading && (
+                  <p className="pb-3 text-[11px] leading-4 text-[var(--text-muted)]">
+                    Checking your saved session and plan before editing API keys.
+                  </p>
+                )}
+                {aiNeedsKey && !accountLoading && !byokPaywalled && (
                   <div className="flex flex-col gap-1.5 pb-3">
                     <div className="flex gap-1.5">
                       <div className="relative flex-1">
@@ -1175,6 +1195,7 @@ return (
                           }
                           spellCheck={false}
                           autoComplete="off"
+                          disabled={accountLoading}
                           className="w-full rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-2.5 pr-14 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                         />
                         <button
@@ -1187,7 +1208,7 @@ return (
                       </div>
                       <button
                         type="button"
-                        disabled={byokBusy || !byokDraft.trim()}
+                        disabled={byokBusy || accountLoading || !byokDraft.trim()}
                         onClick={() => void handleSaveByokKey()}
                         className="shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition disabled:opacity-40"
                         style={{ background: "var(--accent)", color: "var(--on-accent)" }}
@@ -1197,7 +1218,7 @@ return (
                       {keyConfigured && (
                         <button
                           type="button"
-                          disabled={byokBusy}
+                          disabled={byokBusy || accountLoading}
                           onClick={() => void handleRemoveByokKey()}
                           className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
                         >

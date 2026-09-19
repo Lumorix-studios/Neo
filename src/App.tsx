@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import StarBorder from "../components/StarBorder";
 import TopMenu from "../components/TopMenu";
@@ -38,6 +38,7 @@ import {
   getProfile,
   onAuthChanged,
   handleOAuthRedirect,
+  AUTH_CHANGED_EVENT,
   type NeoUser,
   type Profile as AccountProfile,
 } from "./lib/auth";
@@ -319,6 +320,7 @@ export default function App() {
   // --- Account (Supabase) state ---
   const [account, setAccount] = useState<NeoUser | null>(null);
   const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null);
+  const [accountLoading, setAccountLoading] = useState(isSupabaseConfigured);
   const signedIn = !!account;
   /** updatedAt of the last cloud push per chat id — avoids re-uploading unchanged chats. */
   const cloudPushedAtRef = useRef<Map<string, number>>(new Map());
@@ -513,38 +515,47 @@ export default function App() {
   // per chat). If the cloud is empty (first sign-in) this device's data seeds
   // the account instead.
   const bootstrapCloud = async () => {
-    if (!isSupabaseConfigured) return;
-    const user = await getCurrentUser();
-    setAccount(user);
-    if (!user) {
-      setAccountProfile(null);
+    if (!isSupabaseConfigured) {
+      setAccountLoading(false);
       return;
     }
-    const profile = await getProfile();
-    setAccountProfile(profile);
-    const snapshot = await cloudSync.loadAll();
-    if (snapshot.settings) {
-      setSettings((prev) => ({ ...prev, ...snapshot.settings! }));
-    }
-    if (snapshot.chats.length > 0) {
-      setSessions((prev) => {
-        const map = new Map(prev.map((s) => [s.id, s]));
-        for (const c of snapshot.chats) {
-          const local = map.get(c.id);
-          if (!local || c.updatedAt > local.updatedAt) map.set(c.id, c);
-          // Remember cloud timestamps so the save-effect doesn't re-upload them.
-          cloudPushedAtRef.current.set(c.id, Math.max(c.updatedAt, local?.updatedAt ?? 0));
-        }
-        return [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-      });
-    } else {
-      // First sign-in on a fresh account: seed the cloud from this device.
-      const [localSessions, localSettings] = await Promise.all([loadSessions(), loadSettings()]);
-      if (localSessions.length > 0) {
-        void cloudSync.upsertChats(localSessions);
-        for (const s of localSessions) cloudPushedAtRef.current.set(s.id, s.updatedAt);
+    setAccountLoading(true);
+    try {
+      const user = await getCurrentUser();
+      setAccount(user);
+      if (!user) {
+        setAccountProfile(null);
+        byok.clearMemoryKeys();
+        return;
       }
-      void cloudSync.upsertSettings(localSettings);
+      const profile = await getProfile();
+      setAccountProfile(profile);
+      const snapshot = await cloudSync.loadAll();
+      if (snapshot.settings) {
+        setSettings((prev) => ({ ...prev, ...snapshot.settings! }));
+      }
+      if (snapshot.chats.length > 0) {
+        setSessions((prev) => {
+          const map = new Map(prev.map((s) => [s.id, s]));
+          for (const c of snapshot.chats) {
+            const local = map.get(c.id);
+            if (!local || c.updatedAt > local.updatedAt) map.set(c.id, c);
+            // Remember cloud timestamps so the save-effect doesn't re-upload them.
+            cloudPushedAtRef.current.set(c.id, Math.max(c.updatedAt, local?.updatedAt ?? 0));
+          }
+          return [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+        });
+      } else {
+        // First sign-in on a fresh account: seed the cloud from this device.
+        const [localSessions, localSettings] = await Promise.all([loadSessions(), loadSettings()]);
+        if (localSessions.length > 0) {
+          void cloudSync.upsertChats(localSessions);
+          for (const s of localSessions) cloudPushedAtRef.current.set(s.id, s.updatedAt);
+        }
+        void cloudSync.upsertSettings(localSettings);
+      }
+    } finally {
+      setAccountLoading(false);
     }
   };
 
@@ -561,15 +572,28 @@ export default function App() {
         void bootstrapCloud();
       }
     });
-    return off;
+    const unlistenAuthBroadcast = listen(AUTH_CHANGED_EVENT, () => {
+      void bootstrapCloud();
+    });
+    return () => {
+      off();
+      void unlistenAuthBroadcast.then((unlisten) => unlisten());
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored]);
 
   /** Re-read account + profile (called after Account-tab edits). */
   const refreshAccount = async () => {
     if (!isSupabaseConfigured) return;
-    setAccount(await getCurrentUser());
-    setAccountProfile(await getProfile());
+    setAccountLoading(true);
+    try {
+      const user = await getCurrentUser();
+      setAccount(user);
+      setAccountProfile(user ? await getProfile() : null);
+      if (!user) byok.clearMemoryKeys();
+    } finally {
+      setAccountLoading(false);
+    }
   };
 
   // ── BYOK key injection ─────────────────────────────────────────────────────
@@ -2086,6 +2110,7 @@ MCP call rules:
           onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
           account={account}
           accountProfile={accountProfile}
+          accountLoading={accountLoading}
           onAccountRefresh={() => void refreshAccount()}
         />
         <div className="flex min-h-0 flex-1 overflow-hidden">

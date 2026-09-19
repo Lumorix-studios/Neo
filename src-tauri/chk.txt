@@ -1,0 +1,5 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Checking app v1.0.8 (C:\Users\madyx\AgenticCoder\src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.39s

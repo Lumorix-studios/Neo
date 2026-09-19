@@ -150,9 +150,15 @@ webhook — these run as service role, which the trigger lets through:
 ```sql
 -- upgrade
 update public.profiles set byok_enabled = true,  plan = 'pro'  where id = '<user-uuid>';
+-- admin/developer override
+update public.profiles set plan = 'admin' where id = '<user-uuid>';
 -- downgrade
 update public.profiles set byok_enabled = false, plan = 'free' where id = '<user-uuid>';
 ```
+
+The app treats `admin`, `pro`, `team`, `enterprise`, and `paid` plans as BYOK-enabled
+even if `byok_enabled` was left false, so an owner/admin account can be promoted
+by plan alone. Free accounts are still controlled by `byok_enabled`.
 
 Expect only `display_name` / `avatar_url` / `updated_at` to be client-writable:
 

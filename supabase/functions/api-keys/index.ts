@@ -68,6 +68,17 @@ const ALLOWED_PROVIDERS = new Set([
   "openai", "openrouter", "groq", "anthropic", "google", "custom",
 ]);
 
+const BYOK_PLAN_IDS = new Set(["admin", "pro", "team", "enterprise", "paid"]);
+
+function planIncludesByok(plan: unknown): boolean {
+  return typeof plan === "string" && BYOK_PLAN_IDS.has(plan.trim().toLowerCase());
+}
+
+function hasByokAccess(profile: { byok_enabled?: boolean | null; plan?: string | null } | null): boolean {
+  if (planIncludesByok(profile?.plan)) return true;
+  return profile?.byok_enabled !== false;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -101,7 +112,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .eq("id", userId)
       .maybeSingle();
     if (profileErr) return json({ error: "Could not load profile." }, 500);
-    if (profile?.byok_enabled === false) {
+    if (!hasByokAccess(profile)) {
       return json({ error: "BYOK requires an upgraded plan.", paywalled: true }, 402);
     }
 

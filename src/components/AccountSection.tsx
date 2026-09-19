@@ -1,10 +1,4 @@
-/**
- * AccountSection — the "Account" tab of the Settings panel.
- *
- * Signed out: email/password sign-in + sign-up, plus GitHub/Google OAuth
- * (VS Code style: the system browser opens; the deep link returns the user).
- * Signed in: avatar, display-name editing, BYOK plan state, sign out.
- */
+
 
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -17,8 +11,6 @@ import {
   updateProfile,
   refreshEnabledProviders,
   providerDisabledMessage,
-  providerLabel,
-  type AuthProvider,
   type EnabledProviders,
   type NeoUser,
   type Profile,
@@ -30,13 +22,25 @@ import { IoLogoGithub, IoLogoGoogle, IoMailOutline } from "react-icons/io5";
 interface AccountSectionProps {
   account: NeoUser | null;
   profile: Profile | null;
+  authLoading?: boolean;
   /** Ask the app to re-read the account/profile after profile edits. */
   onAccountRefresh: () => void;
 }
 
 type Mode = "sign-in" | "sign-up";
 
-export default function AccountSection({ account, profile, onAccountRefresh }: AccountSectionProps) {
+function formatPlan(plan: string | null | undefined): string {
+  const clean = (plan ?? "free").trim();
+  if (!clean) return "Free";
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+export default function AccountSection({
+  account,
+  profile,
+  authLoading = false,
+  onAccountRefresh,
+}: AccountSectionProps) {
   const [mode, setMode] = useState<Mode>("sign-in");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +74,12 @@ export default function AccountSection({ account, profile, onAccountRefresh }: A
 
   if (account) {
     const initial = (account.name || account.email || "A").charAt(0).toUpperCase();
+    const planLabel = formatPlan(profile?.plan);
+    const byokCopy = profile
+      ? profile.byokEnabled
+        ? `available on your ${planLabel} plan`
+        : `not included in your ${planLabel} plan`
+      : "checking your current plan";
     return (
       <div className="p-1">
         <SectionTitle>Account</SectionTitle>
@@ -92,7 +102,7 @@ export default function AccountSection({ account, profile, onAccountRefresh }: A
             <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{account.name}</p>
             <p className="truncate text-[11px] text-[var(--text-muted)]">
               {account.email || account.provider}
-              {profile ? ` · ${profile.plan === "free" ? "Free" : profile.plan} plan` : ""}
+              {profile ? ` · ${planLabel} plan` : " · checking plan"}
             </p>
           </div>
         </div>
@@ -131,7 +141,7 @@ export default function AccountSection({ account, profile, onAccountRefresh }: A
 
         <p className="pb-3 pt-1 text-[11px] leading-5 text-[var(--text-muted)]">
           Your chats and AI settings sync to your account. API keys (BYOK) are stored
-          encrypted in your account and are {profile?.byokEnabled === false ? "not included in your current plan" : "available"}.
+          encrypted in your account and are {byokCopy}.
         </p>
 
         {error && <p className="pb-2 text-[11px] text-red-400/90">{error}</p>}
@@ -184,6 +194,17 @@ export default function AccountSection({ account, profile, onAccountRefresh }: A
     );
   }
 
+  if (authLoading) {
+    return (
+      <div className="p-1">
+        <SectionTitle>Account</SectionTitle>
+        <p className="text-[11.5px] leading-5 text-[var(--text-muted)]">
+          Checking your saved session and plan...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <SignInUp
       mode={mode}
@@ -217,15 +238,6 @@ function SignInUp(props: {
    * probing (or the probe failed) — buttons then behave normally.
    */
   const [providers, setProviders] = useState<EnabledProviders | null>(null);
-
-  /** Re-probe and update the buttons (used on mount and by the recheck link). */
-  const probeProviders = () => {
-    // refresh* rather than fetch*: the result is cached for the session, so a
-    // provider enabled in the dashboard in the meantime would stay "off".
-    void refreshEnabledProviders().then((p) => {
-      if (p) setProviders(p);
-    });
-  };
 
   useEffect(() => {
     let alive = true;
@@ -332,7 +344,11 @@ function SignInUp(props: {
         busy={busy}
         runAuth={runAuth}
         providers={providers}
-        onRecheck={probeProviders}
+        onRecheck={() => {
+          void refreshEnabledProviders().then((p) => {
+            if (p) setProviders(p);
+          });
+        }}
       />
       {error && <p className="pt-2 text-[11px] leading-4 text-red-400/90">{error}</p>}
       {notice && !error && <p className="pt-2 text-[11px] leading-4 text-emerald-400/90">{notice}</p>}
@@ -351,6 +367,8 @@ function OAuthButtons({
   providers: EnabledProviders | null;
   onRecheck: () => void;
 }) {
+  const githubOff = providers?.github === false;
+  const googleOff = providers?.google === false;
   return (
     <>
       <div className="flex items-center gap-2 pb-3">
@@ -361,7 +379,8 @@ function OAuthButtons({
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || githubOff}
+          title={githubOff ? providerDisabledMessage("github") : "Continue with GitHub"}
           onClick={() =>
             void runAuth(async () => {
               const url = await signInWithOAuth("github");
@@ -375,7 +394,8 @@ function OAuthButtons({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || googleOff}
+          title={googleOff ? providerDisabledMessage("google") : "Continue with Google"}
           onClick={() =>
             void runAuth(async () => {
               const url = await signInWithOAuth("google");
@@ -388,6 +408,21 @@ function OAuthButtons({
           Google
         </button>
       </div>
+      {(githubOff || googleOff) && (
+        <p className="pt-2 text-[10.5px] leading-4 text-amber-400/90">
+          {[
+            githubOff ? "GitHub" : null,
+            googleOff ? "Google" : null,
+          ].filter(Boolean).join(" and ")} sign-in is switched off in Supabase.{" "}
+          <button
+            type="button"
+            onClick={onRecheck}
+            className="underline underline-offset-2 hover:text-amber-300"
+          >
+            Recheck
+          </button>
+        </p>
+      )}
     </>
   );
 }

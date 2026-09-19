@@ -14,6 +14,15 @@ import type { AISettings } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import { loadSettings, saveSettings } from "../store";
 import {
+  AUTH_CHANGED_EVENT,
+  getCurrentUser,
+  getProfile,
+  onAuthChanged,
+  type NeoUser,
+  type Profile as AccountProfile,
+} from "../lib/auth";
+import * as byok from "../lib/byok";
+import {
   applyUiSettings,
   DEFAULT_UI_SETTINGS,
   loadUiSettings,
@@ -156,6 +165,10 @@ export default function IdeWindowApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SectionId | null>(null);
   const [aiSettings, setAiSettings] = useState<AISettings>(DEFAULT_SETTINGS);
+  const [account, setAccount] = useState<NeoUser | null>(null);
+  const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const signedIn = !!account;
   // Bumped when extensions are installed/toggled so contributed UI re-evaluates.
   const [, setExtensionTick] = useState(0);
   const uiSettingsLoadedRef = useRef(false);
@@ -195,6 +208,59 @@ export default function IdeWindowApp() {
     setAiSettings(next);
     void saveSettings(next);
   };
+
+  const refreshAccount = useCallback(async () => {
+    setAccountLoading(true);
+    try {
+      const user = await getCurrentUser();
+      setAccount(user);
+      if (!user) {
+        setAccountProfile(null);
+        byok.clearMemoryKeys();
+        return;
+      }
+      setAccountProfile(await getProfile());
+    } finally {
+      setAccountLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAccount();
+    const offAuth = onAuthChanged((user) => {
+      setAccount(user);
+      if (!user) {
+        setAccountProfile(null);
+        byok.clearMemoryKeys();
+        return;
+      }
+      void refreshAccount();
+    });
+    const unlistenAuthBroadcast = listen(AUTH_CHANGED_EVENT, () => {
+      void refreshAccount();
+    });
+    return () => {
+      offAuth();
+      void unlistenAuthBroadcast.then((off) => off());
+    };
+  }, [refreshAccount]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void byok
+      .resolveApiKey(aiSettings.provider, signedIn, accountProfile?.byokEnabled ?? true)
+      .then((key) => {
+        if (cancelled) return;
+        setAiSettings((prev) =>
+          prev.provider === aiSettings.provider && prev.apiKey !== key
+            ? { ...prev, apiKey: key }
+            : prev
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [aiSettings.provider, signedIn, accountProfile?.byokEnabled]);
 
   const handleSelectLocalModel = async (modelName: string): Promise<string | null> => {
     // Make sure an Ollama server is actually up before switching to it. This
@@ -772,6 +838,10 @@ export default function IdeWindowApp() {
         initialSection={settingsSection}
         onClose={() => setSettingsOpen(false)}
         onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
+        account={account}
+        accountProfile={accountProfile}
+        accountLoading={accountLoading}
+        onAccountRefresh={() => void refreshAccount()}
       />
 
       <CommandPalette

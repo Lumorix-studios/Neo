@@ -15,6 +15,25 @@ import {
 
 export type AuthProvider = "github" | "google";
 
+/**
+ * Tauri event broadcast when the auth session changes (sign-in / sign-out /
+ * OAuth redirect completion). Other webview windows (e.g. the IDE panel)
+ * listen for this so they can re-bootstrap their own session — each Tauri
+ * webview has its own supabase-js client instance, so onAuthStateChange in
+ * one window does NOT fire in another even though they share localStorage.
+ */
+export const AUTH_CHANGED_EVENT = "neo:auth-changed";
+
+/** Fire-and-forget broadcast of an auth-state change to sibling windows. */
+export async function broadcastAuthChange(): Promise<void> {
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit(AUTH_CHANGED_EVENT);
+  } catch {
+    /* not in Tauri or emit unavailable — no-op */
+  }
+}
+
 /** Display label for an OAuth provider id ("github" → "GitHub"). */
 export function providerLabel(provider: AuthProvider): string {
   return provider === "github" ? "GitHub" : "Google";
@@ -111,6 +130,17 @@ export interface Profile extends NeoUser {
   createdAt: string | null;
 }
 
+const BYOK_PLAN_IDS = new Set(["admin", "pro", "team", "enterprise", "paid"]);
+
+function planIncludesByok(plan: string | null | undefined): boolean {
+  return BYOK_PLAN_IDS.has((plan ?? "").trim().toLowerCase());
+}
+
+function resolveByokEnabled(row?: { plan?: string | null; byok_enabled?: boolean | null } | null): boolean {
+  if (planIncludesByok(row?.plan)) return true;
+  return row?.byok_enabled ?? true;
+}
+
 /** Map a supabase auth user + profile row to our app-level shape. */
 function toNeoUser(
   authUser: {
@@ -194,7 +224,7 @@ export async function getProfile(): Promise<Profile | null> {
   return {
     ...base,
     plan: row?.plan ?? "free",
-    byokEnabled: row?.byok_enabled ?? false,
+    byokEnabled: resolveByokEnabled(row),
     createdAt: row?.created_at ?? null,
   };
 }
@@ -249,6 +279,7 @@ export async function updateProfile(patch: {
   if (patch.avatarUrl !== undefined) update.avatar_url = patch.avatarUrl;
   const { error } = await sb.from("profiles").update(update).eq("id", uid);
   if (error) throw new Error(authErrorMessage(error));
+  void broadcastAuthChange();
 }
 
 /**
@@ -265,6 +296,7 @@ export async function signUpWithEmail(
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) throw new Error(authErrorMessage(error));
   await ensureProfile().catch(() => undefined);
+  void broadcastAuthChange();
   return { needsEmailConfirmation: !data.session && !!data.user };
 }
 
@@ -276,6 +308,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const { error } = await sb.auth.signInWithPassword({ email, password });
   if (error) throw new Error(authErrorMessage(error));
   await ensureProfile().catch(() => undefined);
+  void broadcastAuthChange();
 }
 
 /** Send a password-reset email. */
@@ -296,6 +329,7 @@ export async function signOut(): Promise<void> {
   const sb = supabase();
   if (!sb) return;
   await sb.auth.signOut();
+  void broadcastAuthChange();
 }
 
 /** Deep-link that the OS browser redirects back to after OAuth / recovery. */
@@ -394,6 +428,7 @@ export async function handleOAuthRedirect(rawUrl?: string): Promise<void> {
       else window.history.replaceState({}, "", window.location.pathname);
     }
   }
+  void broadcastAuthChange();
 }
 
 /** Subscribe to sign-in / sign-out events. Returns an unsubscribe fn. */
