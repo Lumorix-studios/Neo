@@ -1,7 +1,7 @@
 //might be obvious what this file functions as lol
 //Main ide window interface 
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -9,7 +9,7 @@ import {IoChatboxEllipsesOutline, IoFolderOpenOutline, IoGitBranch, IoSearch, Io
 import WindowControls from "../../components/WindowControls";
 import IdeMenuBar from "../components/IdeMenuBar";
 import FileExplorer from "../components/FileExplorer";
-import SettingsPanel, { type SectionId } from "../components/SettingsPanel";
+import type { SectionId } from "../components/SettingsPanel";
 import type { AISettings } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import { loadSettings, saveSettings } from "../store";
@@ -36,6 +36,8 @@ import GitPanel from "../components/GitPanel";
 import AgentPanel from "./AgentPanel";
 import CommandPalette from "../../components/CommandPalette";
 import { ensureOllamaReady } from "../localModels";
+
+const SettingsPanel = lazy(() => import("../components/SettingsPanel"));
 
 /** Icon button for the VS Code-style activity bar rail (same look as chat). */
 function RailButton({

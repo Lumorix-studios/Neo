@@ -5,7 +5,7 @@
 //cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
 //also cant assure you this will always stay opensource
 //            9/18/26
-import { useEffect, useRef, useState } from "react";
+import { lazy, useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -83,7 +83,7 @@ import type { EditorTab } from "./components/CodeEditor";
 import { ensureOllamaReady } from "./localModels";
 /* GitPanel removed — moved to IDE window only */
 import BlurText from "../components/BlurText";
-import SettingsPanel, { type SectionId } from "./components/SettingsPanel";
+import type { SectionId } from "./components/SettingsPanel";
 import {
   applyUiSettings,
   DEFAULT_UI_SETTINGS,
@@ -96,6 +96,8 @@ import {
 } from "./uiSettings";
 import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ IoStop, IoTerminal, IoThumbsDownSharp, IoThumbsUpSharp, IoSend, IoSettings } from "react-icons/io5";
 import { shortPath } from "./utils";
+
+const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 
 type JsonDict = Record<string, unknown>;
 
@@ -385,6 +387,10 @@ export default function App() {
   const streamControllerRef = useRef<AbortController | null>(null);
   // Mutable hold of the assistant text being streamed in (avoids closures capturing stale state).
   const streamedContentRef = useRef("");
+  const streamRenderRef = useRef<{ pending: string; timer: number | null }>({
+    pending: "",
+    timer: null,
+  });
   const mountedRef = useRef(true);
   // Whether the user is scrolled near the bottom (auto-follow).
   const autoScrollRef = useRef(true);
@@ -826,6 +832,35 @@ export default function App() {
       copy[copy.length - 1] = { ...copy[copy.length - 1], content };
       return copy;
     });
+  };
+
+  // Network providers can deliver dozens of tiny deltas per frame. Coalesce
+  // those updates so markdown parsing and the rest of the chat shell do not
+  // rerender for every token.
+  const scheduleStreamingAssistantContent = (content: string) => {
+    if (!mountedRef.current) return;
+    const state = streamRenderRef.current;
+    state.pending = content;
+    if (state.timer !== null) return;
+    state.timer = window.setTimeout(() => {
+      state.timer = null;
+      const pending = state.pending;
+      state.pending = "";
+      setLastAssistantContent(pending);
+    }, 50);
+  };
+
+  const flushStreamingAssistantContent = () => {
+    const state = streamRenderRef.current;
+    if (state.timer !== null) {
+      window.clearTimeout(state.timer);
+      state.timer = null;
+    }
+    if (state.pending) {
+      const pending = state.pending;
+      state.pending = "";
+      setLastAssistantContent(pending);
+    }
   };
 
   /** Remove any trailing empty assistant bubble (used for errors / aborts). */
@@ -1278,7 +1313,7 @@ ${promptSuffix}` : ""}`,
               
               const shown = stabilizeStreamingMarkdown(stripToolCalls(base + round));
               streamedContentRef.current = shown;
-              setLastAssistantContent(shown);
+              scheduleStreamingAssistantContent(shown);
             }
           } catch {
             continue;
@@ -1974,6 +2009,7 @@ MCP call rules:
         removeEmptyAssistant();
       }
     } finally {
+      flushStreamingAssistantContent();
       setIsLoading(false);
       streamControllerRef.current = null;
       approvalRef.current?.resolve(false);

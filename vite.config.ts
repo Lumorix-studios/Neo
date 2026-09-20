@@ -16,5 +16,11 @@ export default defineConfig({
     // strictPort: false allows Vite to automatically pick the next available port if 5173 is taken.
     port: 5173,
     strictPort: false,
+    watch: {
+      // Tauri and Android builds can generate hundreds of thousands of files
+      // under the repository root. They are not web sources and watching
+      // them makes Vite spend CPU rescanning build output.
+      ignored: ['**/src-tauri/target/**', '**/src-tauri/gen/**'],
+    },
   },
 })

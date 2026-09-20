@@ -27,14 +27,20 @@ export async function generateProjectMap(root: string): Promise<ProjectMap> {
     // For now, we implement the logic that the Agent will use to "index" the project.
     const entries = await invoke<any>("fs_list_dir", { path: root });
     
-    for (const entry of entries) {
-      nodes.push({
+    const indexed = await Promise.all(
+      entries.map(async (entry: {
+        name: string;
+        path: string;
+        is_dir: boolean;
+        size?: number | null;
+      }) => ({
         name: entry.name,
         path: entry.path,
-        type: entry.is_dir ? 'directory' : 'file',
+        type: entry.is_dir ? 'directory' as const : 'file' as const,
         symbols: entry.is_dir ? [] : await extractSymbols(entry.path, entry.size),
-      });
-    }
+      }))
+    );
+    nodes.push(...indexed);
   } catch (e) {
     console.error("Indexing failed", e);
   }

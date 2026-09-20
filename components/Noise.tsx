@@ -27,7 +27,10 @@ const Noise: React.FC<NoiseProps> = ({
     let frame = 0;
     let animationId: number;
 
-    const canvasSize = 1024;
+    // A full 1024² random-pixel upload every other frame is disproportionately
+    // expensive on the main thread. The noise is intentionally subtle, so a
+    // smaller tile provides the same visual effect at a fraction of the cost.
+    const canvasSize = 256;
 
     const resize = () => {
       if (!canvas) return;

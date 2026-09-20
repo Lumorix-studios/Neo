@@ -1,8 +1,6 @@
-import { StrictMode } from 'react'
+import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
-import IdeWindowApp from './ide/IdeWindowApp.tsx'
 import { ErrorProvider } from './errorContext'
 
 // The dedicated IDE window loads the same bundle with ?window=ide (Cursor-style
@@ -10,10 +8,17 @@ import { ErrorProvider } from './errorContext'
 const isIdeWindow =
   new URLSearchParams(window.location.search).get("window") === "ide"
 
+// Keep the chat and IDE entry points out of each other's initial bundle. The
+// same HTML entry is used by both windows, but each window only needs one app.
+const App = lazy(() => import('./App.tsx'))
+const IdeWindowApp = lazy(() => import('./ide/IdeWindowApp.tsx'))
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorProvider>
-      {isIdeWindow ? <IdeWindowApp /> : <App />}
+      <Suspense fallback={null}>
+        {isIdeWindow ? <IdeWindowApp /> : <App />}
+      </Suspense>
     </ErrorProvider>
   </StrictMode>,
 )
