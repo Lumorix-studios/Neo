@@ -536,6 +536,22 @@ npm run tauri dev
 
 ---
 
+## Generate Release Notes
+
+Release notes are generated from the Git history and changed files since the
+previous `Release_v*` tag:
+
+```bash
+npm run release:notes -- 1.0.9
+```
+
+This writes `RELEASE_NOTES_v1.0.9.md`. The same generator runs automatically
+through npm's `version` lifecycle hook, so `npm version patch`, `npm version
+minor`, or `npm version major` creates the matching release-notes file during
+the version bump.
+
+---
+
 # Project Status
 
 NEO is currently in **beta** and under active development.

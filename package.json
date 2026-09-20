@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:desktop": "tauri build",
     "release:notes": "node scripts/generate-release-notes.mjs",
+    "version": "node scripts/generate-release-notes.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri": "tauri"

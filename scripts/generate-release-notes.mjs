@@ -13,14 +13,27 @@ function git(...args) {
 }
 
 function findPreviousTag() {
-  const tags = git("tag", "--list", "Release_v*", "--sort=-version:refname")
+  const current = version.split(".").map(Number);
+  const tags = git("tag", "--list", "Release_v*")
     .split(/\r?\n/)
-    .filter(Boolean);
-  return (
-    tags.find((tag) => tag === `Release_v${version}`) ??
-    tags.find((tag) => tag !== `Release_v${version}`) ??
-    ""
-  );
+    .filter(Boolean)
+    .map((tag) => {
+      const match = tag.match(/^Release_v_?(\d+)\.(\d+)\.(\d+)/);
+      return match
+        ? { tag, version: [Number(match[1]), Number(match[2]), Number(match[3])] }
+        : null;
+    })
+    .filter(Boolean)
+    .filter(({ version: candidate }) =>
+      candidate.some((part, index) => part !== current[index] && part < current[index])
+    )
+    .sort((a, b) => {
+      for (let i = 0; i < 3; i++) {
+        if (a.version[i] !== b.version[i]) return b.version[i] - a.version[i];
+      }
+      return 0;
+    });
+  return tags[0]?.tag ?? "";
 }
 
 function classify(subject) {
@@ -43,12 +56,15 @@ const commits = git("log", "--no-merges", "--format=%h%x09%s", range)
     return { sha, subject, category: classify(subject) };
   });
 
-const stats = git("diff", "--stat", "--summary", range)
+const diffBase = previousTag || "HEAD";
+const stats = git("diff", "--stat", "--summary", diffBase)
   .split(/\r?\n/)
-  .filter(Boolean);
-const changedFiles = git("diff", "--name-only", range)
+  .filter(Boolean)
+  .filter((line) => !line.includes(output));
+const changedFiles = git("diff", "--name-only", diffBase)
   .split(/\r?\n/)
-  .filter(Boolean);
+  .filter(Boolean)
+  .filter((file) => file !== output);
 const categories = ["Added", "Improvements", "Fixes", "Documentation & maintenance", "Other changes"];
 const lines = [
   `# Neo v${version} — Release Notes`,
