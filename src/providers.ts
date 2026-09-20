@@ -506,7 +506,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     id: "ollama",
     label: "Ollama",
     note: "Self-hosted local model runner. No API key needed.",
-    defaultBaseUrl: "http://localhost:11434",
+    defaultBaseUrl: "http://127.0.0.1:11434",
     defaultModel: "qwen2.5-coder",
     needsAuth: false,
     authHeader: null,

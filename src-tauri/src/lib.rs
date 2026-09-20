@@ -77,16 +77,25 @@ struct OllamaStopStatus {
     still_running_external: bool,
 }
 
-/// True when an Ollama server answers on port 11434.
+/// True when Ollama answers both its health and model-list endpoints.
+/// `/api/version` alone can succeed while the server is not usable for chats.
 fn ollama_port_responds() -> bool {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_millis(1500))
         .build()
         .ok();
     if let Some(c) = client {
-        if let Ok(resp) = c.get("http://127.0.0.1:11434/api/version").send() {
-            return resp.status().is_success();
-        }
+        let version_ok = c
+            .get("http://127.0.0.1:11434/api/version")
+            .send()
+            .map(|r| r.status().is_success())
+            .unwrap_or(false);
+        let tags_ok = c
+            .get("http://127.0.0.1:11434/api/tags")
+            .send()
+            .map(|r| r.status().is_success())
+            .unwrap_or(false);
+        return version_ok && tags_ok;
     }
     false
 }
@@ -273,6 +282,7 @@ fn refresh_tracked(state: &ServerState) -> bool {
 
 #[tauri::command]
 fn save_state(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
+    validate_state_key(&key)?;
     let dir = data_dir(&app)?;
     fs::create_dir_all(&dir).map_err(|e| format!("Failed to create data dir: {e}"))?;
     let file = dir.join(format!("{key}.json"));
@@ -281,12 +291,26 @@ fn save_state(app: tauri::AppHandle, key: String, value: String) -> Result<(), S
 
 #[tauri::command]
 fn load_state(app: tauri::AppHandle, key: String) -> Result<String, String> {
+    validate_state_key(&key)?;
     let dir = data_dir(&app)?;
     let file = dir.join(format!("{key}.json"));
     match fs::read_to_string(&file) {
         Ok(content) => Ok(content),
-        Err(_) => Ok("".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("".into()),
+        Err(error) => Err(format!("Failed to read {}: {error}", file.display())),
     }
+}
+
+fn validate_state_key(key: &str) -> Result<(), String> {
+    if key.is_empty()
+        || key.chars().any(|c| matches!(c, '\\' | '/' | ':'))
+        || key == "."
+        || key == ".."
+        || key.contains("..")
+    {
+        return Err("Invalid state key.".into());
+    }
+    Ok(())
 }
 
 fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -342,6 +366,52 @@ fn check_ollama_installed() -> bool {
 #[tauri::command]
 fn check_ollama_running() -> bool {
     ollama_port_responds()
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OllamaHttpResponse {
+    status: u16,
+    body: String,
+}
+
+/// Make Ollama requests from Rust so packaged WebView/plugin origins cannot
+/// trigger Ollama's 403 origin policy.
+#[tauri::command]
+fn ollama_request(
+    url: String,
+    method: String,
+    body: Option<String>,
+) -> Result<OllamaHttpResponse, String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|e| format!("Invalid Ollama URL: {e}"))?;
+    if !matches!(parsed.host_str(), Some("127.0.0.1") | Some("localhost"))
+        || parsed.port_or_known_default() != Some(11434)
+    {
+        return Err("Ollama requests must target localhost:11434.".into());
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| format!("Failed to build Ollama client: {e}"))?;
+    let request_method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|e| format!("Invalid Ollama method: {e}"))?;
+    let mut request = client
+        .request(request_method, parsed)
+        .header("Content-Type", "application/json");
+    if let Some(payload) = body {
+        request = request.body(payload);
+    }
+    let response = request
+        .send()
+        .map_err(|e| format!("Failed to reach Ollama: {e}"))?;
+    let status = response.status().as_u16();
+    let response_body = response
+        .text()
+        .map_err(|e| format!("Failed to read Ollama response: {e}"))?;
+    Ok(OllamaHttpResponse {
+        status,
+        body: response_body,
+    })
 }
 
 /// Start the Ollama server as a background process.
@@ -1703,6 +1773,7 @@ pub fn run() {
             load_state,
             check_ollama_installed,
             check_ollama_running,
+            ollama_request,
             start_ollama_server,
             stop_ollama_server,
             list_local_models,

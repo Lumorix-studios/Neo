@@ -554,6 +554,15 @@ async function browserFallback(name: string, args: Record<string, unknown>): Pro
 async function platformFetch(url: string, init?: RequestInit): Promise<Response> {
   if (inTauri()) {
     try {
+      const parsed = new URL(url);
+      if (
+        (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+        parsed.port === "11434"
+      ) {
+        const headers = new Headers(init?.headers);
+        headers.set("Origin", "http://localhost");
+        return await tauriFetch(url, { ...init, headers });
+      }
       return await tauriFetch(url, init);
     } catch (e) {
       throw new Error(
@@ -1666,7 +1675,7 @@ System:
 - \`analyze_project_structure()\`
 
 ## HOW TO ACT (strict)
-1. When the user asks for live/external info (news, "latest" anything, docs) or file/system work, your FIRST response must be a tool-call block — not chit-chat.
+1. Only use tools when the user clearly asks for live/external info (news, "latest" anything, docs) or file/system work. Otherwise answer normally without mentioning or emitting tools.
 2. Emit the block EXACTLY like this (no code fences, no surrounding prose if possible):
 <tool_call>
 {"name": "web_search", "arguments": {"query": "Nepal floods latest news"}}

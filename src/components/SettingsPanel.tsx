@@ -27,6 +27,7 @@ import {
 import { 
   findAvailableOllamaPort 
 } from "../serverManager";
+import { ensureOllamaReady } from "../localModels";
 import {
   EXTENSIONS,
   loadExtensionState,
@@ -43,7 +44,8 @@ import LocalModels from "../../components/LocalModels";
 import AccountSection from "./AccountSection";
 import type { NeoUser, Profile as AccountProfile } from "../lib/auth";
 import {
-  getLocalKey,
+  clearLocalKey,
+  setLocalKey,
   saveRemoteKey,
   removeRemoteKey,
 } from "../lib/byok";
@@ -492,8 +494,7 @@ export default function SettingsPanel({
     setByokMsg(null);
   }, [aiSettings.provider, signedIn]);
 
-  const keyConfigured =
-    !!aiSettings.apiKey || (!signedIn && !accountLoading && !!getLocalKey(aiSettings.provider));
+  const keyConfigured = !!aiSettings.apiKey;
   const byokPaywalled = !accountLoading && signedIn && accountProfile?.byokEnabled === false;
 
   /** Persist the BYOK key: encrypted server-side when signed in, local otherwise. */
@@ -506,8 +507,10 @@ export default function SettingsPanel({
         onAiChange({ ...aiSettings, apiKey: byokDraft.trim() });
         setByokMsg("Key saved to your account (encrypted server-side).");
       } else {
-        onAiChange({ ...aiSettings, apiKey: byokDraft });
-        setByokMsg("Key saved on this device.");
+        const normalized = byokDraft.trim();
+        await setLocalKey(aiSettings.provider, normalized);
+        onAiChange({ ...aiSettings, apiKey: normalized });
+        setByokMsg("Key saved on this device. Sign in to encrypt it in your account.");
       }
       setByokDraft("");
     } catch (e) {
@@ -535,6 +538,7 @@ export default function SettingsPanel({
     setByokMsg(null);
     try {
       if (signedIn) await removeRemoteKey(aiSettings.provider);
+      await clearLocalKey(aiSettings.provider);
       onAiChange({ ...aiSettings, apiKey: "" });
       setByokMsg(signedIn ? "Key removed from your account." : "Key removed.");
     } catch (e) {
@@ -1125,14 +1129,26 @@ return (
                       type="button"
                       onClick={async () => {
                         setIsCheckingPorts(true);
-                        const port = await findAvailableOllamaPort();
-                        if (port) {
-                          setDiscoveredPort(port);
-                          updateAi("baseUrl", port);
-                        } else {
-                          setDiscoveredPort("None found");
+                        try {
+                          const startupError = await ensureOllamaReady();
+                          if (startupError) {
+                            setDiscoveredPort(startupError);
+                          } else {
+                            const port = await findAvailableOllamaPort();
+                            if (port) {
+                              setDiscoveredPort(port);
+                              updateAi("baseUrl", port);
+                            } else {
+                              setDiscoveredPort("No Ollama server found");
+                            }
+                          }
+                        } catch (error) {
+                          setDiscoveredPort(
+                            error instanceof Error ? error.message : String(error)
+                          );
+                        } finally {
+                          setIsCheckingPorts(false);
                         }
-                        setIsCheckingPorts(false);
                       }}
                       disabled={isCheckingPorts}
                       className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-50"
@@ -1142,9 +1158,17 @@ return (
                   </div>
                 </Row>
                 {discoveredPort && (
-                  <p className="mb-3 text-[10px] text-emerald-400/80">
-                    {discoveredPort === "None found" 
-                      ? "✕ No Ollama server found on ports 11434-11439." 
+                  <p
+                    className={`mb-3 text-[10px] ${
+                      discoveredPort === "No Ollama server found" ||
+                      discoveredPort.toLowerCase().includes("could not") ||
+                      discoveredPort.toLowerCase().includes("install")
+                        ? "text-red-400/80"
+                        : "text-emerald-400/80"
+                    }`}
+                  >
+                    {discoveredPort === "No Ollama server found"
+                      ? "✕ No Ollama server found. Install Ollama, then try again."
                       : `✓ Connected to server at ${discoveredPort}`}
                   </p>
                 )}
@@ -1188,6 +1212,11 @@ return (
                 )}
                 {aiNeedsKey && !accountLoading && !byokPaywalled && (
                   <div className="flex flex-col gap-1.5 pb-3">
+                    <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">
+                      {signedIn
+                        ? "Your key is encrypted before it is stored in your account. It is only decrypted in memory when Neo needs it."
+                        : "This key is stored locally on this device. Sign in if you want encrypted account storage and access across devices."}
+                    </p>
                     <div className="flex gap-1.5">
                       <div className="relative flex-1">
                         <input
@@ -1199,6 +1228,7 @@ return (
                           }
                           spellCheck={false}
                           autoComplete="off"
+                          aria-label={`${providerById(aiSettings.provider).label} API key`}
                           disabled={accountLoading}
                           className="w-full rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-2.5 pr-14 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
                         />
@@ -1213,6 +1243,7 @@ return (
                       <button
                         type="button"
                         disabled={byokBusy || accountLoading || !byokDraft.trim()}
+                        title={signedIn ? "Encrypt and save this key to your account" : "Save this key on this device"}
                         onClick={() => void handleSaveByokKey()}
                         className="shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition disabled:opacity-40"
                         style={{ background: "var(--accent)", color: "var(--on-accent)" }}

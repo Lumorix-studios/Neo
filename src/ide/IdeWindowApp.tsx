@@ -282,7 +282,7 @@ export default function IdeWindowApp() {
       ...aiSettings,
       provider: "ollama",
       model: modelName,
-      baseUrl: "http://localhost:11434",
+      baseUrl: "http://127.0.0.1:11434",
       apiKey: "",
     };
     setAiSettings(next);

@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
-import { setLocalKey } from "./lib/byok";
 
 const SETTINGS_KEY = "neochat.settings.v2";
 const SESSIONS_KEY = "neochat.sessions.v1";
@@ -55,7 +54,7 @@ export async function loadSettings(): Promise<AISettings> {
   const raw = inTauri() ? await diskRead(SETTINGS_KEY) : lsRead(SETTINGS_KEY);
   if (!raw) return DEFAULT_SETTINGS;
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    return stripApiKey({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) });
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -63,8 +62,6 @@ export async function loadSettings(): Promise<AISettings> {
 
 export async function saveSettings(settings: AISettings): Promise<void> {
   const raw = JSON.stringify(stripApiKey(settings));
-  // Keep the key available for the signed-out fallback store.
-  if (settings.apiKey) setLocalKey(settings.provider, settings.apiKey);
   if (inTauri()) {
     const ok = await diskWrite(SETTINGS_KEY, raw);
     if (!ok) lsWrite(SETTINGS_KEY, raw);

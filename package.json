@@ -1,11 +1,12 @@
 {
   "name": "projectneo",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:desktop": "tauri build",
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri": "tauri"

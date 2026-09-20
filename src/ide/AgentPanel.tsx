@@ -64,6 +64,21 @@ async function platformFetch(url: string, init: RequestInit): Promise<Response> 
   const win = window as unknown as { __TAURI_INTERNALS__?: unknown };
   if (win.__TAURI_INTERNALS__) {
     try {
+      const parsed = new URL(url);
+      if (
+        (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+        parsed.port === "11434"
+      ) {
+        const native = await invoke<{ status: number; body: string }>("ollama_request", {
+          url,
+          method: init.method ?? "GET",
+          body: typeof init.body === "string" ? init.body : null,
+        });
+        return new Response(native.body, {
+          status: native.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       return await tauriFetch(url, init);
     } catch (e) {
       throw new Error(

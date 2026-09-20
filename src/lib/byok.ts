@@ -6,14 +6,18 @@
  *    `api-keys` Supabase Edge Function) and stored in the `user_api_keys`
  *    table. Access is gated by `profiles.byok_enabled`, the future paywall
  *    flag. The decrypted key is held in memory only — never written to disk.
- *  - Signed out → local fallback in localStorage so the app keeps working
- *    without an account.
+ *  - Signed out → optional local fallback. Desktop builds store it in the
+ *    OS app-data directory so it survives WebView/profile changes; browser
+ *    builds use localStorage. Signed-in sessions never fall back to this
+ *    local store.
  */
 
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { debugLog } from "../debugLog";
+import { invoke } from "@tauri-apps/api/core";
 
 const LOCAL_BYOK_KEY = "neo.byok.keys.v1";
+const LOCAL_BYOK_STATE_KEY = "neochat.byok.local.v1";
 
 /**
  * Providers that can hold a stored key (the app's ProviderId minus `ollama`,
@@ -58,25 +62,50 @@ interface LocalByokStore {
   [provider: string]: string;
 }
 
-function readLocalStore(): LocalByokStore {
+function inTauri(): boolean {
+  return !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+}
+
+async function readLocalStore(): Promise<LocalByokStore> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(LOCAL_BYOK_KEY) ?? "{}");
+    let raw: string | null = null;
+    if (inTauri()) {
+      raw = await invoke<string>("load_state", { key: LOCAL_BYOK_STATE_KEY });
+      // Migrate the old WebView-local store into the desktop app-data store.
+      if (!raw) raw = localStorage.getItem(LOCAL_BYOK_KEY);
+    } else {
+      raw = localStorage.getItem(LOCAL_BYOK_KEY);
+    }
+    const parsed = JSON.parse(raw ?? "{}");
     return typeof parsed === "object" && parsed !== null ? parsed : {};
   } catch {
     return {};
   }
 }
 
-function writeLocalStore(store: LocalByokStore): void {
+async function writeLocalStore(store: LocalByokStore): Promise<void> {
   try {
-    localStorage.setItem(LOCAL_BYOK_KEY, JSON.stringify(store));
+    const raw = JSON.stringify(store);
+    if (inTauri()) {
+      await invoke("save_state", { key: LOCAL_BYOK_STATE_KEY, value: raw });
+    } else {
+      localStorage.setItem(LOCAL_BYOK_KEY, raw);
+    }
   } catch {
-    /* quota — ignore */
+    if (!inTauri()) {
+      try {
+        localStorage.setItem(LOCAL_BYOK_KEY, JSON.stringify(store));
+      } catch {
+        /* storage unavailable */
+      }
+    }
   }
 }
 
 /** Cached decrypted keys, in-memory only, keyed by provider id. */
 const memoryKeys = new Map<string, string>();
+const remoteKeyCache = new Map<string, string | null>();
+const remoteKeyRequests = new Map<string, Promise<string | null>>();
 
 /** True when the signed-in user may store/remote-fetch API keys. */
 export function byokAllowed(profile: { byokEnabled: boolean } | null, signedIn: boolean): boolean {
@@ -86,6 +115,19 @@ export function byokAllowed(profile: { byokEnabled: boolean } | null, signedIn: 
 
 /** Fetch the decrypted key for a provider (signed-in users). */
 export async function fetchRemoteKey(provider: string): Promise<string | null> {
+  if (remoteKeyCache.has(provider)) return remoteKeyCache.get(provider) ?? null;
+  const pending = remoteKeyRequests.get(provider);
+  if (pending) return pending;
+  const request = fetchRemoteKeyOnce(provider);
+  remoteKeyRequests.set(provider, request);
+  try {
+    return await request;
+  } finally {
+    remoteKeyRequests.delete(provider);
+  }
+}
+
+async function fetchRemoteKeyOnce(provider: string): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
   const sb = supabase();
   if (!sb) return null;
@@ -110,7 +152,9 @@ export async function fetchRemoteKey(provider: string): Promise<string | null> {
     throw new Error(payload.error);
   }
   if (payload?.apiKey) memoryKeys.set(provider, payload.apiKey);
-  return payload?.apiKey ?? null;
+  const key = payload?.apiKey ?? null;
+  remoteKeyCache.set(provider, key);
+  return key;
 }
 
 /** Encrypt + store a key server-side (signed-in users). */
@@ -125,7 +169,10 @@ export async function saveRemoteKey(provider: string, apiKey: string): Promise<v
   if (error) {
     throw new Error(await invokeErrorMessage(error, "Could not save the key to your account."));
   }
-  memoryKeys.set(provider, apiKey.trim());
+  const normalized = apiKey.trim();
+  memoryKeys.set(provider, normalized);
+  remoteKeyCache.set(provider, normalized);
+  await clearLocalKey(provider);
 }
 
 /** Delete the stored key for a provider (signed-in users). */
@@ -141,26 +188,34 @@ export async function removeRemoteKey(provider: string): Promise<void> {
     throw new Error(await invokeErrorMessage(error, "Could not remove the key from your account."));
   }
   memoryKeys.delete(provider);
+  remoteKeyCache.set(provider, null);
+  await clearLocalKey(provider);
 }
 
-/** Local fallback (signed-out users). */
-export function getLocalKey(provider: string): string {
-  return readLocalStore()[provider] ?? "";
+/** Local fallback (signed-out users). Desktop state uses Tauri app-data. */
+export async function getLocalKey(provider: string): Promise<string> {
+  return (await readLocalStore())[provider] ?? "";
 }
 
-export function setLocalKey(provider: string, apiKey: string): void {
-  const store = readLocalStore();
+export async function setLocalKey(provider: string, apiKey: string): Promise<void> {
+  const store = await readLocalStore();
   if (apiKey.trim()) store[provider] = apiKey.trim();
   else delete store[provider];
-  writeLocalStore(store);
+  await writeLocalStore(store);
   if (apiKey.trim()) memoryKeys.set(provider, apiKey.trim());
   else memoryKeys.delete(provider);
+}
+
+export async function clearLocalKey(provider: string): Promise<void> {
+  const store = await readLocalStore();
+  delete store[provider];
+  await writeLocalStore(store);
 }
 
 /**
  * Resolve the API key for a provider at call time:
  * 1. in-memory cloud key (already fetched), else remote fetch;
- * 2. local fallback for signed-out users.
+ * 2. local fallback for signed-out users only.
  *
  * `byokEnabled` is the `profiles.byok_enabled` entitlement. When a signed-in
  * user's plan excludes BYOK we return no key at all — falling back to the local
@@ -175,20 +230,20 @@ export async function resolveApiKey(
     if (!byokEnabled) return "";
     if (memoryKeys.has(provider)) return memoryKeys.get(provider) ?? "";
     const remote = await fetchRemoteKey(provider);
-    if (remote) return remote;
-    // No key on the account yet — the user may still have a key this device
-    // kept from before they signed in.
+    return remote ?? "";
   }
-  return getLocalKey(provider);
+  return await getLocalKey(provider);
 }
 
 /** Drop in-memory copies (on sign-out). */
 export function clearMemoryKeys(): void {
   memoryKeys.clear();
+  remoteKeyCache.clear();
+  remoteKeyRequests.clear();
 }
 
 /** Provider ids that currently have a stored key (for the settings UI). */
-export function hasKeyHint(provider: string, signedIn: boolean): boolean {
+export async function hasKeyHint(provider: string, signedIn: boolean): Promise<boolean> {
   if (signedIn) return memoryKeys.has(provider);
-  return !!getLocalKey(provider);
+  return !!(await getLocalKey(provider));
 }

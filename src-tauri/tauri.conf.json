@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ProjectNeo",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "identifier": "com.lumorixstudios.agenticcoder",
   "build": {
     "frontendDist": "../dist",
@@ -15,7 +15,7 @@
         "title": "Neo",
         "width": 1000,
         "height": 800,
-        "minWidth": 560,
+        "minWidth": 660,
         "minHeight": 400,
         "resizable": true,
         "fullscreen": false,

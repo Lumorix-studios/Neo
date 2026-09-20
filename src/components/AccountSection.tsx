@@ -1,6 +1,7 @@
 
 
 import { useEffect, useState } from "react";
+import { useRef} from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   signInWithEmail,
@@ -18,7 +19,7 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { deleteAllCloudData } from "../lib/cloudSync";
 import { IoLogoGithub, IoLogoGoogle, IoMailOutline } from "react-icons/io5";
-
+import { IoInformationCircleOutline } from "react-icons/io5";
 interface AccountSectionProps {
   account: NeoUser | null;
   profile: Profile | null;
@@ -51,6 +52,8 @@ export default function AccountSection({
    * so a changed/loaded profile resets the draft during render instead of via a
    * cascading setState-in-effect.
    */
+  // --- "About builds" popover (sidebar footer) ---
+   
   const profileName = profile?.name ?? "";
   const [draft, setDraft] = useState({ name: profileName, from: profileName });
   if (draft.from !== profileName) setDraft({ name: profileName, from: profileName });
@@ -156,7 +159,7 @@ export default function AccountSection({
 
         {error && <p className="pb-2 text-[11px] text-red-400/90">{error}</p>}
         {notice && !error && <p className="pb-2 text-[11px] text-emerald-400/90">{notice}</p>}
-
+                
         <button
           type="button"
           onClick={() => void signOut()}
@@ -164,7 +167,7 @@ export default function AccountSection({
         >
           Sign out
         </button>
-
+             
         <div className="mt-4 border-t border-(--border) pt-3">
           <SectionTitle>Danger zone</SectionTitle>
           <Row
@@ -272,12 +275,32 @@ function SignInUp(props: {
       setBusy(false);
     }
   };
+   const [buildsInfoOpen, setBuildsInfoOpen] = useState(false);
+    const buildsInfoRef = useRef<HTMLDivElement>(null);
+  
+    // Close the popover on outside click or Escape.
+    useEffect(() => {
+      if (!buildsInfoOpen) return;
+      const onPointerDown = (e: PointerEvent) => {
+        if (!buildsInfoRef.current?.contains(e.target as Node)) setBuildsInfoOpen(false);
+      };
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setBuildsInfoOpen(false);
+      };
+      window.addEventListener("pointerdown", onPointerDown);
+      window.addEventListener("keydown", onKeyDown);
+      return () => {
+        window.removeEventListener("pointerdown", onPointerDown);
+        window.removeEventListener("keydown", onKeyDown);
+      };
+    }, [buildsInfoOpen]);
+  
 
   return (
     <div className="p-1">
       <SectionTitle>Account</SectionTitle>
       <p className="pb-3 text-[11.5px] leading-5 text-[var(--text-muted)]">
-        Sign in to sync your chats, settings and API keys across devices.
+        Signup/login
       </p>
 
       {providers?.email === false && (
@@ -305,6 +328,38 @@ function SignInUp(props: {
           autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
           className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-2 text-[12.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
         />
+         <div className="mt-auto px-2 py-1 text-[10px] text-[var(--text-faint)]">
+                          <div ref={buildsInfoRef} className="relative sm:text-right">
+                            <button
+                              type="button"
+                              aria-label="About Neo builds"
+                              aria-expanded={buildsInfoOpen}
+                              className="inline-flex items-center text-[var(--text-faint)] transition hover:text-[var(--text-secondary)]"
+                              onClick={() => setBuildsInfoOpen((v) => !v)}
+                            >
+                             <p className="text-sm font-medium m-4">Important information</p>
+                              
+                              <IoInformationCircleOutline className="h-4 w-4" />
+                            </button>
+              
+                            {buildsInfoOpen && (
+                              <div className="absolute bottom-0 right-10px z-50 ml-2 w-72 rounded-lg border border-(--border-strong) bg-[var(--bg-elevated)] p-4 text-left shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
+              
+                                <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                                 Google and Github OAuth features are currently down for maintenance. Please login using the email and password method or create an account. For any enquiries contact the maintainers. The official GitHub repository is {" "}
+                                  <a
+                                    href="https://github.com/Lumorix-studios/Neo"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[var(--text-primary)] hover:underline"
+                                  >
+                                    here
+                                  </a>
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
         <button
           type="button"
           disabled={busy || !email.trim() || password.length < 6}
@@ -322,8 +377,8 @@ function SignInUp(props: {
               }
             )
           }
-          className="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium transition disabled:opacity-50"
-          style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+          className="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium transition disabled:opacity-50 bg-white text-black hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+          //style={{ background: "var(--accent)", color: "var(--on-accent)" }}
         >
           <IoMailOutline size={14} />
           {mode === "sign-in" ? "Sign in" : "Create account"}

@@ -132,6 +132,25 @@ async function platformFetch(url: string, init: RequestInit): Promise<Response> 
 
   if (inTauri) {
     try {
+      // Packaged WebViews identify themselves as tauri://localhost. Ollama
+      // installations with a restricted OLLAMA_ORIGINS setting reject that
+      // origin with 403, while browser/dev requests use localhost. Send the
+      // same trusted local origin for loopback Ollama requests only.
+      const parsed = new URL(url);
+      if (
+        (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+        parsed.port === "11434"
+      ) {
+        const native = await invoke<{ status: number; body: string }>("ollama_request", {
+          url,
+          method: init.method ?? "GET",
+          body: typeof init.body === "string" ? init.body : null,
+        });
+        return new Response(native.body, {
+          status: native.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       return await tauriFetch(url, init);
     } catch (e) {
       throw new Error(
@@ -340,6 +359,27 @@ export default function App() {
   // MAX_CHECKPOINTS times while it keeps making progress.
   const MAX_TOOL_ROUNDS = 75;
   const MAX_CHECKPOINTS = 2;
+
+  // Keep ordinary conversation on the normal chat path. Tool-enabled
+  // requests are opt-in based on the user's intent, rather than being
+  // advertised to the model for every message.
+  const shouldUseAgenticMode = (text: string): boolean => {
+    if (/^(?:hi|hey|hello|yo|thanks|thank you|good morning|good afternoon|good evening|ok|okay|cool|nice)[!.?,\s]*$/i.test(text)) {
+      return false;
+    }
+    const asksForWork =
+      /\b(edit|change|modify|update|fix|refactor|rewrite|create|add|remove|delete|rename|move|copy|save|write|read|inspect|analyze|find|run|execute|commit)\b/i.test(
+        text
+      ) &&
+      /\b(file|folder|directory|workspace|project|code|codebase|repo|repository|git|terminal|command|shell|line|function|component)\b/i.test(
+        text
+      );
+    const asksForExternalInfo =
+      /\b(search the web|web search|browse the web|latest|news|internet|url|fetch|http|api request|mcp)\b/i.test(
+        text
+      );
+    return asksForWork || asksForExternalInfo;
+  };
 
   // The active streaming request's abort controller, so we can cancel it.
   const streamControllerRef = useRef<AbortController | null>(null);
@@ -750,7 +790,7 @@ export default function App() {
       ...settings,
       provider: "ollama",
       model: modelName,
-      baseUrl: "http://localhost:11434",
+      baseUrl: "http://127.0.0.1:11434",
       apiKey: "",
       // Clear any potentially conflicting system prompts when switching to a local tool-model
     };
@@ -1359,10 +1399,7 @@ ${promptSuffix}` : ""}`,
       { role: "user", content: trimmed },
     ];
 
-    // Agentic (file/web-tool) mode is always on: the tool loop only executes
-    // calls the model actually emits, so leaving it enabled is harmless and
-    // keeps web_search / web_fetch available for every request.
-    const agentic = true;
+    const agentic = shouldUseAgenticMode(trimmed);
     const activeEditorAtSend = activeEditorRef.current;
 
     // Build the agent's environment suffix: a high-level project map,
@@ -1548,8 +1585,8 @@ MCP call rules:
         const calls: { call: ToolCall; native: boolean; key: string }[] = [];
         const seenKeys = new Set<string>();
         for (const { call, native } of [
-          ...round.nativeCalls.map((c) => ({ call: c, native: true })),
-          ...parseToolCalls(raw).map((c) => ({ call: c, native: false })),
+          ...(agentic ? round.nativeCalls.map((c) => ({ call: c, native: true })) : []),
+          ...(agentic ? parseToolCalls(raw).map((c) => ({ call: c, native: false })) : []),
         ]) {
           if (!isToolName(call.name) && !call.name.startsWith("mcp_")) continue;
           const key = `${call.name}:${JSON.stringify(call.arguments)}`;

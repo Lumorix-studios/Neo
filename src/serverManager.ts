@@ -1,28 +1,51 @@
+import { invoke } from "@tauri-apps/api/core";
+
+function inTauri(): boolean {
+  return !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+}
+
 /**
  * ServerManager handles the logic for detecting available ports 
  * and verifying if an Ollama instance is actually running.
  */
 
 export async function checkServerHealth(baseUrl: string): Promise<{ online: boolean; status: number }> {
+  if (
+    inTauri() &&
+    /^https?:\/\/(?:127\.0\.0\.1|localhost):11434\/?$/i.test(baseUrl.trim())
+  ) {
+    try {
+      const online = await invoke<boolean>("check_ollama_running");
+      return { online, status: online ? 200 : 0 };
+    } catch {
+      return { online: false, status: 0 };
+    }
+  }
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 2000);
   try {
     // Ollama's /api/version is lightweight AND exclusive to real Ollama
     // servers. A random local app that happens to answer on the same port
     // must not be mistaken for Ollama — that made port "discovery" latch
     // onto foreign servers and every model call then break.
-    const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/version`);
+    const response = await fetch(`${baseUrl.replace("localhost", "127.0.0.1").replace(/\/+$/, "")}/api/version`, {
+      signal: controller.signal,
+    });
     if (!response.ok) return { online: false, status: response.status };
     const body: unknown = await response.json().catch(() => null);
     const isOllama = !!body && typeof body === "object" && "version" in body;
     return { online: isOllama, status: response.status };
   } catch {
     return { online: false, status: 0 };
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
 export async function findAvailableOllamaPort(startPort = 11434, maxTries = 5): Promise<string | null> {
   for (let i = 0; i < maxTries; i++) {
     const port = startPort + i;
-    const url = `http://localhost:${port}`;
+    const url = `http://127.0.0.1:${port}`;
     const health = await checkServerHealth(url);
     
     if (health.online) {
