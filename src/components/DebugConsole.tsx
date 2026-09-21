@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 /**
  * Debug console: evaluates JavaScript/Node expressions against the workspace
  * using the system `node` runtime. Code is base64-wrapped so it survives the

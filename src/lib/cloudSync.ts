@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 /**
  * Per-user cloud sync for Neo — chats, AI settings and profile live in
  * Supabase (RLS-scoped to the signed-in user). Everything else (UI/theme

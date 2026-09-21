@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 /**
  * Shared, VS Code Seti-style file icons built from Simple Icons brand glyphs
  * (`react-icons/si`) with authentic brand colours. Used by both the explorer

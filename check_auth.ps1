@@ -1,3 +1,5 @@
+# Author: madhusudhan
+# Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
 $anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nd2RxanF3Ymp5eWdwdXFybXlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNjM0MDAsImV4cCI6MjA5ODgzOTQwMH0.SzpYMny4YJgX0A5p_CRGSOzqaZxgdNPIqRUOAtwpcAs'
 $url = 'https://ogwdqjqwbjyygpuqrmyf.supabase.co'
 

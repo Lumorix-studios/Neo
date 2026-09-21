@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 //kind of like a database for normal syntax highlighting, but not as fancy as a full parser. This is used for
 
 const EXT_LANG: Record<string, string> = {

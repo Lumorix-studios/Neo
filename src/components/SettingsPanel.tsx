@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ACCENT_SWATCHES,
   DEFAULT_UI_SETTINGS,
@@ -42,6 +46,7 @@ import {
 } from "../extensions";
 import LocalModels from "../../components/LocalModels";
 import AccountSection from "./AccountSection";
+import BillingSection from "./BillingSection";
 import type { NeoUser, Profile as AccountProfile } from "../lib/auth";
 import {
   clearLocalKey,
@@ -51,7 +56,7 @@ import {
 } from "../lib/byok";
 import * as cloudSync from "../lib/cloudSync";
 
-import { IoApps, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
+import { IoApps, IoCardOutline, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
 import {
   formatTokens,
   getCachedRateSettings,
@@ -74,6 +79,7 @@ export type SectionId =
   | "data"
   | "shortcuts"
   | "account"
+  | "billing"
   | "about";
 
 interface SettingsPanelProps {
@@ -351,6 +357,13 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> =
     ),
   },
   {
+    id: "billing",
+    label: "Billing",
+    icon: (
+      <IoCardOutline className="h-3.5 w-3.5" />
+    ),
+  },
+  {
     id: "appearance",
     label: "Appearance",
     icon: (
@@ -459,6 +472,10 @@ export default function SettingsPanel({
   onAccountRefresh,
 }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionId>("appearance");
+  // Stable callbacks: keep AccountSection / BillingSection (both memoised)
+  // from re-rendering whenever an unrelated settings field changes.
+  const refreshAccount = useCallback(() => onAccountRefresh?.(), [onAccountRefresh]);
+  const openBilling = useCallback(() => setSection("billing"), []);
   const [bgDraft, setBgDraft] = useState(settings.customBackground ?? "#0e0e0e");
   const [bgBrightness, setBgBrightness] = useState(settings.bgBrightness ?? 0);
   // --- AI settings state (mirrors the previous chat settings sidebar) ---
@@ -1075,7 +1092,16 @@ return (
                 account={account}
                 profile={accountProfile}
                 authLoading={accountLoading}
-                onAccountRefresh={() => onAccountRefresh?.()}
+                onAccountRefresh={refreshAccount}
+                onOpenBilling={openBilling}
+              />
+            )}
+            {section === "billing" && (
+              <BillingSection
+                account={account}
+                profile={accountProfile}
+                onAccountRefresh={refreshAccount}
+                onGoToAccount={() => setSection("account")}
               />
             )}
             {section === "ai" &&
