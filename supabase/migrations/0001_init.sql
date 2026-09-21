@@ -1,3 +1,5 @@
+-- Author: madhusudhan
+-- Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Neo (AgenticCoder) — Supabase schema 0001_init
 -- Run this in the Supabase dashboard → SQL Editor (or `supabase db push`).

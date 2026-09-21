@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 import { useEffect, useState } from "react";
 import type { AgenticActivity as AgenticActivityType, FsEntry } from "../agentic";
 import { TOOL_LABELS } from "../agentic";

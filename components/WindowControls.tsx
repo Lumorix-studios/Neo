@@ -34,7 +34,7 @@ export function closeWindow(): void {
 const MinimizeGlyph = <IoRemove className="h-[11px] w-[11px]" />;
 const MaximizeGlyph = <IoSquareOutline className="h-[11px] w-[11px]" />;
 const RestoreGlyph = <IoCopyOutline className="h-[11px] w-[11px]" />;
-const CloseGlyph = <IoClose className="h-[11px] w-[11px]" />;
+const CloseGlyph = <IoClose className="h-[13px] w-[13px]" />;
 
 export default function WindowControls() {
   const [maximized, setMaximized] = useState(false);

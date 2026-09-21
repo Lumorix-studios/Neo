@@ -1,4 +1,4 @@
-import Noise from '../components/Noise'
+
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { IoClose } from "react-icons/io5";
 interface ErrorTabProps {
@@ -44,14 +44,7 @@ export default function ErrorTab({ isOpen, onClose, message }: ErrorTabProps) {
 
         {/* Noise */}
         <div className="relative w-full h-[300px] overflow-hidden border-b border-(--border)">
-          <Noise
-            patternSize={250}
-            patternScaleX={2}
-            patternScaleY={2}
-            patternRefreshInterval={2}
-            patternAlpha={15}
-          />
-
+         
           {/* Centered Error Text */}
           <span className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-3xl font-bold tracking-widest text-amber-50">
             ERROR

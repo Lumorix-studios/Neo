@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 import { useEffect, useRef } from "react";
 import { IoArrowDownOutline, IoArrowUpOutline, IoClose, IoSearch } from "react-icons/io5";
 

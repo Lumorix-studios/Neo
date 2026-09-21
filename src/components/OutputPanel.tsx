@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IoBan } from "react-icons/io5";

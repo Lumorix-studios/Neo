@@ -51,14 +51,15 @@ export default function StatusBar({
   workspaceName,
   editorStats,
 }: Props) {
+
   return (
     <div className="flex h-[22px] shrink-0 items-center gap-3 border-t border-(--border) bg-[var(--bg-panel)] px-2 text-[11px] text-[var(--text-muted)]">
       {/* Left */}
       <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
-        <span className="flex shrink-0 items-center gap-1 font-medium text-[var(--text-muted)]">
+        {/* <span className="flex shrink-0 items-center gap-1 font-medium text-[var(--text-muted)]">
           <span className="h-1.5 w-1.5 rounded-full bg-(--accent)" />
           Neo
-        </span>
+        </span> */}
         {workspaceName && (
           <span className="flex min-w-0 shrink-0 items-center gap-1 text-[var(--text-muted)]" title={workspaceName}>
             <IoFolderOutline size={10} />
@@ -66,7 +67,6 @@ export default function StatusBar({
           </span>
         )}
       </div>
-
       {/* Right */}
       <div className="flex shrink-0 items-center gap-0.5">
         {editorStats && (

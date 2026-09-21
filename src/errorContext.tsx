@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ */
 import { Component, createContext, useContext, useState, type ReactNode } from "react";
 import ErrorTab from "../components/ErrorTab";
 

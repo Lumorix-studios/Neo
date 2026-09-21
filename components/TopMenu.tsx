@@ -101,7 +101,7 @@ const openPrivacyPolicy = async () => {
         ...(contextItems.length > 0
           ? [
               {
-                label: "── Workspace files (click to pin) ──",
+                label: "(click to target the specific file in the agent's context)",
                 action: () => {},
                 disabled: true,
               },
@@ -121,13 +121,14 @@ const openPrivacyPolicy = async () => {
       items: [
         { label: "New Chat", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
         { label: "Open Editor", action: onOpenIde, shortcut: "Ctrl+Shift+E" },
-        { label: "Open Terminal", action: onOpenTerminal, shortcut: "Ctrl+`" },
+        
       ],
     },
     {
       label: "View",
       items: [
         { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
+        { label: "Open Terminal", action: onOpenTerminal, shortcut: "Ctrl+`" },
         { label: "AI Settings…", action: onOpenAiSettings, shortcut: "Ctrl+B" },
         ...(onOpenSettings
           ? [{ label: "Settings…", action: onOpenSettings, shortcut: "Ctrl+," }]
