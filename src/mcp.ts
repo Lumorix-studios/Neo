@@ -126,7 +126,7 @@ async function rpc(
   body: unknown,
   headers: Record<string, string>,
   sessionId?: string | null,
-  timeoutMs = 15_000
+  timeoutMs = 8_000
 ): Promise<{ data: JsonRpcResponse | null; session: string | null }> {
   const allHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -216,7 +216,7 @@ async function ensureStdio(server: McpServerConfig): Promise<void> {
       capabilities: {},
       clientInfo: { name: "Neo", version: "1.0.4" },
     },
-  });
+  }, 10_000);
   if (init.error) {
     stdioSessions.delete(server.id);
     await stopStdio(server.id);
@@ -322,6 +322,70 @@ export function formatMcpToolSchema(schema?: Record<string, unknown>): string {
 }
 
 const CLIENT_INFO = { name: "Neo", version: "1.0.4" };
+const MCP_DISCOVERY_TTL_MS = 30_000;
+
+interface HttpSession {
+  key: string;
+  id: string | null;
+}
+
+interface HttpCacheEntry {
+  session?: HttpSession;
+  tools?: McpToolInfo[];
+  toolsAt: number;
+  initializing?: Promise<HttpSession>;
+}
+
+const httpCache = new Map<string, HttpCacheEntry>();
+
+function httpCacheKey(server: McpServerConfig): string {
+  return `${server.id}|${server.url ?? ""}|${JSON.stringify(server.headers ?? {})}`;
+}
+
+function clearHttpCache(server: McpServerConfig): void {
+  httpCache.delete(httpCacheKey(server));
+}
+
+async function ensureHttpSession(server: McpServerConfig): Promise<HttpSession> {
+  const key = httpCacheKey(server);
+  const cached = httpCache.get(key) ?? { toolsAt: 0 };
+  if (cached.session) return cached.session;
+  if (cached.initializing) return cached.initializing;
+
+  cached.initializing = (async () => {
+    const init = await rpc(
+      server.url ?? "",
+      {
+        jsonrpc: "2.0",
+        id: `init_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        method: "initialize",
+        params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: CLIENT_INFO },
+      },
+      server.headers ?? {}
+    );
+    if (init.data?.error) throw new Error(init.data.error.message ?? "MCP initialize failed");
+      const id = init.session;
+    await rpc(
+      server.url ?? "",
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      server.headers ?? {},
+      id
+    ).catch(() => undefined);
+    const session = { key, id };
+    cached.session = session;
+    cached.initializing = undefined;
+    httpCache.set(key, cached);
+    return session;
+  })();
+  httpCache.set(key, cached);
+  try {
+    return await cached.initializing;
+  } catch (e) {
+    cached.initializing = undefined;
+    httpCache.delete(key);
+    throw e;
+  }
+}
 
 /** initialize → notifications/initialized → tools/list */
 export async function listMcpTools(server: McpServerConfig): Promise<McpToolInfo[]> {
@@ -333,7 +397,7 @@ export async function listMcpTools(server: McpServerConfig): Promise<McpToolInfo
         id: 2,
         method: "tools/list",
         params: {},
-      });
+      }, 10_000);
       if (list.error) throw new Error(list.error.message ?? "MCP tools/list failed");
       return extractTools(list.result);
     } catch (e) {
@@ -343,36 +407,30 @@ export async function listMcpTools(server: McpServerConfig): Promise<McpToolInfo
     }
   }
 
-  const headers = server.headers ?? {};
-  const init = await rpc(
+  const key = httpCacheKey(server);
+  const cached = httpCache.get(key);
+  if (cached?.tools && Date.now() - cached.toolsAt < MCP_DISCOVERY_TTL_MS) {
+    return cached.tools;
+  }
+  const session = await ensureHttpSession(server);
+  const list = await rpc(
     server.url ?? "",
     {
       jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: CLIENT_INFO },
+      id: `list_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      method: "tools/list",
+      params: {},
     },
-    headers
-  );
-  if (init.data?.error) throw new Error(init.data.error.message ?? "MCP initialize failed");
-  const session = init.session;
-
-  await rpc(
-    server.url ?? "",
-    { jsonrpc: "2.0", method: "notifications/initialized" },
-    headers,
-    session
-  ).catch(() => undefined);
-
-  const list = await rpc(
-    server.url ?? "",
-    { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-    headers,
-    session
+    server.headers ?? {},
+    session.id
   );
   if (list.data?.error) throw new Error(list.data.error.message ?? "MCP tools/list failed");
-
-  return extractTools(list.data?.result);
+  const tools = extractTools(list.data?.result);
+  const entry = httpCache.get(key) ?? { toolsAt: 0 };
+  entry.tools = tools;
+  entry.toolsAt = Date.now();
+  httpCache.set(key, entry);
+  return tools;
 }
 
 /** Flatten a tools/call result into plain text. */
@@ -419,31 +477,19 @@ export async function callMcpTool(
     }
 
     const headers = server.headers ?? {};
-    const init = await rpc(
-      server.url ?? "",
-      {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: CLIENT_INFO },
-      },
-      headers
-    );
-    if (init.data?.error) throw new Error(init.data.error.message ?? "MCP initialize failed");
-    const session = init.session;
-
-    await rpc(
-      server.url ?? "",
-      { jsonrpc: "2.0", method: "notifications/initialized" },
-      headers,
-      session
-    ).catch(() => undefined);
+    const session = await ensureHttpSession(server);
 
     const res = await rpc(
       server.url ?? "",
-      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: toolName, arguments: args } },
+      {
+        jsonrpc: "2.0",
+        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        method: "tools/call",
+        params: { name: toolName, arguments: args },
+      },
       headers,
-      session
+      session.id,
+      120_000
     );
     if (res.data?.error) {
       return { ok: false, output: res.data.error.message ?? "MCP tool error" };

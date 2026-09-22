@@ -1477,6 +1477,23 @@ ${promptSuffix}` : ""}`,
     // Build the agent's environment suffix: a high-level project map,
     // open tabs, and any MCP tools exposed by enabled servers.
     let promptSuffix = "";
+    const mcpDiscovery = agentic
+      ? Promise.all(
+          loadMcpServers()
+            .filter((s) => s.enabled)
+            .map(async (s) => {
+              try {
+                return { server: s, tools: await listMcpTools(s), error: null };
+              } catch (error) {
+                return {
+                  server: s,
+                  tools: [],
+                  error: error instanceof Error ? error.message : String(error),
+                };
+              }
+            })
+        )
+      : Promise.resolve([]);
     if (agentic && workspaceRoot) {
       try {
         const projectMap = await getProjectContext(workspaceRoot);
@@ -1556,25 +1573,19 @@ ${promptSuffix}` : ""}`,
 
     const mcpTools = new Map<string, McpToolEntry>();
     if (agentic) {
-      const servers = loadMcpServers().filter((s) => s.enabled);
-      if (servers.length > 0) {
-        await Promise.all(
-          servers.map(async (s) => {
-            try {
-              const tools = await listMcpTools(s);
-              for (const t of tools) {
-                mcpTools.set(`mcp_${s.name}_${t.name}`, {
-                  server: s,
-                  tool: t.name,
-                  schema: t.inputSchema,
-                  readOnly: t.readOnly,
-                });
-              }
-            } catch {
-              promptSuffix += `\nMCP server "${s.name}" is unavailable. Do not claim its tools are available; continue with built-in tools or explain the connection error.`;
-            }
-          })
-        );
+      const discoveries = await mcpDiscovery;
+      for (const { server, tools, error } of discoveries) {
+        for (const t of tools) {
+          mcpTools.set(`mcp_${server.name}_${t.name}`, {
+            server,
+            tool: t.name,
+            schema: t.inputSchema,
+            readOnly: t.readOnly,
+          });
+        }
+        if (error) {
+          promptSuffix += `\nMCP server "${server.name}" is unavailable: ${error}. Do not claim its tools are available; continue with built-in tools or explain the connection error.`;
+        }
       }
       if (mcpTools.size > 0) {
         promptSuffix += `
