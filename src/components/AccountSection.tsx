@@ -4,7 +4,7 @@
  */
 
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useRef} from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -23,13 +23,15 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { deleteAllCloudData } from "../lib/cloudSync";
 import { IoLogoGithub, IoLogoGoogle, IoMailOutline } from "react-icons/io5";
-import { IoInformationCircleOutline } from "react-icons/io5";
+import { IoFlashOutline, IoInformationCircleOutline } from "react-icons/io5";
 interface AccountSectionProps {
   account: NeoUser | null;
   profile: Profile | null;
   authLoading?: boolean;
   /** Ask the app to re-read the account/profile after profile edits. */
   onAccountRefresh: () => void;
+  /** Open the Billing tab (BYOK upsell for free plans). */
+  onOpenBilling?: () => void;
 }
 
 type Mode = "sign-in" | "sign-up";
@@ -41,11 +43,12 @@ function formatPlan(plan: string | null | undefined): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
-export default function AccountSection({
+const AccountSection = memo(function AccountSection({
   account,
   profile,
   authLoading = false,
   onAccountRefresh,
+  onOpenBilling,
 }: AccountSectionProps) {
   const [mode, setMode] = useState<Mode>("sign-in");
   const [busy, setBusy] = useState(false);
