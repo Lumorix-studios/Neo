@@ -1,0 +1,100 @@
+=== OK (auto-memoized): 45 file(s)
+  src\agentic.ts
+  src\components\AgenticActivity.tsx
+  src\components\CodeEditor.tsx
+  src\components\FileIcon.tsx
+  src\components\FindReplaceBar.tsx
+  src\components\highlight.ts
+  src\components\IdeMenuBar.tsx
+  src\components\logBus.ts
+  src\components\Markdown.tsx
+  src\components\OutputPanel.tsx
+  src\debugLog.ts
+  src\diff.ts
+  src\errorContext.tsx
+  src\extensions.ts
+  src\extensionsRuntime.ts
+  src\lib\auth.ts
+  src\lib\billing.ts
+  src\lib\byok.ts
+  src\lib\cloudSync.ts
+  src\lib\supabase.ts
+  src\localModels.ts
+  src\main.tsx
+  src\mcp.ts
+  src\projectIndex.ts
+  src\providers.ts
+  src\serverManager.ts
+  src\store.ts
+  src\tokenUsage.ts
+  src\types.ts
+  src\uiSettings.ts
+  src\utils\cx.ts
+  src\utils.ts
+  components\ChatHistorySidebar.tsx
+  components\ClickSpark.tsx
+  components\CommandPalette.tsx
+  components\ErrorTab.tsx
+  components\InfoPanel.tsx
+  components\PixelTransition.tsx
+  components\PrivacyPolicy.tsx
+  components\StarBorder.tsx
+  components\StatusBar.tsx
+  components\Tab2.tsx
+  components\TextType.tsx
+  components\TopMenu.tsx
+  components\WindowControls.tsx
+
+=== SKIPPED: 18 file(s)
+  src\App.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement without a catch clause
+      - (BuildHIR::lowerExpression) Handle Import expressions
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+      - (BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.
+  src\components\AccountSection.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  src\components\BillingSection.tsx
+      - Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement
+  src\components\BottomPanel.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  src\components\DebugConsole.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  src\components\FileExplorer.tsx
+      - Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement
+  src\components\GitPanel.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  src\components\PortsPanel.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  src\components\ProblemsPanel.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  src\components\SettingsPanel.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+      - (BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch
+  src\components\TerminalView.tsx
+      - Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement
+  src\ide\AgentPanel.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement without a catch clause
+      - (BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.
+      - (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  src\ide\IdeWindowApp.tsx
+      - (BuildHIR::lowerStatement) Handle TryStatement without a catch clause
+      - (BuildHIR::lowerExpression) Handle Import expressions
+  src\lib\deepLink.ts
+      - (BuildHIR::lowerExpression) Handle Import expressions
+  components\BlurText.tsx
+      - (BuildHIR::node.lowerReorderableExpression) Expression type `ArrowFunctionExpression` cannot be safely reordered
+  components\LocalModels.tsx
+      - Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement
+  components\Noise.tsx
+      - (BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.
+  components\SideRays.tsx
+      - Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement
+
+=== BAILOUT KINDS (by frequency)
+  0x  (BuildHIR::lowerStatement) Handle TryStatement without a catch clause
+  0x  (BuildHIR::lowerExpression) Handle Import expressions
+  0x  (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause
+  0x  (BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.
+  0x  Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement
+  0x  (BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch
+  0x  (BuildHIR::node.lowerReorderableExpression) Expression type `ArrowFunctionExpression` cannot be safely reordered

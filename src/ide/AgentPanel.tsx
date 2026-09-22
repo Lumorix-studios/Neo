@@ -242,7 +242,7 @@ export default function AgentPanel({
     approvalRef.current = null;
   };
 
-  const handleDeny = (_id: string) => {
+  const handleDeny = () => {
     approvalRef.current?.resolve(false);
     approvalRef.current = null;
   };
@@ -789,7 +789,7 @@ Rules:
             onFilesChanged();
             if (FILE_MUTATORS.has(call.name) && targetPath) {
               const absPath = resolveFsPath(targetPath, effRoot);
-              let afterContent = "";
+              let afterContent: string;
               try {
                 afterContent = await invoke<string>("fs_read_file", { path: absPath });
               } catch {

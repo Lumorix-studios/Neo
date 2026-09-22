@@ -1,0 +1,77 @@
+ERR src/components/BillingSection.tsx:95:11 react-hooks/immutability
+    Error: Cannot access variable before it is declared
+    ...^^^^^^^^^^^^^^^^^^^^^^^^^^
+    > 101 |     [onAccountRefresh]
+          | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    > 102 |   );
+          | ^^^^^ `poll` is declared here
+      103 |
+      104 |   const startCheckout = useCallback(
+      105 |     async (target: PaidPlan) => {
+ERR src/components/CodeEditor.tsx:233:23 react-hooks/preserve-manual-memoization
+    Compilation Skipped: Existing memoization could not be preserved
+    ...ang]
+          |                       ^^^^^^^^^^ This dependency may be modified later
+      234 |   );
+      235 |   const lineCount = useMemo(() => activeContent.split("\n").length, [activeContent]);
+      236 |   const gutterDigits = Math.max(2, String(lineCount).length);
+ERR src/components/CodeEditor.tsx:235:70 react-hooks/preserve-manual-memoization
+    Compilation Skipped: Existing memoization could not be preserved
+    ...                                               ^^^^^^^^^^^^^ This dependency may be modified later
+      236 |   const gutterDigits = Math.max(2, String(lineCount).length);
+      237 |
+      238 |   // Reset scroll + cursor bookkeeping whenever the user switches tabs. The
+ERR src/components/CodeEditor.tsx:494:5 react-hooks/preserve-manual-memoization
+    Compilation Skipped: Existing memoization could not be preserved
+    ...query.
+      493 |   const matches = useMemo(() => computeMatches(activeContent, findQuery, caseSensitive), [
+    > 494 |     activeContent,
+          |     ^^^^^^^^^^^^^ This dependency may be modified later
+      495 |     findQuery,
+      496 |     caseSensitive,
+      497 |   ]);
+ERR src/components/CodeEditor.tsx:521:21 react-hooks/preserve-manual-memoization
+    Compilation Skipped: Existing memoization could not be preserved
+    ...T]);
+          | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Could not preserve existing memoization
+      536 |
+      537 |   /** Jump the caret to a specific match index (wraps). */
+      538 |   const goMatch = (idx: number) => {
+ERR src/components/CodeEditor.tsx:535:48 react-hooks/preserve-manual-memoization
+    Compilation Skipped: Existing memoization could not be preserved
+    ...ontent, FONT_SIZE, LINE_HEIGHT]);
+          |                                                ^^^^^^^^^^^^^ This dependency may be modified later
+      536 |
+      537 |   /** Jump the caret to a specific match index (wraps). */
+      538 |   const goMatch = (idx: number) => {
+ERR src/ide/IdeWindowApp.tsx:637:24 react-hooks/set-state-in-effect
+    Error: Calling setState synchronously within an effect can trigger cascading renders
+    ...the terminal panel closed when a workspace loads.
+    > 637 |     if (workspaceRoot) setTerminalOpen(false);
+          |                        ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+      638 |   }, [workspaceRoot]);
+      639 |
+      640 |   return (
+ERR src/ide/IdeWindowApp.tsx:804:64 no-useless-escape
+    Unnecessary escape character: \/.
+ERR components/CommandPalette.tsx:29:7 react-hooks/set-state-in-effect
+    Error: Calling setState synchronously within an effect can trigger cascading renders
+    ...mmandPalette.tsx:29:7
+      27 |   useEffect(() => {
+      28 |     if (isOpen) {
+    > 29 |       setQuery("");
+         |       ^^^^^^^^ Avoid calling setState() directly within an effect
+      30 |       setSelectedIndex(0);
+      31 |       inputRef.current?.focus();
+      32 |     }
+ERR components/LocalModels.tsx:73:10 react-hooks/set-state-in-effect
+    Error: Calling setState synchronously within an effect can trigger cascading renders
+    ...components\LocalModels.tsx:73:10
+      71 |
+      72 |   useEffect(() => {
+    > 73 |     void refreshStatus();
+         |          ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+      74 |   }, [refreshStatus]);
+      75 |
+      76 |   const handleStart = async () => {
+TOTAL=10

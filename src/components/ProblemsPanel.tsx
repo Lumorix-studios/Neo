@@ -3,7 +3,7 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IoAlertCircle, IoRefresh, IoReloadOutline } from "react-icons/io5";
 import { logToBus } from "./logBus";
@@ -89,14 +89,18 @@ export default function ProblemsPanel({
       }
     } catch (e) {
       setNote(e instanceof Error ? e.message : String(e));
-    } finally {
-      setScanning(false);
     }
+    setScanning(false);
   }, [root, scanning, onCount]);
 
-  useEffect(() => {
+  /** Run a scan on demand. An effect event so the workspace-change effect
+   *  below can depend on `root` alone instead of `scan`'s changing identity. */
+  const runScan = useEffectEvent(() => {
     void Promise.resolve().then(() => scan());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  useEffect(() => {
+    runScan();
   }, [root]);
 
   const errors = problems.filter((p) => p.severity === "error");

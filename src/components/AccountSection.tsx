@@ -148,9 +148,8 @@ const AccountSection = memo(function AccountSection({
                   setNotice("Profile saved.");
                 } catch (e) {
                   setError(e instanceof Error ? e.message : String(e));
-                } finally {
-                  setBusy(false);
                 }
+                setBusy(false);
               }}
               className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
             >
@@ -163,6 +162,28 @@ const AccountSection = memo(function AccountSection({
           Your chats and AI settings sync to your account. API keys (BYOK) are stored
           encrypted in your account and are {byokCopy}.
         </p>
+
+        {/* BYOK upsell — free plans can unlock it with a Pro subscription. */}
+        {profile && !profile.byokEnabled && onOpenBilling && (
+          <div className="mb-3 rounded-md border border-[var(--accent)]/40 bg-(--fill-1) p-3">
+            <p className="pb-1 text-[12px] font-medium text-[var(--text-primary)]">
+              Unlock BYOK with Pro
+            </p>
+            <p className="pb-2 text-[11px] leading-4 text-[var(--text-muted)]">
+              Store your own OpenAI / Anthropic / Google / Groq API keys encrypted in your
+              account — available on every device you sign in from.
+            </p>
+            <button
+              type="button"
+              onClick={onOpenBilling}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12px] font-medium transition"
+              style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+            >
+              <IoFlashOutline className="h-4 w-4" />
+              Get Pro — unlock BYOK
+            </button>
+          </div>
+        )}
 
         {error && <p className="pb-2 text-[11px] text-red-400/90">{error}</p>}
         {notice && !error && <p className="pb-2 text-[11px] text-emerald-400/90">{notice}</p>}
@@ -200,9 +221,8 @@ const AccountSection = memo(function AccountSection({
                   setNotice("Synced data deleted from your account.");
                 } catch (e) {
                   setError(e instanceof Error ? e.message : String(e));
-                } finally {
-                  setBusy(false);
                 }
+                setBusy(false);
               }}
               className="shrink-0 rounded-md border border-red-500/30 px-2.5 py-1 text-[11px] text-red-400/90 transition hover:bg-red-500/10 disabled:opacity-40"
             >
@@ -237,7 +257,9 @@ const AccountSection = memo(function AccountSection({
       setNotice={setNotice}
     />
   );
-}
+});
+
+export default AccountSection;
 
 /* ── Signed-out form ───────────────────────────────────────────────────────── */
 function SignInUp(props: {
@@ -278,9 +300,8 @@ function SignInUp(props: {
       done?.(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   };
    const [buildsInfoOpen, setBuildsInfoOpen] = useState(false);
     const buildsInfoRef = useRef<HTMLDivElement>(null);

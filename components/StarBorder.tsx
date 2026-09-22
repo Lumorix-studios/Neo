@@ -31,10 +31,10 @@ const StarBorder = <T extends React.ElementType = 'button'>({
   return (
     <Component
       className={`relative inline-block overflow-hidden ${className}`}
-      {...(rest as any)}
+      {...(rest as Record<string, unknown>)}
       style={{
         padding: `${thickness}px 0`,
-        ...(rest as any).style
+        ...((rest as Record<string, unknown>).style as React.CSSProperties)
       }}
     >
       {/* Thin light lines sweeping along each edge (sized by `thickness`) */}

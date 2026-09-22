@@ -51,39 +51,32 @@ export default function DebugConsole({ root }: DebugConsoleProps) {
     async (code: string) => {
       if (!code.trim() || running) return;
       setRunning(true);
+      // Everything that can short-circuit (conditionals, optional chaining)
+      // is computed *outside* the try below: value blocks inside try/catch
+      // block React Compiler optimization of this component.
+      const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(wrap(code))));
+      const command = `node -e 'eval(Buffer.from("${b64}","base64").toString())'`;
+      const args = root ? { command, cwd: root, timeout_secs: 30 } : { command, timeout_secs: 30 };
+      let res: RunResult | null = null;
+      let failure: string | null = null;
       try {
-        // Base64 the source so quotes/newlines can't break the shell layer.
-        const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(wrap(code))));
-        let res: RunResult;
-        if (!root) {
-          res = await invoke<RunResult>("run_command", {
-            command: `node -e 'eval(Buffer.from("${b64}","base64").toString())'`,
-            timeout_secs: 30,
-          });
-        } else {
-          res = await invoke<RunResult>("run_command", {
-            command: `node -e 'eval(Buffer.from("${b64}","base64").toString())'`,
-            cwd: root,
-            timeout_secs: 30,
-          });
-        }
-        const output =
-          [res.stdout, res.stderr].filter((s) => s.trim()).join("\n").trim() ||
-          (res.timedOut ? "(timed out after 30 s)" : "(no output)");
-        setHistory((prev) => [
-          ...prev.slice(-100),
-          { expr: code, output, ok: res.exitCode === 0 && !res.timedOut, time: Date.now() },
-        ]);
-        logToBus("Debug Console", `> ${code}\n${output}`);
+        res = await invoke<RunResult>("run_command", args);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setHistory((prev) => [
-          ...prev.slice(-100),
-          { expr: code, output: msg, ok: false, time: Date.now() },
-        ]);
-      } finally {
-        setRunning(false);
+        failure = e instanceof Error ? e.message : String(e);
       }
+      const stdout = res ? res.stdout : "";
+      const stderr = res ? res.stderr : "";
+      const parts = [stdout, stderr].filter((s) => s.trim());
+      const joined = parts.join("\n").trim();
+      const timedOut = res ? res.timedOut : false;
+      const fallback = timedOut ? "(timed out after 30 s)" : "(no output)";
+      const ok = res ? res.exitCode === 0 && !res.timedOut : false;
+      const output = failure || joined || fallback;
+      setHistory((prev) => [
+        ...prev.slice(-100),
+        { expr: code, output, ok, time: Date.now() },
+      ]);
+      logToBus("Debug Console", `> ${code}\n${output}`);
     },
     [root, running]
   );

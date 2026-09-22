@@ -9,7 +9,7 @@
 //cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
 //also cant assure you this will always stay opensource
 //            9/18/26
-import { lazy, useEffect, useRef, useState } from "react";
+import { lazy, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -458,57 +458,60 @@ export default function App() {
   })();
   const ctxPct = Math.min(100, Math.round((estTokens / ctxLimit) * 100));
 
+  /** Global shortcut body. Declared as an effect event so it always sees the
+   *  latest refs/state while the listener itself is registered only once. */
+  const onGlobalKey = useEffectEvent((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      setSettingsSection("ai");
+      setSettingsOpen(true);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "h") {
+      e.preventDefault();
+      setHistorySidebarOpen((v) => !v);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+      e.preventDefault();
+      setCommandPaletteOpen((v) => !v);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+      e.preventDefault();
+      launchIdeWindowRef.current();
+    }
+
+    // Ctrl+Alt+F: Format Document (command contributed by the Prettier
+    // extension — a no-op while it is not installed and enabled).
+    if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      void formatDocument(activeEditorRef.current);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === "`") {
+      e.preventDefault();
+      setOpenTerminal((v) => !v);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      e.preventDefault();
+      setSettingsSection(null);
+      setSettingsOpen(true);
+    }
+    // Ctrl+Tab / Ctrl+Shift+Tab: cycle through open editor tabs.
+    if (e.ctrlKey && e.key === "Tab") {
+      e.preventDefault();
+      const tabs = editorTabsRef.current;
+      if (tabs.length > 1) {
+        const idx = tabs.findIndex((t) => t.path === activeEditorRef.current);
+        const next = e.shiftKey
+          ? tabs[(idx - 1 + tabs.length) % tabs.length]
+          : tabs[(idx + 1) % tabs.length];
+        if (next) setActiveEditorPath(next.path);
+      }
+    }
+  });
+
   useEffect(() => {
     mountedRef.current = true;
-    const handleKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        setSettingsSection("ai");
-        setSettingsOpen(true);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "h") {
-        e.preventDefault();
-        setHistorySidebarOpen((v) => !v);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
-        e.preventDefault();
-        setCommandPaletteOpen((v) => !v);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
-        e.preventDefault();
-        launchIdeWindowRef.current();
-      }
-
-      // Ctrl+Alt+F: Format Document (command contributed by the Prettier
-      // extension — a no-op while it is not installed and enabled).
-      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        void formatDocument(activeEditorRef.current);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "`") {
-        e.preventDefault();
-        setOpenTerminal((v) => !v);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
-        e.preventDefault();
-        setSettingsSection(null);
-        setSettingsOpen(true);
-      }
-      // Ctrl+Tab / Ctrl+Shift+Tab: cycle through open editor tabs.
-      if (e.ctrlKey && e.key === "Tab") {
-        e.preventDefault();
-        const tabs = editorTabsRef.current;
-        if (tabs.length > 1) {
-          const idx = tabs.findIndex((t) => t.path === activeEditorRef.current);
-          const next = e.shiftKey
-            ? tabs[(idx - 1 + tabs.length) % tabs.length]
-            : tabs[(idx + 1) % tabs.length];
-          if (next) setActiveEditorPath(next.path);
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener("keydown", onGlobalKey);
+    return () => window.removeEventListener("keydown", onGlobalKey);
   }, []);
 
   useEffect(() => {
@@ -612,7 +615,8 @@ export default function App() {
 
   useEffect(() => {
     if (!restored) return;
-    void bootstrapCloud();
+    // Defer the initial bootstrap off the effect body (no setState-in-effect).
+    const boot = window.setTimeout(() => void bootstrapCloud(), 0);
     // Live subscription: refresh account state on sign-in/out from any window.
     const off = onAuthChanged((user) => {
       setAccount(user);
@@ -627,10 +631,10 @@ export default function App() {
       void bootstrapCloud();
     });
     return () => {
+      window.clearTimeout(boot);
       off();
       void unlistenAuthBroadcast.then((unlisten) => unlisten());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored]);
 
   /** Re-read account + profile (called after Account-tab edits). */
@@ -727,16 +731,22 @@ export default function App() {
     setUiSettings((prev) => ({ ...prev, ...patch }));
   };
 
+  /** Persist a batch of paths. An effect event so the debounce effect below can
+   *  stay keyed on the tab list and delay settings only, instead of restarting
+   *  on every render because `saveEditorFile` is re-created each time. */
+  const saveDirtyTabs = useEffectEvent((paths: string[]) => {
+    for (const p of paths) void saveEditorFile(p);
+  });
+
   // Auto-save: debounce-save every dirty editor tab after the configured delay.
   useEffect(() => {
     if (!uiSettings.autoSave) return;
     const dirty = editorTabs.filter((t) => t.dirty);
     if (dirty.length === 0) return;
     const id = window.setTimeout(() => {
-      for (const t of dirty) void saveEditorFile(t.path);
+      saveDirtyTabs(dirty.map((t) => t.path));
     }, uiSettings.autoSaveDelayMs);
     return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorTabs, uiSettings.autoSave, uiSettings.autoSaveDelayMs]);
 
   // Keep the active session's messages in sync with the sessions list.
@@ -988,7 +998,9 @@ export default function App() {
 
   // Late-bound so the Ctrl+Shift+E shortcut registered above always calls the
   // current launchIdeWindow closure.
-  launchIdeWindowRef.current = launchIdeWindow;
+  useLayoutEffect(() => {
+    launchIdeWindowRef.current = launchIdeWindow;
+  });
 
   /** Mark a tab dirty as its content changes. */
   const updateEditorContent = (path: string, content: string) => {
@@ -998,7 +1010,9 @@ export default function App() {
   };
 
   /** Persist the active tab back to disk via the Tauri fs command. */
-  const saveEditorFile = async (path: string) => {
+  // Declared as a hoisted function so effects above (auto-save, shortcuts)
+  // can reference it without a use-before-declaration violation.
+  async function saveEditorFile(path: string) {
     const tab = editorTabs.find((t) => t.path === path);
     if (!tab) return;
     // Format-on-Save, contributed by the Prettier extension. The formatted
@@ -1023,14 +1037,14 @@ export default function App() {
     } catch (e) {
       setError(`Failed to save ${path}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  };
+  }
 
   /**
    * Format Document — command contributed by the Prettier extension.
    * Uses ref mirrors so the (once-registered) global key handler always
    * formats the tab that is active right now.
    */
-  const formatDocument = async (path: string | null) => {
+  async function formatDocument(path: string | null) {
     if (!isExtensionEnabled("prettier.formatter")) {
       setError("Prettier is not active — install and enable it in Settings → Extensions.");
       return;
@@ -1045,7 +1059,7 @@ export default function App() {
       return;
     }
     if (out !== tab.content) updateEditorContent(p, out);
-  };
+  }
 
   // --- Extension contributions (VS Code-style activation) ----------------
   // Read live on every render so features activate the moment an extension
@@ -1057,7 +1071,9 @@ export default function App() {
 
   // Mirror of editorTabs for use inside intervals / async callbacks.
   const editorTabsRef = useRef<EditorTab[]>([]);
-  editorTabsRef.current = editorTabs;
+  useLayoutEffect(() => {
+    editorTabsRef.current = editorTabs;
+  });
 
   // Ref mirror of the focused tab path for the async agent loop. Set via an
   // effect so we never write refs during render.
@@ -1091,7 +1107,9 @@ export default function App() {
   };
   // Ref indirection so intervals and the tool loop always call the latest closure.
   const syncAllOpenTabsRef = useRef<() => void>(() => {});
-  syncAllOpenTabsRef.current = syncAllOpenTabs;
+  useLayoutEffect(() => {
+    syncAllOpenTabsRef.current = syncAllOpenTabs;
+  });
 
   /** Approve a pending destructive tool call. */
   const handleApproveTool = (id: string) => {
@@ -1275,7 +1293,7 @@ ${promptSuffix}` : ""}`,
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
     let round = "";
-    let base = streamedContentRef.current;
+    const base = streamedContentRef.current;
     const nativeAcc: NativeToolAcc[] = [];
 
     try {

@@ -29,7 +29,12 @@ export async function generateProjectMap(root: string): Promise<ProjectMap> {
   try {
     // In a real Tauri app, we'd use a recursive fs_list_dir.
     // For now, we implement the logic that the Agent will use to "index" the project.
-    const entries = await invoke<any>("fs_list_dir", { path: root });
+    const entries = await invoke<Array<{
+      name: string;
+      path: string;
+      is_dir: boolean;
+      size?: number | null;
+    }>>("fs_list_dir", { path: root });
     
     const indexed = await Promise.all(
       entries.map(async (entry: {

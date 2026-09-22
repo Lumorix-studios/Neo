@@ -1,0 +1,106 @@
+OK    src/agentic.ts
+SKIP  src/App.tsx  (5 kind(s))
+      Found 9 errors:
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement without a catch clause  @line 575,642,1297
+      Todo: (BuildHIR::lowerExpression) Handle Import expressions  @line 974
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause  @line 1586
+      Todo: (BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.  @line 1703,1732,1808,1872
+SKIP  src/components/AccountSection.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 298
+OK    src/components/AgenticActivity.tsx
+SKIP  src/components/BillingSection.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 84
+OK    src/components/BottomPanel.tsx
+OK    src/components/CodeEditor.tsx
+SKIP  src/components/DebugConsole.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 69
+SKIP  src/components/FileExplorer.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 194
+OK    src/components/FileIcon.tsx
+OK    src/components/FindReplaceBar.tsx
+SKIP  src/components/GitPanel.tsx  (2 kind(s))
+      Found 2 errors:
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause  @line 252,298
+OK    src/components/highlight.ts
+OK    src/components/IdeMenuBar.tsx
+OK    src/components/logBus.ts
+OK    src/components/Markdown.tsx
+OK    src/components/OutputPanel.tsx
+SKIP  src/components/PortsPanel.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause  @line 90
+SKIP  src/components/ProblemsPanel.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 58
+SKIP  src/components/SettingsPanel.tsx  (3 kind(s))
+      Found 5 errors:
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause  @line 519,554,1160,1894
+      Todo: (BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch  @line 657
+SKIP  src/components/TerminalView.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 111
+OK    src/debugLog.ts
+OK    src/diff.ts
+OK    src/errorContext.tsx
+OK    src/extensions.ts
+OK    src/extensionsRuntime.ts
+SKIP  src/ide/AgentPanel.tsx  (4 kind(s))
+      Found 8 errors:
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement without a catch clause  @line 347
+      Todo: (BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.  @line 650,675,718,777,1028
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause  @line 906,992
+SKIP  src/ide/IdeWindowApp.tsx  (3 kind(s))
+      Found 3 errors:
+      Todo: (BuildHIR::lowerStatement) Handle TryStatement without a catch clause  @line 219
+      Todo: (BuildHIR::lowerExpression) Handle Import expressions  @line 580,595
+OK    src/lib/auth.ts
+OK    src/lib/billing.ts
+OK    src/lib/byok.ts
+OK    src/lib/cloudSync.ts
+SKIP  src/lib/deepLink.ts  (2 kind(s))
+      Found 2 errors:
+      Todo: (BuildHIR::lowerExpression) Handle Import expressions  @line 50,60
+OK    src/lib/supabase.ts
+OK    src/localModels.ts
+OK    src/main.tsx
+OK    src/mcp.ts
+OK    src/projectIndex.ts
+OK    src/providers.ts
+OK    src/serverManager.ts
+OK    src/store.ts
+OK    src/tokenUsage.ts
+OK    src/types.ts
+OK    src/uiSettings.ts
+OK    src/utils/cx.ts
+OK    src/utils.ts
+SKIP  components/BlurText.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: (BuildHIR::node.lowerReorderableExpression) Expression type `ArrowFunctionExpression` cannot be safely r  @line 40
+OK    components/ChatHistorySidebar.tsx
+OK    components/ClickSpark.tsx
+OK    components/CommandPalette.tsx
+OK    components/ErrorTab.tsx
+OK    components/InfoPanel.tsx
+SKIP  components/LocalModels.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 81
+SKIP  components/Noise.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: (BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.  @line 61
+OK    components/PixelTransition.tsx
+OK    components/PrivacyPolicy.tsx
+SKIP  components/SideRays.tsx  (2 kind(s))
+      Found 1 error:
+      Todo: Support value blocks (conditional, logical, optional chaining, etc) within a try/catch statement  @line 242
+OK    components/StarBorder.tsx
+OK    components/StatusBar.tsx
+OK    components/Tab2.tsx
+OK    components/TextType.tsx
+OK    components/TopMenu.tsx
+OK    components/WindowControls.tsx
+
+failures=17

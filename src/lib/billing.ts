@@ -88,9 +88,11 @@ export async function pollOrder(orderId: string): Promise<BillingOrder> {
   if (!isSupabaseConfigured) throw new Error("Cloud sync is not configured.");
   const sb = supabase();
   if (!sb) throw new Error("Not signed in.");
+  // functions.invoke has no query-string option in this supabase-js version —
+  // the order id rides in a header (same pattern as byok.ts / x-neo-provider).
   const { data, error } = await sb.functions.invoke("billing", {
     method: "GET",
-    query: { order: orderId },
+    headers: { "x-neo-order": orderId },
   });
   if (error) {
     throw new Error(await billingErrorMessage(error, "Could not read the order status."));

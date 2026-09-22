@@ -46,7 +46,7 @@ export interface ToolCall {
 export interface ToolResult {
   ok: boolean;
   output: string;
-  data?: any; // Structured data for professional UI rendering (e.g., FsEntry[])
+  data?: unknown; // Structured data for professional UI rendering (e.g., FsEntry[])
 }
 
 export interface AgenticActivity {
@@ -1209,7 +1209,7 @@ export async function executeTool(
           let summary = `Project Analysis for: ${workspaceRoot}\n`;
           summary += `Total Top-level entries: ${entries.length}\n`;
           summary += `Detected project type: ${markers.packageJson ? "Node.js/TS" : markers.cargoToml ? "Rust" : markers.pyProject ? "Python" : markers.goMod ? "Go" : "Unknown"}\n`;
-          summary += `Key files found: ${Object.entries(markers).filter(([_, v]) => v !== undefined).map(([k]) => k).join(", ")}\n`;
+          summary += `Key files found: ${Object.entries(markers).filter(([, v]) => v !== undefined).map(([k]) => k).join(", ")}\n`;
           summary += `\nDirectory map:\n${entries.map(e => `${e.is_dir ? "📁" : "📄"} ${e.name}`).join("\n")}`;
           
           return { ok: true, output: summary };

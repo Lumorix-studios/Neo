@@ -2,7 +2,7 @@
  * Author: madhusudhan
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   ACCENT_SWATCHES,
   DEFAULT_UI_SETTINGS,
@@ -606,15 +606,19 @@ export default function SettingsPanel({
     };
   }, [buildsInfoOpen]);
 
+  /** Seed the drafts from the current settings each time the panel opens. An
+   *  effect event so the `[open]` dependency stays authoritative and editing a
+   *  draft is never clobbered by an unrelated settings change. */
+  const seedDrafts = useEffectEvent(() => {
+    setBgDraft(settings.customBackground ?? resolveThemeVars(settings)["--bg-base"]);
+    setBgBrightness(settings.bgBrightness ?? 0);
+    setSection(initialSection ?? "appearance");
+    setShowLocalModels(false);
+    setShowAiKey(false);
+  });
+
   useEffect(() => {
-    if (open) {
-      setBgDraft(settings.customBackground ?? resolveThemeVars(settings)["--bg-base"]);
-      setBgBrightness(settings.bgBrightness ?? 0);
-      setSection(initialSection ?? "appearance");
-      setShowLocalModels(false);
-      setShowAiKey(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (open) seedDrafts();
   }, [open]);
 
   // Jump to a requested section while the panel is already open (e.g. Ctrl+B).

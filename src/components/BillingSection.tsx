@@ -3,12 +3,12 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 /**
- * Billing — the subscription tab (free → pro checkout).
+ * Billing — the subscription tab (free -> pro checkout).
  *
  * Renders plan cards, runs the checkout against the `billing` edge function
  * (src/lib/billing.ts), polls the order and refreshes the account when the
  * payment lands. The "Payment method" box is a deliberate placeholder: real
- * providers (Stripe / Razorpay / …) are wired into the edge function and the
+ * providers (Stripe / Razorpay / ...) are wired into the edge function and the
  * `checkoutUrl` it returns — this UI needs no changes for that.
  */
 
@@ -44,10 +44,9 @@ const CHECKOUT_INTERVAL_MS = 2000;
 const CHECKOUT_MAX_ATTEMPTS = 30; // ~60 s of polling before giving up
 
 function formatAmount(cents: number, currency: string): string {
-  const symbol = currency.toLowerCase() === "usd" ? "$" : `${currency.toUpperCase()} `;
-  return `${symbol}${(cents / 100).toFixed(2)}`;
+  const symbol = currency.toLowerCase() === "usd" ? "$" : currency.toUpperCase() + " ";
+  return symbol + (cents / 100).toFixed(2);
 }
-
 
 const BillingSection = memo(function BillingSection({
   account,
@@ -70,10 +69,12 @@ const BillingSection = memo(function BillingSection({
   const isPro = plan === "pro" || plan === "team" || plan === "enterprise" || plan === "admin" || plan === "paid";
   const purchasedPlan: PaidPlan = "pro";
 
-  /** Poll the created order until it settles or the attempts run out. */
+  /** Poll the created order until it settles or the attempts run out. The
+   *  recursion lives in a nested `tick` (rather than the callback calling
+   *  itself) so the value is declared before it is read. */
   const poll = useCallback(
     (orderId: string, attemptsLeft: number) => {
-      pollTimer.current = setTimeout(async () => {
+      const tick = async (remaining: number) => {
         try {
           const next = await pollOrder(orderId);
           setOrder(next);
@@ -83,21 +84,22 @@ const BillingSection = memo(function BillingSection({
             return;
           }
           if (next.status === "failed" || next.status === "cancelled") {
-            setCheckout({ phase: "error", message: `Payment ${next.status}. No charge was kept.` });
+            setCheckout({ phase: "error", message: "Payment " + next.status + ". No charge was kept." });
             return;
           }
-          if (attemptsLeft <= 1) {
+          if (remaining <= 1) {
             setCheckout({
               phase: "error",
               message: "Still waiting for the payment to confirm — reopen Billing to poll again.",
             });
             return;
           }
-          poll(orderId, attemptsLeft - 1);
+          pollTimer.current = setTimeout(() => void tick(remaining - 1), CHECKOUT_INTERVAL_MS);
         } catch (e) {
           setCheckout({ phase: "error", message: e instanceof Error ? e.message : String(e) });
         }
-      }, CHECKOUT_INTERVAL_MS);
+      };
+      pollTimer.current = setTimeout(() => void tick(attemptsLeft), CHECKOUT_INTERVAL_MS);
     },
     [onAccountRefresh]
   );
@@ -121,6 +123,12 @@ const BillingSection = memo(function BillingSection({
         }
         setCheckout({ phase: "processing", orderId: res.orderId, testMode: res.testMode });
         poll(res.orderId, CHECKOUT_MAX_ATTEMPTS);
+      } catch (e) {
+        setCheckout({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    [account, onAccountRefresh, poll]
+  );
 
   if (!account) {
     return (
@@ -173,6 +181,11 @@ const BillingSection = memo(function BillingSection({
         <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2.5">
           <IoTimeOutline className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <p className="text-[11.5px] leading-4 text-amber-300/95">
+            Waiting for payment confirmation{order ? " (order " + order.id.slice(0, 8) + "\u2026)" : ""}.
+            {checkout.testMode && " Test mode is on — no real charge is made."}
+          </p>
+        </div>
+      )}
 
       {/* Plan cards */}
       <div className="grid grid-cols-1 gap-2 pb-3">
@@ -210,7 +223,7 @@ const BillingSection = memo(function BillingSection({
                 style={{ background: "var(--accent)", color: "var(--on-accent)" }}
               >
                 <IoFlashOutline className="h-4 w-4" />
-                {checkout.phase === "creating" ? "Starting checkout…" : `Upgrade to ${PLAN_DISPLAY[purchasedPlan].name}`}
+                {checkout.phase === "creating" ? "Starting checkout…" : "Upgrade to " + PLAN_DISPLAY[purchasedPlan].name}
               </button>
             )
           }
@@ -224,6 +237,18 @@ const BillingSection = memo(function BillingSection({
             compact
             features={[]}
             cta={
+              <button
+                type="button"
+                disabled={checkout.phase === "creating" || checkout.phase === "processing"}
+                onClick={() => void startCheckout(p)}
+                className="w-full rounded-md border border-(--border-strong) px-3 py-1.5 text-[11.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
+              >
+                Choose {PLAN_DISPLAY[p].name}
+              </button>
+            }
+          />
+        ))}
+      </div>
 
       {/* Payment-method placeholder — real providers render here later. */}
       {!isPro && checkout.phase !== "done" && (
@@ -292,9 +317,10 @@ function PlanCard({
 }) {
   return (
     <div
-      className={`rounded-md border p-3 ${
-        highlight ? "border-[var(--accent)]/50 bg-(--fill-1)" : "border-(--border) bg-(--fill-1)"
-      }`}
+      className={
+        "rounded-md border p-3 " +
+        (highlight ? "border-[var(--accent)]/50 bg-(--fill-1)" : "border-(--border) bg-(--fill-1)")
+      }
     >
       <div className="flex items-baseline justify-between">
         <p className="text-[13px] font-semibold text-[var(--text-primary)]">
@@ -333,29 +359,3 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 export default BillingSection;
-
-              <button
-                type="button"
-                disabled={checkout.phase === "creating" || checkout.phase === "processing"}
-                onClick={() => void startCheckout(p)}
-                className="w-full rounded-md border border-(--border-strong) px-3 py-1.5 text-[11.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
-              >
-                Choose {PLAN_DISPLAY[p].name}
-              </button>
-            }
-          />
-        ))}
-      </div>
-
-            Waiting for payment confirmation{order ? ` (order ${order.id.slice(0, 8)}…)` : ""}.
-            {checkout.testMode && " Test mode is on — no real charge is made."}
-          </p>
-        </div>
-      )}
-
-      } catch (e) {
-        setCheckout({ phase: "error", message: e instanceof Error ? e.message : String(e) });
-      }
-    },
-    [account, onAccountRefresh, poll]
-  );

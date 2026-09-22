@@ -1,0 +1,28 @@
+src/components/BillingSection.tsx(175,12): error TS17008: JSX element 'p' has no corresponding closing tag.
+src/components/BillingSection.tsx(229,7): error TS1005: '}' expected.
+src/components/BillingSection.tsx(229,8): error TS1005: '...' expected.
+src/components/BillingSection.tsx(264,8): error TS1005: '...' expected.
+src/components/BillingSection.tsx(269,5): error TS1003: Identifier expected.
+src/components/BillingSection.tsx(271,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/BillingSection.tsx(283,1): error TS1109: Expression expected.
+src/components/BillingSection.tsx(284,7): error TS1005: '}' expected.
+src/components/BillingSection.tsx(292,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/BillingSection.tsx(293,3): error TS1109: Expression expected.
+src/components/BillingSection.tsx(325,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/BillingSection.tsx(327,47): error TS1005: '}' expected.
+src/components/BillingSection.tsx(327,65): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/BillingSection.tsx(328,3): error TS1109: Expression expected.
+src/components/BillingSection.tsx(333,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/BillingSection.tsx(345,13): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/BillingSection.tsx(346,12): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/components/BillingSection.tsx(347,11): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/BillingSection.tsx(350,13): error TS1005: ')' expected.
+src/components/BillingSection.tsx(352,13): error TS17002: Expected corresponding JSX closing tag for 'div'.
+src/components/BillingSection.tsx(353,9): error TS1005: ')' expected.
+src/components/BillingSection.tsx(354,7): error TS1109: Expression expected.
+src/components/BillingSection.tsx(354,8): error TS1128: Declaration or statement expected.
+src/components/BillingSection.tsx(356,7): error TS1128: Declaration or statement expected.
+src/components/BillingSection.tsx(356,9): error TS1005: 'try' expected.
+src/components/BillingSection.tsx(359,5): error TS1128: Declaration or statement expected.
+src/components/BillingSection.tsx(359,6): error TS1128: Declaration or statement expected.
+src/components/BillingSection.tsx(361,3): error TS1128: Declaration or statement expected.

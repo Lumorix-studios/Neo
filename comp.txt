@@ -1,0 +1,27 @@
+SKIP  components\BlurText.tsx
+      - Found 1 error: 
+        40 |   animationFrom, |   41 |   animationTo, | > 42 |   easing = (t: number) => t, |   43 |   onAnimationComplete,
+OK    components\ChatHistorySidebar.tsx
+OK    components\ClickSpark.tsx
+OK    components\CommandPalette.tsx
+OK    components\ErrorTab.tsx
+OK    components\InfoPanel.tsx
+SKIP  components\LocalModels.tsx
+      - Found 4 errors: 
+        77 |     setStarting(true); |    78 |     setError(null); | >  79 |     try { | >  80 |       const status = await startOllamaServer();
+SKIP  components\Noise.tsx
+      - Found 1 error: 
+        61 |         drawGrain(); |   62 |       } | > 63 |       frame++; |   64 |       animationId = window.requestAnimationFrame(loop);
+OK    components\PixelTransition.tsx
+OK    components\PrivacyPolicy.tsx
+SKIP  components\SideRays.tsx
+      - Found 1 error: 
+        242 |             if (loseCtx) loseCtx.loseContext(); |   243 |             const canvas = renderer.gl.canvas; | > 244 |             if (canvas && canvas.parentNode) canvas.parentNode.removeChild(canvas); |   245 |           } catch {
+OK    components\StarBorder.tsx
+OK    components\StatusBar.tsx
+OK    components\Tab2.tsx
+OK    components\TextType.tsx
+OK    components\TopMenu.tsx
+OK    components\WindowControls.tsx
+
+failures=4

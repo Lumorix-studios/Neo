@@ -89,6 +89,13 @@ async function settleOrder(
   if (error) return { ok: false, error: error.message };
   // Nothing updated → already settled (or unknown id). Both are fine for
   // idempotency — the buyer was promoted on the first settle.
+  if (!updated) return { ok: true };
+  const promoteError = await promoteBuyer(admin, {
+    user_id: updated.user_id,
+    plan: updated.plan ?? "pro",
+  });
+  return promoteError ? { ok: false, error: promoteError } : { ok: true };
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -140,10 +147,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ error: "Unsupported webhook status." }, 400);
     }
 
-  if (!updated) return { ok: true };
-  const promoteError = await promoteBuyer(admin, {
-    user_id: updated.user_id,
-
     // ── User paths (JWT required) ───────────────────────────────────────────
     const authHeader = req.headers.get("Authorization") ?? "";
     if (!authHeader) return json({ error: "Missing authorization." }, 401);
@@ -166,8 +169,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // GET ?order=<id> — poll checkout status. Promotes the buyer on the first
     // poll that sees the order paid (normally the webhook settled it; this is
     // the belt-and-braces path so the client never waits forever).
+    // The client sends the order id as a header (supabase-js functions.invoke
+    // has no query-string option); ?order= is kept for curl/manual calls.
     if (req.method === "GET") {
-      const orderId = (new URL(req.url).searchParams.get("order") ?? "").trim();
+      const url = new URL(req.url);
+      const orderId = (
+        req.headers.get("x-neo-order") ?? url.searchParams.get("order") ?? ""
+      ).trim();
       if (!orderId) return json({ error: "Missing order id." }, 400);
       const { data: order, error } = await admin
         .from("payment_orders")
@@ -186,6 +194,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .maybeSingle();
         if (!profile || profile.plan === "free" || !profile.byok_enabled) {
           const promoteError = await promoteBuyer(admin, {
+            user_id: order.user_id,
+            plan: order.plan ?? "pro",
+          });
+          if (promoteError) return json({ error: promoteError }, 500);
+        }
+      }
+      return json({ order });
+    }
 
     if (req.method === "POST") {
       const body = (await req.json()) as { action?: string; plan?: string };
@@ -250,18 +266,3 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
-
-            user_id: order.user_id,
-            plan: order.plan ?? "pro",
-          });
-          if (promoteError) return json({ error: promoteError }, 500);
-        }
-      }
-      return json({ order });
-    }
-
-    plan: updated.plan ?? "pro",
-  });
-  return promoteError ? { ok: false, error: promoteError } : { ok: true };
-}
-

@@ -4,9 +4,9 @@
  */
 import {
   memo,
+  useCallback,
   useDeferredValue,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type RefObject,
@@ -112,6 +112,36 @@ function offsetToLineCol(text: string, offset: number): { line: number; col: num
   return { line: lines.length - 1, col: lines[lines.length - 1].length };
 }
 
+export interface FindMark {
+  key: number;
+  top: number;
+  left: number;
+  width: number;
+}
+
+/** Monospace-positioned highlight marks for every match. Kept at module scope
+ *  (pure, no component state) so the React Compiler can memoize the call
+ *  without a hand-written `useMemo`. */
+function collectFindMarks(
+  active: boolean,
+  matches: Array<{ start: number; end: number }>,
+  content: string,
+  charW: number,
+  lineHeight: number
+): FindMark[] {
+  if (!active || matches.length === 0) return [];
+  return matches.slice(0, 500).map((m) => {
+    const startPt = offsetToLineCol(content, m.start);
+    const endPt = offsetToLineCol(content, m.end);
+    return {
+      key: m.start,
+      top: PAD_TOP + startPt.line * lineHeight,
+      left: 16 + startPt.col * charW,
+      width: Math.max(3, (endPt.col - startPt.col) * charW),
+    };
+  });
+}
+
 interface LineNumberGutterProps {
   lineCount: number;
   width: number;
@@ -198,74 +228,12 @@ export default function CodeEditor({
 
   const activeContent = active?.content ?? "";
   const activeLang = active ? langOf(active.path) : "text";
-
-  // Report the caret to the parent (status bar) whenever it moves.
-  useEffect(() => {
-    onCursorChange?.({ line: cursor.line + 1, col: cursor.col + 1 });
-  }, [cursor.line, cursor.col, onCursorChange]);
-
-  // Tokenize off the critical typing path: useDeferredValue lets the textarea
-  // (and its caret) update immediately while re-highlighting large files
-  // catches up in a low-priority render instead of blocking the keystroke.
-  const deferredContent = useDeferredValue(activeContent);
-  const highlighted = useMemo(
-    () => highlightCode(deferredContent, activeLang),
-    [deferredContent, activeLang]
-  );
-  const lineCount = useMemo(() => activeContent.split("\n").length, [activeContent]);
-  const gutterDigits = Math.max(2, String(lineCount).length);
-
-  // Reset scroll + cursor bookkeeping whenever the user switches tabs. Every
-  // visual layer (textarea, highlight <pre>, gutter, overlay) is re-synced —
-  // otherwise a previously scrolled layer stays offset and the syntax appears
-  // shifted relative to the caret.
-  useEffect(() => {
-    setFindOpen(false);
-    setGoToOpen(false);
-    setCtxMenu(null);
-    setCursor({ line: 1, col: 1, sel: 0 });
-    scrollTopRef.current = 0;
-    const raf = requestAnimationFrame(() => {
-      const el = taRef.current;
-      if (el) {
-        el.scrollTop = 0;
-        el.scrollLeft = 0;
-      }
-      applyScrollTransforms();
-    });
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePath]);
-
-  // Jump to a requested file+line (problems panel / git panel clicks).
-  useEffect(() => {
-    if (!reveal || !activePath || reveal.path !== activePath) return;
-    const el = taRef.current;
-    if (!el) return;
-    const target = Math.max(0, (reveal.line - 4) * LINE_HEIGHT);
-    el.scrollTop = target;
-    scrollTopRef.current = el.scrollTop;
-    applyScrollTransforms();
-    setCursor({ line: reveal.line, col: 1, sel: 0 });
-    el.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reveal, activePath]);
-
-  const syncCursor = () => {
-    const el = taRef.current;
-    if (!el) return;
-    const before = el.value.slice(0, el.selectionStart);
-    const lines = before.split("\n");
-    setCursor({
-      line: lines.length,
-      col: lines[lines.length - 1].length + 1,
-      sel: el.selectionEnd - el.selectionStart,
-    });
-  };
+  const lineCount = activeContent.split("\n").length;
 
   /** Align every visual layer with the textarea's scroll position using
-   *  direct DOM writes — no React re-render per scroll tick. */
-  const applyScrollTransforms = () => {
+   *  direct DOM writes — no React re-render per scroll tick. Declared before
+   *  the effects below so they can reference it without hoisting. */
+  const applyScrollTransforms = useCallback(() => {
     const st = scrollTopRef.current;
     const el = taRef.current;
     if (preRef.current) {
@@ -278,6 +246,71 @@ export default function CodeEditor({
     if (overlayRef.current) {
       overlayRef.current.style.transform = `translateY(${-st}px)`;
     }
+  }, []);
+
+  // Report the caret to the parent (status bar) whenever it moves.
+  useEffect(() => {
+    onCursorChange?.({ line: cursor.line + 1, col: cursor.col + 1 });
+  }, [cursor.line, cursor.col, onCursorChange]);
+
+  // Tokenize off the critical typing path: useDeferredValue lets the textarea
+  // (and its caret) update immediately while re-highlighting large files
+  // catches up in a low-priority render instead of blocking the keystroke.
+  const deferredContent = useDeferredValue(activeContent);
+  const highlighted = highlightCode(deferredContent, activeLang);
+  const gutterDigits = Math.max(2, String(lineCount).length);
+
+  // Reset scroll + cursor bookkeeping whenever the user switches tabs. The
+  // state half of the reset happens during render (the sanctioned alternative
+  // to a setState-in-effect); the DOM half stays in the effect below.
+  const [prevActivePath, setPrevActivePath] = useState(activePath);
+  if (activePath !== prevActivePath) {
+    setPrevActivePath(activePath);
+    setFindOpen(false);
+    setGoToOpen(false);
+    setCtxMenu(null);
+    setCursor({ line: 1, col: 1, sel: 0 });
+  }
+
+  // Every visual layer (textarea, highlight <pre>, gutter, overlay) is
+  // re-synced on tab switch — otherwise a previously scrolled layer stays
+  // offset and the syntax appears shifted relative to the caret.
+  useEffect(() => {
+    scrollTopRef.current = 0;
+    const raf = requestAnimationFrame(() => {
+      const el = taRef.current;
+      if (el) {
+        el.scrollTop = 0;
+        el.scrollLeft = 0;
+      }
+      applyScrollTransforms();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activePath, applyScrollTransforms]);
+
+  // Jump to a requested file+line (problems panel / git panel clicks).
+  useEffect(() => {
+    if (!reveal || !activePath || reveal.path !== activePath) return;
+    const el = taRef.current;
+    if (!el) return;
+    const target = Math.max(0, (reveal.line - 4) * LINE_HEIGHT);
+    el.scrollTop = target;
+    scrollTopRef.current = el.scrollTop;
+    applyScrollTransforms();
+    setCursor({ line: reveal.line, col: 1, sel: 0 });
+    el.focus();
+  }, [reveal, activePath, applyScrollTransforms, LINE_HEIGHT]);
+
+  const syncCursor = () => {
+    const el = taRef.current;
+    if (!el) return;
+    const before = el.value.slice(0, el.selectionStart);
+    const lines = before.split("\n");
+    setCursor({
+      line: lines.length,
+      col: lines[lines.length - 1].length + 1,
+      sel: el.selectionEnd - el.selectionStart,
+    });
   };
 
   // Keep the active-line band and the highlighted gutter row on the cursor's
@@ -482,29 +515,37 @@ export default function CodeEditor({
   };
 
   // Find & replace: match offsets for the current query.
-  const matches = useMemo(() => computeMatches(activeContent, findQuery, caseSensitive), [
-    activeContent,
-    findQuery,
-    caseSensitive,
-  ]);
+  const matches = computeMatches(activeContent, findQuery, caseSensitive);
+
+  /** Recompute matches for a query imperatively and jump to the first hit.
+   *  Done in the callers rather than an effect so the bar never flashes a
+   *  stale match index and no state is written from an effect body. */
+  const jumpToFirstMatch = (query: string, cs: boolean) => {
+    const el = taRef.current;
+    const found = computeMatches(activeContent, query, cs);
+    if (!el || found.length === 0) {
+      setMatchIndex(-1);
+      return;
+    }
+    const m = found[0];
+    setMatchIndex(0);
+    el.focus();
+    el.setSelectionRange(m.start, m.end);
+    const { line } = offsetToLineCol(activeContent, m.start);
+    el.scrollTop = Math.max(0, (line - 2) * LINE_HEIGHT);
+    scrollTopRef.current = el.scrollTop;
+    applyScrollTransforms();
+  };
 
   // Monospace-positioned highlight marks for every match (only when not wrapping;
   // the active match is also selected in the textarea, which always works).
-  const findMarks = useMemo(() => {
-    if (!findOpen || !findQuery || WORD_WRAP || matches.length === 0) return [];
-    const charW = FONT_SIZE * 0.6;
-    return matches.slice(0, 500).map((m) => {
-      const startPt = offsetToLineCol(activeContent, m.start);
-      const endPt = offsetToLineCol(activeContent, m.end);
-      const width = Math.max(3, (endPt.col - startPt.col) * charW);
-      return {
-        key: m.start,
-        top: PAD_TOP + startPt.line * LINE_HEIGHT,
-        left: 16 + startPt.col * charW,
-        width,
-      };
-    });
-  }, [findOpen, findQuery, WORD_WRAP, matches, activeContent, FONT_SIZE, LINE_HEIGHT]);
+  const findMarks = collectFindMarks(
+    findOpen && findQuery !== "" && !WORD_WRAP,
+    matches,
+    activeContent,
+    FONT_SIZE * 0.6,
+    LINE_HEIGHT
+  );
 
   /** Jump the caret to a specific match index (wraps). */
   const goMatch = (idx: number) => {
@@ -556,23 +597,17 @@ export default function CodeEditor({
   const openFind = () => {
     const el = taRef.current;
     if (!el) return;
+    const seed = el.value.slice(el.selectionStart, el.selectionEnd);
     setFindOpen(true);
-    setFindQuery(el.value.slice(el.selectionStart, el.selectionEnd));
+    setFindQuery(seed);
     setMatchIndex(-1);
+    if (seed) jumpToFirstMatch(seed, caseSensitive);
   };
 
   const findOpenRef = useRef(false);
-  findOpenRef.current = findOpen;
-
-  // Whenever the query changes while the bar is open, jump to the first match.
   useEffect(() => {
-    if (!findOpen || !findQuery) {
-      setMatchIndex(-1);
-      return;
-    }
-    if (matches.length > 0) goMatch(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [findOpen, findQuery, caseSensitive]);
+    findOpenRef.current = findOpen;
+  }, [findOpen]);
 
   const crumbs = active ? pathSegments(active.path) : [];
   const visibleCrumbs = crumbs.length > 4 ? ["…", ...crumbs.slice(-3)] : crumbs;
@@ -760,9 +795,15 @@ export default function CodeEditor({
               replaceMode={replaceMode}
               matchCount={matches.length}
               matchIndex={matchIndex}
-              onChangeQuery={setFindQuery}
+              onChangeQuery={(q) => {
+                setFindQuery(q);
+                jumpToFirstMatch(q, caseSensitive);
+              }}
               onChangeReplace={setReplaceQuery}
-              onCaseSensitive={setCaseSensitive}
+              onCaseSensitive={(cs) => {
+                setCaseSensitive(cs);
+                jumpToFirstMatch(findQuery, cs);
+              }}
               onNext={() => goMatch(matchIndex + 1)}
               onPrev={() => goMatch(matchIndex - 1)}
               onReplace={replaceCurrent}

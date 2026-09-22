@@ -24,12 +24,20 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
     cmd.category.toLowerCase().includes(query.toLowerCase())
   );
 
-  useEffect(() => {
+  // Reset the query whenever the palette opens. Done as a render-time
+  // adjustment (the sanctioned "reset state on prop change" pattern) instead of
+  // in an effect, so the empty list is never painted for one frame first.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
       setQuery("");
       setSelectedIndex(0);
-      inputRef.current?.focus();
     }
+  }
+
+  useEffect(() => {
+    if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
 
   useEffect(() => {

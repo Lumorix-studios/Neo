@@ -64,7 +64,10 @@ export default function FindReplaceBar({
             value={query}
             onChange={(e) => onChangeQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") e.shiftKey ? onPrev() : onNext();
+              if (e.key === "Enter") {
+                if (e.shiftKey) onPrev();
+                else onNext();
+              }
               if (e.key === "Escape") { e.stopPropagation(); onClose(); }
             }}
             placeholder="Find"

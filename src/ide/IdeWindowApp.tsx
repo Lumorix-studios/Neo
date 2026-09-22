@@ -5,7 +5,7 @@
 //might be obvious what this file functions as lol
 //Main ide window interface 
 
-import { lazy, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -233,7 +233,8 @@ export default function IdeWindowApp() {
   }, []);
 
   useEffect(() => {
-    void refreshAccount();
+    // Defer the initial refresh off the effect body (no setState-in-effect).
+    const boot = window.setTimeout(() => void refreshAccount(), 0);
     const offAuth = onAuthChanged((user) => {
       setAccount(user);
       if (!user) {
@@ -247,6 +248,7 @@ export default function IdeWindowApp() {
       void refreshAccount();
     });
     return () => {
+      window.clearTimeout(boot);
       offAuth();
       void unlistenAuthBroadcast.then((off) => off());
     };
@@ -305,13 +307,19 @@ export default function IdeWindowApp() {
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
 
+  // Reset per-workspace UI state when the workspace changes (render-time
+  // adjustment — the sanctioned alternative to a setState-in-effect reset).
+  const [prevRoot, setPrevRoot] = useState(workspaceRoot);
+  if (workspaceRoot !== prevRoot) {
+    setPrevRoot(workspaceRoot);
+    if (!workspaceRoot) setGitBranch(null);
+    if (workspaceRoot) setTerminalOpen(false);
+  }
+
   // Poll the git branch for the status bar. Uses the same `run_command`
   // shell-out as the GitPanel — no dedicated backend command needed.
   useEffect(() => {
-    if (!workspaceRoot) {
-      setGitBranch(null);
-      return;
-    }
+    if (!workspaceRoot) return;
     let cancelled = false;
     const fetchBranch = async () => {
       try {
@@ -389,7 +397,9 @@ export default function IdeWindowApp() {
   // Mirror of the open tabs for callbacks that must stay referentially stable
   // (Tauri event listeners, memoized child props, intervals).
   const tabsRef = useRef<EditorTab[]>([]);
-  tabsRef.current = editorTabs;
+  useLayoutEffect(() => {
+    tabsRef.current = editorTabs;
+  });
 
   /** Open a file in an editor tab (fetching content from disk). */
   const openFileInEditor = useCallback(
@@ -451,9 +461,11 @@ export default function IdeWindowApp() {
 
   // Fresh mirrors so the global shortcut handler never goes stale.
   const saveRef = useRef(saveEditorFile);
-  saveRef.current = saveEditorFile;
   const activePathRef = useRef(activeEditorPath);
-  activePathRef.current = activeEditorPath;
+  useLayoutEffect(() => {
+    saveRef.current = saveEditorFile;
+    activePathRef.current = activeEditorPath;
+  });
 
   // ── Global keyboard shortcuts ──────────────────────────────────────────────
   useEffect(() => {
@@ -609,21 +621,23 @@ export default function IdeWindowApp() {
   const activeDirty =
     editorTabs.find((t) => t.path === activeEditorPath)?.dirty ?? false;
 
+  /** Persist a batch of paths. An effect event so the debounce effect below can
+   *  stay keyed on the tab list and delay settings only, instead of restarting
+   *  on every render because `saveEditorFile` is re-created each time. */
+  const saveDirtyTabs = useEffectEvent((paths: string[]) => {
+    for (const p of paths) void saveEditorFile(p);
+  });
+
   // Auto-save: debounce-save every dirty editor tab after the configured delay.
   useEffect(() => {
     if (!uiSettings.autoSave) return;
     const dirty = editorTabs.filter((t) => t.dirty);
     if (dirty.length === 0) return;
     const id = window.setTimeout(() => {
-      for (const t of dirty) void saveEditorFile(t.path);
+      saveDirtyTabs(dirty.map((t) => t.path));
     }, uiSettings.autoSaveDelayMs);
     return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorTabs, uiSettings.autoSave, uiSettings.autoSaveDelayMs]);
-  useEffect(() => {
-    // Start with the terminal panel closed when a workspace loads.
-    if (workspaceRoot) setTerminalOpen(false);
-  }, [workspaceRoot]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--bg-editor)] text-[var(--text-primary)]">
@@ -789,7 +803,7 @@ export default function IdeWindowApp() {
             root={workspaceRoot}
             onClose={closeGit}
             onOpenFile={(p: string) =>
-              void openFileInEditor(`${workspaceRoot.replace(/[\/]+$/, "")}/${p}`)
+              void openFileInEditor(`${workspaceRoot.replace(/[\\/]+$/, "")}/${p}`)
             }
           />
         )}

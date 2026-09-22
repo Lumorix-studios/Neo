@@ -101,9 +101,8 @@ export default function BottomPanel({
       setActiveTerm(id);
     } catch (e) {
       setTermError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSpawning(false);
     }
+    setSpawning(false);
   }, [root]);
 
   const killTerm = useCallback(async (id: number) => {

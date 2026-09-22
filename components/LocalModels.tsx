@@ -70,7 +70,9 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
   }, []);
 
   useEffect(() => {
-    void refreshStatus();
+    // Deferred one microtask so the fetch's setState calls never run
+    // synchronously inside the effect body (cascading-render lint rule).
+    void Promise.resolve().then(() => refreshStatus());
   }, [refreshStatus]);
 
   const handleStart = async () => {
@@ -103,10 +105,13 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start the Ollama server.");
-    } finally {
-      setStarting(false);
-      setTimeout(() => setSuccess(null), 4000);
     }
+    // Trailing statements instead of `finally`: try/finally is a construct the
+    // React Compiler bails out on, which would opt this whole component out of
+    // automatic memoization. The catch above never rethrows, so behaviour is
+    // identical.
+    setStarting(false);
+    setTimeout(() => setSuccess(null), 4000);
   };
 
   const handleStop = async () => {
@@ -131,10 +136,9 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to stop the Ollama server.");
-    } finally {
-      setStopping(false);
-      setTimeout(() => setSuccess(null), 4000);
     }
+    setStopping(false);
+    setTimeout(() => setSuccess(null), 4000);
   };
 
   const handlePull = async (name: string) => {
@@ -156,10 +160,9 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to pull model "${modelName}".`);
-    } finally {
-      setPulling(null);
-      setTimeout(() => setSuccess(null), 3000);
     }
+    setPulling(null);
+    setTimeout(() => setSuccess(null), 3000);
   };
 
   const handleDelete = async (name: string) => {
@@ -176,10 +179,9 @@ export default function LocalModels({ onClose, onSelectModel, selectedModel }: P
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to delete model "${name}".`);
-    } finally {
-      setDeleting(null);
-      setTimeout(() => setSuccess(null), 3000);
     }
+    setDeleting(null);
+    setTimeout(() => setSuccess(null), 3000);
   };
 
   const handleSelect = async (name: string) => {
