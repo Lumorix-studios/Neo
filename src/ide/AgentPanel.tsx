@@ -255,7 +255,8 @@ export default function AgentPanel({
     history: Message[],
     systemPrompt: string,
     signal: AbortSignal,
-    enableTools = true
+    enableTools = true,
+    mcpTools?: Map<string, McpToolEntry>
   ): Promise<{ text: string; nativeCalls: ToolCall[] }> => {
     const s = getProviderSpec(settingsRef.current);
     const endpoint = s.buildUrl(settingsRef.current);
@@ -264,7 +265,17 @@ export default function AgentPanel({
       ...buildAuthHeaders(s, settingsRef.current.apiKey),
     };
     const effective: AISettings = { ...settingsRef.current, systemPrompt };
-    const body = s.buildBody(effective, history, { enableTools });
+    const additionalTools = mcpTools
+      ? [...mcpTools.entries()].map(([name, tool]) => ({
+          name,
+          description: tool.description ?? `MCP tool ${tool.tool}`,
+          parameters:
+            tool.schema && typeof tool.schema === "object"
+              ? tool.schema
+              : { type: "object", properties: {}, required: [] },
+        }))
+      : undefined;
+    const body = s.buildBody(effective, history, { enableTools, additionalTools });
 
     // Token budget guard — pause the agent before spending when a configured
     // limit (Settings → Dashboard) would be exceeded by this request.
@@ -403,7 +414,7 @@ export default function AgentPanel({
     if (!round && nativeAcc.length === 0 && !signal.aborted) {
       try {
         const nonStreamBody = {
-          ...(s.buildBody(effective, history, { enableTools }) as JsonDict),
+          ...(s.buildBody(effective, history, { enableTools, additionalTools }) as JsonDict),
           stream: false,
         } as JsonDict;
         const nonStreamUrl = endpoint.includes("streamGenerateContent")
@@ -501,6 +512,7 @@ Rules:
             map.set(`mcp_${s.name}_${t.name}`, {
               server: s,
               tool: t.name,
+              description: t.description,
               schema: t.inputSchema,
               readOnly: t.readOnly,
             });
@@ -606,7 +618,13 @@ Rules:
     const FILE_MUTATORS = new Set(["write_file", "append_file", "replace_in_file"]);
 
       while (!abortCtrl.signal.aborted) {
-        const round = await streamRound(agentHistory, systemPrompt, abortCtrl.signal);
+        const round = await streamRound(
+          agentHistory,
+          systemPrompt,
+          abortCtrl.signal,
+          true,
+          mcpTools
+        );
         if (abortCtrl.signal.aborted) break;
         const raw = round.text;
 

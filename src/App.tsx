@@ -1597,6 +1597,7 @@ ${promptSuffix}` : ""}`,
           mcpTools.set(`mcp_${server.name}_${t.name}`, {
             server,
             tool: t.name,
+            description: t.description,
             schema: t.inputSchema,
             readOnly: t.readOnly,
           });
