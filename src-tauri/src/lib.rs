@@ -1753,6 +1753,56 @@ fn mcp_stdio_stop(state: tauri::State<'_, McpState>, id: String) -> Result<(), S
     Ok(())
 }
 
+#[tauri::command]
+fn get_app_version() -> Result<String, String> {
+    Ok(tauri::env!("CARGO_PKG_VERSION").to_string())
+}
+
+#[tauri::command]
+async fn download_file(url: String, app: tauri::AppHandle) -> Result<String, String> {
+    use std::fs;
+    use std::path::PathBuf;
+    let mut client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("download failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("server returned {}", resp.status()));
+    }
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("read body failed: {e}"))?;
+    let mut tmp = PathBuf::from(
+        app.path()
+            .appcache_dir()
+            .map_err(|e| format!("cache dir: {e}"))?,
+    );
+    fs::create_dir_all(&tmp).map_err(|e| format!("create cache: {e}"))?;
+    let filename = url.split('/').next_back().unwrap_or("update-installer.exe");
+    tmp.push(filename);
+    fs::write(&tmp, &bytes).map_err(|e| format!("write file: {e}"))?;
+    Ok(tmp.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn launch_downloaded(path: String) -> Result<(), String> {
+    use std::process::Command;
+    // Fire-and-forget: launch the installer and return immediately.  Waiting
+    // here would freeze the WebView while the user browses the installer UI
+    // (especially during UAC elevation on Windows).
+    let _child = Command::new("cmd")
+        .arg("/c")
+        .arg("start")
+        .arg("")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("launch failed: {e}"))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1769,12 +1819,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ServerState(Mutex::new(None)))
         .manage(TerminalState::default())
         .manage(McpState(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             save_state,
             load_state,
+            get_app_version,
+            download_file,
+            launch_downloaded,
             check_ollama_installed,
             check_ollama_running,
             ollama_request,

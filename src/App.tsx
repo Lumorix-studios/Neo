@@ -9,7 +9,7 @@
 //cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
 //also cant assure you this will always stay opensource
 //            9/18/26
-import { lazy, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { lazy, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -47,6 +47,13 @@ import {
   type Profile as AccountProfile,
 } from "./lib/auth";
 import * as cloudSync from "./lib/cloudSync";
+import {
+  checkForUpdate,
+  type UpdateCheckResult,
+  setDismissedUntil,
+  clearDismissedUntil,
+} from "./lib/updateCheck";
+import UpdateNotification from "./components/UpdateNotification";
 import { useDeepLinkAuth } from "./lib/deepLink";
 import * as byok from "./lib/byok";
 import { debugLog } from "./debugLog";
@@ -208,6 +215,21 @@ function deriveTitle(messages: Message[]): string {
 }
 
 const SHARED_WS_KEY = "neo.ide.workspaceRoot";
+const APP_VERSION = invoke<string>("get_app_version");
+
+/** Fire one background update check on mount so the notification banner can
+ *  appear without the user having to open the Help → Releases panel first. */
+useEffect(() => {
+  let cancelled = false;
+  const run = async () => {
+    const r = await checkForUpdate(APP_VERSION);
+    if (!cancelled && r.isUpdateAvailable) {
+      setUpdateNotification({ result: r, dismissedAt: null });
+    }
+  };
+  run();
+  return () => { cancelled = true; };
+}, []);
 
 /** Icon button for the VS Code-style activity bar rail. */
 function RailButton({
@@ -335,6 +357,11 @@ export default function App() {
   // tab, status-bar stats) re-evaluates immediately. Value itself is unused.
   const [, setExtensionTick] = useState(0);
   const [Tab2Open, setTab2Open] = useState(false);
+  // In-app update notification banner (from GitHub releases check).
+  const [updateNotification, setUpdateNotification] = useState<{
+    result: UpdateCheckResult;
+    dismissedAt: number | null;
+  } | null>(null);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);

@@ -41,13 +41,20 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
-    }
+    },
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "deep-link": {
       "desktop": {
         "schemes": ["agenticcoder"]
       }
+    },
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://releases.lumorix-studios.com/neo/{{target}}/{{arch}}/{{current_version}}"
+      ]
     }
   }
 }

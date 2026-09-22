@@ -3,11 +3,67 @@
 
 
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { useErrorHandler } from "../src/errorContext";
 import WindowControls from "./WindowControls";
-import { IoChevronForward, IoSearch } from "react-icons/io5";
+import { IoChevronForward, IoSearch, IoLogoWindows,IoLogoApple,IoLogoTux  } from "react-icons/io5";
+import {
+  type ReleaseInfo,
+  type ReleaseAsset,
+  RELEASE_URL,
+  RELEASES_PAGE,
+  REPO_PAGE,
+  findPlatformAsset,
+  checkForUpdate,
+  type UpdateCheckResult,
+} from "../src/lib/updateCheck";
+type OsKey = "windows" | "linux" | "macos" | "other";
+function detectOs(): OsKey {
+  if (typeof navigator === "undefined") return "other";
+  const userAgent = navigator.userAgent;
+  if (userAgent.includes("Windows")) return "windows";
+  if (userAgent.includes("Linux")) return "linux";
+  if (userAgent.includes("Mac")) return "macos";
+  return "other";
+}
+const OS_LABEL :Record<OsKey, string> = {
+  windows : "Windows",
+  linux  : "Linux",
+  macos : "macOS",
+  other : "Other"
+}
+function formatSize(bytes : number ) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+}
+function formatDate(iso?: string) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year:"numeric",
+      month : "short",
+      day:"numeric",
 
+    });
+  }catch {return null;
+  }
+}
+function findAsset(assets : ReleaseAsset[], ext :string){
+  return assets.find((a) => a.name.toLowerCase().endsWith(ext.toLowerCase()));
+}
+function PlatformIcon({ os }: { os: OsKey }) {
+  if (os === "windows") {
+    return <IoLogoWindows className="h-5 w-5" />;
+  }
+
+  if (os === "macos") {
+    return <IoLogoApple className="h-5 w-5" />;
+  }
+
+  return <IoLogoTux className="h-5 w-5" />;
+}
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
   onOpenPrivacyPolicy: () => void;
@@ -21,6 +77,9 @@ interface TopMenuProps {
   onOpenCommandPalette?: () => void;
   /** Opens the full IDE in its own window (Cursor-style "IDE →"). */
   onOpenIdeWindow?: () => void;
+  /** Fires a background check for a newer release and, when one is found,
+   *  causes the app to show the in-app update notification. */
+  onCheckForUpdates?: () => void;
   /** Optional right-aligned slot (model pill, actions) rendered in the title bar. */
   right?: ReactNode;
   /** Trigger a deep project analysis by the agent. */
@@ -58,6 +117,76 @@ export default function TopMenu({
   pinnedPaths,
   right,
 }: TopMenuProps) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [release, setRelease] = useState<ReleaseInfo | null>(null);
+
+  const os = useMemo(() => detectOs(), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const load = async () => {
+      try {
+        const response = await fetch(RELEASE_URL, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Could not reach the releases service.");
+        }
+
+        const data = (await response.json()) as ReleaseInfo;
+
+        if (!cancelled) {
+          setRelease(data);
+        }
+      } catch (err) {
+        if (
+          !cancelled &&
+          !(err instanceof DOMException && err.name === "AbortError")
+        ) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not load release info."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
+
+  const assets = release?.assets ?? [];
+  const version = release ? parseVersion(release.tag_name) : null;
+  const date = formatDate(release?.published_at);
+
+  const exe = findAsset(assets, ".exe");
+  const msi = findAsset(assets, ".msi");
+  const deb = findAsset(assets, ".deb");
+  const rpm = findAsset(assets, ".rpm");
+  const dmg = findAsset(assets, ".dmg");
+
+  const primary =
+    os === "windows"
+      ? exe ?? msi
+      : os === "macos"
+        ? dmg
+        : os === "linux"
+          ? deb ?? rpm
+          : exe ?? msi ?? dmg ?? deb ?? rpm;
+
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { reportError } = useErrorHandler();
@@ -142,6 +271,9 @@ const openPrivacyPolicy = async () => {
         { label: "About & Contact", action: onOpenInfoPanel },
         { label: "Privacy Policy", action: openPrivacyPolicy },
         { label: "Rate Neo", action: onOpenTab2 },
+        ...(onCheckForUpdates
+          ? [{ label: "Check for Updates…", action: onCheckForUpdates }]
+          : []),
       ],
     },
   ];
