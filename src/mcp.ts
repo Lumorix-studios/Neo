@@ -179,7 +179,7 @@ async function rpc(
     return { data: (await res.json()) as JsonRpcResponse, session };
   } catch (e) {
     if (controller.signal.aborted) {
-      throw new Error(`MCP server "${url}" timed out after ${timeoutMs / 1000}s`);
+      throw new Error(`MCP server "${url}" timed out after ${timeoutMs / 1000}s`, { cause: e });
     }
     throw e;
   } finally {
@@ -498,6 +498,7 @@ export async function callMcpTool(
     const isError = Boolean((res.data?.result as Record<string, unknown> | undefined)?.isError);
     return { ok: !isError, output: extractToolOutput(res.data?.result) };
   } catch (e) {
+    if (server.transport === "http") clearHttpCache(server);
     return { ok: false, output: e instanceof Error ? e.message : String(e) };
   }
 }
