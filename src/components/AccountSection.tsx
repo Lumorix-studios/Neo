@@ -165,7 +165,7 @@ const AccountSection = memo(function AccountSection({
 
         {/* BYOK upsell — free plans can unlock it with a Pro subscription. */}
         {profile && !profile.byokEnabled && onOpenBilling && (
-          <div className="mb-3 rounded-md border border-[var(--accent)]/40 bg-(--fill-1) p-3">
+          <div className="mb-3 rounded-md /40 bg-(--fill-1) p-3">
             <p className="pb-1 text-[12px] font-medium text-[var(--text-primary)]">
               Unlock BYOK with Pro
             </p>

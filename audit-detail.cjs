@@ -1,4 +1,8 @@
 /*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use the code.
+ */
+/*
  * Full-detail compiler audit: prints the raw babel-plugin-react-compiler error
  * (with code frames and carets) for one file, so the exact offending
  * expression can be located.

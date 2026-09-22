@@ -803,7 +803,7 @@ export default function IdeWindowApp() {
             root={workspaceRoot}
             onClose={closeGit}
             onOpenFile={(p: string) =>
-              void openFileInEditor(`${workspaceRoot.replace(/[\\/]+$/, "")}/${p}`)
+              void openFileInEditor(`${workspaceRoot.replace(/[/\\]+$/, "")}/${p}`)
             }
           />
         )}

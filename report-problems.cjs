@@ -1,3 +1,7 @@
+/*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use the code.
+ */
 /* Groups the ESLint JSON output by file and rule so the remaining problem
  * count is readable at a glance. Usage: node report-problems.cjs */
 const r = require("./eslint.json");

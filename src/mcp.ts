@@ -15,6 +15,7 @@
  *              by the Rust backend (mcp_stdio_* commands).
  */
 import { invoke } from "@tauri-apps/api/core";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 export interface McpServerConfig {
   id: string;
@@ -124,7 +125,8 @@ async function rpc(
   url: string,
   body: unknown,
   headers: Record<string, string>,
-  sessionId?: string | null
+  sessionId?: string | null,
+  timeoutMs = 15_000
 ): Promise<{ data: JsonRpcResponse | null; session: string | null }> {
   const allHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -133,43 +135,56 @@ async function rpc(
   };
   if (sessionId) allHeaders["Mcp-Session-Id"] = sessionId;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: allHeaders,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const text = (await res.text()).trim();
-      if (text) detail = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-    } catch {
-      /* keep status-only detail */
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const inTauri = Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+    const request = {
+      method: "POST",
+      headers: allHeaders,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    };
+    const res = inTauri ? await tauriFetch(url, request) : await fetch(url, request);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const text = (await res.text()).trim();
+        if (text) detail = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+      } catch {
+        /* keep status-only detail */
+      }
+      throw new Error(`MCP server returned ${detail}`);
     }
-    throw new Error(`MCP server returned ${detail}`);
-  }
 
-  const session = res.headers.get("mcp-session-id");
-  const contentType = res.headers.get("content-type") ?? "";
+    const session = res.headers.get("mcp-session-id");
+    const contentType = res.headers.get("content-type") ?? "";
 
-  if (contentType.includes("text/event-stream")) {
-    // Parse the last `data:` line that carries a JSON-RPC payload.
-    const text = await res.text();
-    let data: JsonRpcResponse | null = null;
-    for (const line of text.split(NL)) {
-      const t = line.trim();
-      if (t.startsWith("data:")) {
-        try {
-          data = JSON.parse(t.slice(5).trim()) as JsonRpcResponse;
-        } catch {
-          /* keep last good */
+    if (contentType.includes("text/event-stream")) {
+      const text = await res.text();
+      let data: JsonRpcResponse | null = null;
+      for (const line of text.split(NL)) {
+        const t = line.trim();
+        if (t.startsWith("data:")) {
+          try {
+            data = JSON.parse(t.slice(5).trim()) as JsonRpcResponse;
+          } catch {
+            /* keep last good */
+          }
         }
       }
+      return { data, session };
     }
-    return { data, session };
-  }
 
-  return { data: (await res.json()) as JsonRpcResponse, session };
+    return { data: (await res.json()) as JsonRpcResponse, session };
+  } catch (e) {
+    if (controller.signal.aborted) {
+      throw new Error(`MCP server "${url}" timed out after ${timeoutMs / 1000}s`);
+    }
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 /* ── stdio transport (local command servers) ───────────────────────────────── */

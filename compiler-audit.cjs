@@ -1,4 +1,8 @@
 /*
+ * Author: madhusudhan
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use the code.
+ */
+/*
  * Compiler audit: runs babel-plugin-react-compiler over the given files with
  * panicThreshold=ALL_ERRORS so *any* bailout ("Compilation Skipped") is thrown
  * instead of being silently ignored. A file that prints OK is guaranteed to be

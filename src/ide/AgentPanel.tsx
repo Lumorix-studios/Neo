@@ -322,8 +322,42 @@ export default function AgentPanel({
     let usageIn = 0;
     let usageOut = 0;
     let sawUsage = false;
-    const show = (text: string) =>
+    let lastPaintAt = 0;
+    const show = (text: string) => {
+      // Rendering Markdown for every provider token makes the UI spend more
+      // time painting than reading the response. Keep the stream responsive
+      // while still updating frequently enough to look live.
+      const now = performance.now();
+      if (now - lastPaintAt < 32) return;
+      lastPaintAt = now;
       setLastAssistant(stabilizeStreamingMarkdown(stripToolCalls(text)));
+    };
+    const showFinal = (text: string) =>
+      setLastAssistant(stabilizeStreamingMarkdown(stripToolCalls(text)));
+
+    const processStreamLine = (rawLine: string) => {
+      let line = rawLine.trim();
+      if (!line || line.startsWith(":")) return;
+      if (line.startsWith("data:")) line = line.slice(5).trim();
+      if (!line || line === "[DONE]") return;
+      try {
+        const json = JSON.parse(line) as JsonDict;
+        ingestNativeChunk(json, nativeAcc);
+        const u = s.extractUsage?.(json);
+        if (u && (u.input != null || u.output != null)) {
+          usageIn += u.input ?? 0;
+          usageOut += u.output ?? 0;
+          sawUsage = true;
+        }
+        const delta = s.extractDelta(json);
+        if (delta) {
+          round += delta;
+          show(round);
+        }
+      } catch {
+        // A partial line remains buffered until the next read.
+      }
+    };
 
     const bodyStream = res.body;
     if (!bodyStream) {
@@ -354,32 +388,13 @@ export default function AgentPanel({
         buffer += decoder.decode(step.value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-        for (let line of lines) {
-          line = line.trim();
-          if (!line || line.startsWith(":")) continue;
-          if (line.startsWith("data:")) line = line.slice(5).trim();
-          if (!line || line === "[DONE]") continue;
-          try {
-            const json = JSON.parse(line) as JsonDict;
-            // Accumulate native function-calling chunks so tool-only rounds
-            // are not lost when no text deltas are emitted.
-            ingestNativeChunk(json, nativeAcc);
-            const u = s.extractUsage?.(json);
-            if (u && (u.input != null || u.output != null)) {
-              usageIn += u.input ?? 0;
-              usageOut += u.output ?? 0;
-              sawUsage = true;
-            }
-            const delta = s.extractDelta(json);
-            if (delta) {
-              round += delta;
-              show(round);
-            }
-          } catch {
-            continue;
-          }
-        }
+        for (const line of lines) processStreamLine(line);
       }
+      // Fetch implementations are allowed to end without a trailing newline.
+      // Processing this remainder is essential for the final text/tool-call
+      // chunk, especially with local Ollama-compatible servers.
+      if (buffer.trim()) processStreamLine(buffer);
+      if (round) showFinal(round);
     } finally {
       reader.releaseLock();
     }
@@ -411,7 +426,7 @@ export default function AgentPanel({
               usageOut = u.output ?? 0;
               sawUsage = true;
             }
-            if (round) show(round);
+            if (round) showFinal(round);
           }
         }
       } catch {
@@ -490,8 +505,14 @@ Rules:
               readOnly: t.readOnly,
             });
           }
-        } catch {
-          /* server offline — skip silently */
+        } catch (e) {
+          // Keep the failure in the prompt so the model does not repeatedly
+          // invent or retry tools from an unavailable server.
+          map.set(`mcp_${s.name}__error`, {
+            server: s,
+            tool: `__error: ${e instanceof Error ? e.message : String(e)}`,
+            schema: undefined,
+          });
         }
       })
     );
@@ -533,15 +554,22 @@ Rules:
       systemPrompt += "\n\nNo folder is open and no file is active in the IDE.";
     }
     const mcpTools = await collectMcpTools();
-    if (mcpTools.size > 0) {
+    const mcpErrors = [...mcpTools.entries()].filter(([, m]) => m.tool.startsWith("__error:"));
+    const availableMcpTools = [...mcpTools.entries()].filter(([, m]) => !m.tool.startsWith("__error:"));
+    if (availableMcpTools.length > 0) {
       systemPrompt += `\n\nMCP tools available (invoke via tool-call markup using the FULL name). Parameters marked (required) MUST be included or the call fails:\n${[
-        ...mcpTools.entries(),
+        ...availableMcpTools,
       ]
         .map(([k, m]) => {
           const sig = formatMcpToolSchema(m.schema);
           return sig ? `- ${k}\n  ${sig}` : `- ${k}`;
         })
         .join(NL)}\n\nMCP call rules:\n- If a call fails naming a missing argument (e.g. "datamodel_type is required", "studio_id is required"), re-call WITH that argument included.\n- Tools needing id-style arguments (e.g. studio_id) get them from a discovery tool on the same server (e.g. list_roblox_studios) — call that first, then pass the id on every later call to that server.\n- Batch independent calls together in one round (e.g. discovery + reads) to save round trips.`;
+    }
+    if (mcpErrors.length > 0) {
+      systemPrompt += `\n\nMCP servers currently unavailable:\n${mcpErrors
+        .map(([, m]) => `- ${m.server.name}: ${m.tool.slice("__error: ".length)}`)
+        .join("\n")}`;
     }
     return { systemPrompt, userFileNote, mcpTools };
   };
@@ -616,7 +644,7 @@ Rules:
           // Recovery: weak models often DESCRIBE a call without emitting one.
           if (
             nudgeCount < 2 &&
-            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>|\b\w+_\w+\(\))/i.test(
+            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files)\b|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|(?:can'?t|cannot|unable to|don't have|do not have).{0,30}\b(access|use|call).{0,20}\btools?\b)/i.test(
               raw
             )
           ) {
@@ -624,7 +652,7 @@ Rules:
             agentHistory.push({
               role: "user",
               content:
-                'You described a tool call but did not actually emit one — descriptions do nothing. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n{"name": "list_dir", "arguments": {"path": "."}}\n</tool_call>\nNo prose, no code fences, no examples.',
+                'You claimed or described tool access but did not actually emit a call. You have real tools. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n{"name": "get_open_files", "arguments": {}}\n</tool_call>\nNo prose, no code fences, no capability disclaimers.',
             });
             continue;
           }

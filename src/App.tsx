@@ -366,25 +366,14 @@ export default function App() {
   const MAX_TOOL_ROUNDS = 75;
   const MAX_CHECKPOINTS = 2;
 
-  // Keep ordinary conversation on the normal chat path. Tool-enabled
-  // requests are opt-in based on the user's intent, rather than being
-  // advertised to the model for every message.
+  // Keep greetings lightweight, but leave tools enabled for every substantive
+  // request. A keyword classifier cannot reliably recognize phrasing such as
+  // "look at this", "can you access tools?", or provider-specific tasks.
   const shouldUseAgenticMode = (text: string): boolean => {
     if (/^(?:hi|hey|hello|yo|thanks|thank you|good morning|good afternoon|good evening|ok|okay|cool|nice)[!.?,\s]*$/i.test(text)) {
       return false;
     }
-    const asksForWork =
-      /\b(edit|change|modify|update|fix|refactor|rewrite|create|add|remove|delete|rename|move|copy|save|write|read|inspect|analyze|find|run|execute|commit)\b/i.test(
-        text
-      ) &&
-      /\b(file|folder|directory|workspace|project|code|codebase|repo|repository|git|terminal|command|shell|line|function|component)\b/i.test(
-        text
-      );
-    const asksForExternalInfo =
-      /\b(search the web|web search|browse the web|latest|news|internet|url|fetch|http|api request|mcp)\b/i.test(
-        text
-      );
-    return asksForWork || asksForExternalInfo;
+    return true;
   };
 
   // The active streaming request's abort controller, so we can cancel it.
@@ -586,7 +575,13 @@ export default function App() {
       setAccountProfile(profile);
       const snapshot = await cloudSync.loadAll();
       if (snapshot.settings) {
-        setSettings((prev) => ({ ...prev, ...snapshot.settings! }));
+        // Cloud rows NEVER carry the API key — fetchSettings() returns
+        // apiKey: "" on purpose (BYOK keys are local-only). Preserve the live
+        // in-memory key here, otherwise a token-refresh sign-in silently blanks
+        // the provider credential and kills an in-flight streaming turn before
+        // the agent reaches its tool loop (which reads as "key unbound" +
+        // "tools unavailable").
+        setSettings((prev) => ({ ...snapshot.settings!, apiKey: prev.apiKey }));
       }
       if (snapshot.chats.length > 0) {
         setSessions((prev) => {
@@ -1342,6 +1337,26 @@ ${promptSuffix}` : ""}`,
           }
         }
       }
+      // Some providers close the response without a trailing newline.
+      if (buffer.trim() && !signal.aborted) {
+        let line = buffer.trim();
+        if (line.startsWith("data:")) line = line.slice(5).trim();
+        if (line && line !== "[DONE]") {
+          try {
+            const json = JSON.parse(line) as Record<string, unknown>;
+            ingestNativeChunk(json, nativeAcc);
+            const delta = s.extractDelta(json);
+            if (delta) {
+              round += delta;
+              const shown = stabilizeStreamingMarkdown(stripToolCalls(base + round));
+              streamedContentRef.current = shown;
+              scheduleStreamingAssistantContent(shown);
+            }
+          } catch {
+            // Ignore an incomplete non-JSON trailer.
+          }
+        }
+      }
     } finally {
       reader.releaseLock();
     }
@@ -1556,7 +1571,7 @@ ${promptSuffix}` : ""}`,
                 });
               }
             } catch {
-              /* server offline — skip silently */
+              promptSuffix += `\nMCP server "${s.name}" is unavailable. Do not claim its tools are available; continue with built-in tools or explain the connection error.`;
             }
           })
         );
@@ -1660,7 +1675,7 @@ MCP call rules:
           // emit a real block instead of ending.
           if (
             nudgeCount < 2 &&
-            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files|web_search|web_fetch)\b|web search|search the web|fetch (the |this |that )?url|```|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|\bcall\s+(read|list|get|search)_)/i.test(raw)
+            /(\b(function call|tool call|tool_call|read_file|list_dir|search_files|web_search|web_fetch)\b|web search|search the web|fetch (the |this |that )?url|```|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|\bcall\s+(read|list|get|search)_|(?:can'?t|cannot|unable to|don't have|do not have).{0,30}\b(access|use|call).{0,20}\btools?\b)/i.test(raw)
           ) {
             nudgeCount++;
             // Tailor the example to what the user actually asked for: a web
@@ -1675,7 +1690,7 @@ MCP call rules:
             agentHistory.push({
               role: "user",
               content:
-                `You described a tool call but did not actually emit one — descriptions do nothing. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n${example}\n</tool_call>\nNo prose, no code fences, no examples.`,
+                `You claimed or described tool access but did not actually emit a call. You have real tools. Reply with EXACTLY ONE real tool-call block as your entire message:\n<tool_call>\n${example}\n</tool_call>\nNo prose, no code fences, no capability disclaimers.`,
             });
             continue;
           }

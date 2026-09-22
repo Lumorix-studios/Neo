@@ -1,2 +1,0 @@
-    Checking app v1.0.4 (C:\Users\madyx\AgenticCoder\src-tauri)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.49s
