@@ -50,6 +50,7 @@ export interface McpToolInfo {
 export interface McpToolEntry {
   server: McpServerConfig;
   tool: string;
+  description?: string;
   /** Argument schema from tools/list, when the server provides one. */
   schema?: Record<string, unknown>;
   /** Server-declared read-only tool (safe to run parallel, no approval). */

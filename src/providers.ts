@@ -128,10 +128,48 @@ function ollamaUsage(j: unknown): { input?: number; output?: number } | null {
 
 export interface BuildBodyOptions {
   enableTools?: boolean;
+  /** Dynamic MCP tools discovered for this turn. */
+  additionalTools?: Array<{
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  }>;
   /** Google only: replay every historical tool-call turn as plain text
    * instead of functionCall parts (self-healing fallback when the Gemini API
    * rejects replayed calls missing their thought_signature). */
   forceTextTools?: boolean;
+}
+
+function openAiTools(opts?: BuildBodyOptions): object[] {
+  return [
+    ...OPENAI_TOOLS,
+    ...(opts?.additionalTools ?? []).map((tool) => ({
+      type: "function" as const,
+      function: tool,
+    })),
+  ];
+}
+
+function anthropicTools(opts?: BuildBodyOptions): object[] {
+  return [
+    ...ANTHROPIC_TOOLS,
+    ...(opts?.additionalTools ?? []).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters,
+    })),
+  ];
+}
+
+function geminiTools(opts?: BuildBodyOptions): object[] {
+  return [
+    ...GEMINI_FUNCTION_DECLARATIONS,
+    ...(opts?.additionalTools ?? []).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    })),
+  ];
 }
 
 function toolArgsJson(tc: NativeToolCall): string {
@@ -345,7 +383,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       temperature: s.temperature,
       stream: true,
       stream_options: { include_usage: true },
-      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
+      ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;
@@ -382,7 +420,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
-      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
+      ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;
@@ -414,7 +452,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
-      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
+      ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;
@@ -447,7 +485,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       max_tokens: 8192,
       temperature: s.temperature,
       stream: true,
-      ...(opts?.enableTools ? { tools: ANTHROPIC_TOOLS } : {}),
+      ...(opts?.enableTools ? { tools: anthropicTools(opts) } : {}),
     }),
     extractDelta: (j) => {
       const obj = j as AnthropicShape;
@@ -489,7 +527,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       contents: toGeminiContents(history, opts?.forceTextTools === true),
       system_instruction: { parts: [{ text: s.systemPrompt }] },
       generationConfig: { temperature: s.temperature },
-      ...(opts?.enableTools ? { tools: [{ functionDeclarations: GEMINI_FUNCTION_DECLARATIONS }] } : {}),
+      ...(opts?.enableTools ? { tools: [{ functionDeclarations: geminiTools(opts) }] } : {}),
     }),
     extractDelta: (j) => {
       const t = (j as GoogleShape)?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -523,7 +561,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       messages: [{ role: "system", content: s.systemPrompt }, ...toOllamaMessages(history)],
       stream: true,
       options: { temperature: s.temperature },
-      ...(opts?.enableTools ? { tools: OPENAI_TOOLS } : {}),
+      ...(opts?.enableTools ? { tools: openAiTools(opts) } : {}),
     }),
     // Ollama sends newline-delimited JSON (no `data:` prefix). The final chunk
     // has `done: true` and must be ignored.
@@ -557,7 +595,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
       stream: true,
-      ...(opts?.enableTools ? { tools: OPENAI_TOOLS, tool_choice: "auto" } : {}),
+      ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;

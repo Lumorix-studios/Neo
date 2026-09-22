@@ -1135,7 +1135,8 @@ export default function App() {
     history: Message[],
     agentic: boolean,
     signal: AbortSignal,
-    promptSuffix = ""
+    promptSuffix = "",
+    mcpTools?: Map<string, McpToolEntry>
   ): Promise<StreamRoundResult> => {
     const s = getProviderSpec(settings);
     const endpoint = s.buildUrl(settings);
@@ -1155,7 +1156,20 @@ ${promptSuffix}` : ""}`,
         }
       : settings;
    
-    const body = s.buildBody(effectiveSettings, history, { enableTools: agentic });
+    const additionalTools = mcpTools
+      ? [...mcpTools.entries()].map(([name, tool]) => ({
+          name,
+          description: tool.description ?? `MCP tool ${tool.tool}`,
+          parameters:
+            tool.schema && typeof tool.schema === "object"
+              ? tool.schema
+              : { type: "object", properties: {}, required: [] },
+        }))
+      : undefined;
+    const body = s.buildBody(effectiveSettings, history, {
+      enableTools: agentic,
+      additionalTools,
+    });
 
     // Token budget guard — pause the run before spending when a configured
     // limit (Settings → Dashboard) would be exceeded by this request.
@@ -1225,6 +1239,7 @@ ${promptSuffix}` : ""}`,
       if (res.status === 400 && /thought[_ ]?signature/i.test(detail)) {
         const retryBody = s.buildBody(effectiveSettings, history, {
           enableTools: agentic,
+          additionalTools,
           forceTextTools: true,
         });
         const retryRes = await platformFetch(endpoint, {
@@ -1364,7 +1379,10 @@ ${promptSuffix}` : ""}`,
     if (!round && nativeAcc.length === 0 && !signal.aborted) {
       try {
         const nonStreamBody = {
-          ...(s.buildBody(effectiveSettings, history, { enableTools: agentic }) as Record<string, unknown>),
+          ...(s.buildBody(effectiveSettings, history, {
+            enableTools: agentic,
+            additionalTools,
+          }) as Record<string, unknown>),
           stream: false,
         } as Record<string, unknown>;
         // Google uses a different URL for streaming vs. non-streaming.
@@ -1645,7 +1663,13 @@ MCP call rules:
       const readOnlyCache = new Map<string, { ok: boolean; output: string; data?: unknown }>();
 
       while (!abortCtrl.signal.aborted) {
-        const round = await streamRound(agentHistory, agentic, abortCtrl.signal, promptSuffix);
+        const round = await streamRound(
+          agentHistory,
+          agentic,
+          abortCtrl.signal,
+          promptSuffix,
+          mcpTools
+        );
         if (abortCtrl.signal.aborted) break;
         const raw = round.text;
         if (raw.trim().length > 0 || round.nativeCalls.length > 0) sawRawOutput = true;
