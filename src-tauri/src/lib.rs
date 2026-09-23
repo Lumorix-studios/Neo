@@ -1755,14 +1755,15 @@ fn mcp_stdio_stop(state: tauri::State<'_, McpState>, id: String) -> Result<(), S
 
 #[tauri::command]
 fn get_app_version() -> Result<String, String> {
-    Ok(tauri::env!("CARGO_PKG_VERSION").to_string())
+    // `env!` (not `tauri::env!`) reads the version from this crate's Cargo.toml
+    // at compile time, so it always matches the shipped binary.
+    Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
 #[tauri::command]
 async fn download_file(url: String, app: tauri::AppHandle) -> Result<String, String> {
     use std::fs;
-    use std::path::PathBuf;
-    let mut client = reqwest::Client::new();
+    let client = reqwest::Client::new();
     let resp = client
         .get(&url)
         .send()
@@ -1775,16 +1776,30 @@ async fn download_file(url: String, app: tauri::AppHandle) -> Result<String, Str
         .bytes()
         .await
         .map_err(|e| format!("read body failed: {e}"))?;
-    let mut tmp = PathBuf::from(
-        app.path()
-            .appcache_dir()
-            .map_err(|e| format!("cache dir: {e}"))?,
-    );
-    fs::create_dir_all(&tmp).map_err(|e| format!("create cache: {e}"))?;
-    let filename = url.split('/').next_back().unwrap_or("update-installer.exe");
-    tmp.push(filename);
-    fs::write(&tmp, &bytes).map_err(|e| format!("write file: {e}"))?;
-    Ok(tmp.to_string_lossy().to_string())
+
+    // `app_cache_dir()` is the per-app cache folder. It must be created on
+    // demand — a fresh install has no cache directory yet.
+    let mut dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("cache dir: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("create cache: {e}"))?;
+
+    // Only the final path segment is kept, with any `?query`/`#fragment`
+    // stripped, so the downloaded file always lands inside `dir` regardless of
+    // what the caller passed in.
+    let filename = url
+        .split(|c| c == '?' || c == '#')
+        .next()
+        .unwrap_or("")
+        .rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty() && *name != ".." && !name.contains('\\'))
+        .unwrap_or("neo-update-installer.exe");
+    dir.push(filename);
+
+    fs::write(&dir, &bytes).map_err(|e| format!("write file: {e}"))?;
+    Ok(dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]

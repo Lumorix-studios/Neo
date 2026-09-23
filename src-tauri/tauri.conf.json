@@ -51,9 +51,9 @@
       }
     },
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE5MzQ2ODNFQTI0NDFGMkMKUldRc0gwU2lQbWcwR1k4QlZtbU9Hd3J4TkplSEpPTU9sTnlpbllWS0RWWmxPQkNHYjdQcloxZngK",
       "endpoints": [
-        "https://releases.lumorix-studios.com/neo/{{target}}/{{arch}}/{{current_version}}"
+        "https://github.com/Lumorix-studios/Neo/releases/latest/download/latest.json"
       ]
     }
   }

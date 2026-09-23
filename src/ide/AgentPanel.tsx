@@ -12,6 +12,7 @@ import type { EditorTab } from "../components/CodeEditor";
 import type { AISettings, Message } from "../types";
 import { getProviderSpec, buildAuthHeaders } from "../providers";
 import type { ProviderSpec } from "../providers";
+import LatticeLoader from '../../components/LatticeLoader';
 import {
   activityId,
   executeTool,
@@ -1277,8 +1278,7 @@ Rules:
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-5 pb-6 text-center">
             <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-[var(--text-muted)]">
-              Reads, edits and runs files in your workspace — with your approval for anything
-              destructive.
+              
             </p>
             {!configured && (
               <button
@@ -1341,7 +1341,26 @@ Rules:
             {busy && (
               <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
                 <span className="thinking-dot" />
-                Working…
+                <LatticeLoader
+                  status="working"
+                  label="Thinking"
+                  doneLabel="Done in"
+                  errorLabel="Failed after"
+                  pattern="orbit"
+                  grid={3}
+                  shape="round"
+                  doneColor="#22c55e"
+                  errorColor="#ef4444"
+                  cellSize={6}
+                  gap={2}
+                  fontSize={14}
+                  step={90}
+                  idleOpacity={0.15}
+                  glow={false}
+                  glowColor=""
+                  showTimer
+                  color="#f5f5f5"
+                />  
               </div>
             )}
           </div>

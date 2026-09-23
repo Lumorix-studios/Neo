@@ -1,11 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
- * Shared update-check logic used by both the TopMenu release panel and the
- * in-app update notification banner.
+ * Shared update-check logic behind the in-app update notification banner and
+ * the "Help → Check for Updates…" menu item.
  *
- * Talks to the GitHub Releases API for `lumorix-studios/LumorixStudiosHq`
- * and compares the locally running version against the latest published tag.
+ * Talks to the GitHub Releases API for `Lumorix-studios/Neo` and compares the
+ * locally running version against the latest published tag.
  */
 
 // ---------------------------------------------------------------------------
@@ -51,9 +49,8 @@ export interface AssetEntry {
 
 /** GitHub Releases API endpoint used by both the top bar and the updater. */
 export const RELEASE_URL =
-  "https://api.github.com/repos/lumorix-studios/LumorixStudiosHq/releases/latest";
-export const RELEASES_PAGE =
-  "https://github.com/lumorix-studios/LumorixStudiosHq/releases";
+  "https://api.github.com/repos/Lumorix-studios/Neo/releases/latest";
+export const RELEASES_PAGE = "https://github.com/Lumorix-studios/Neo/releases";
 export const REPO_PAGE = "https://github.com/Lumorix-studios/Neo";
 
 // ---------------------------------------------------------------------------
@@ -116,10 +113,12 @@ export function findPlatformAsset(
     const rpm = assets.find((a) => a.name.toLowerCase().endsWith(".rpm"));
     if (rpm) return { name: rpm.name, url: rpm.browser_download_url };
   }
-  return assets.find(
-    (a) =>
-      /\.(exe|msi|dmg|deb|rpm)$/i.test(a.name),
-  ) ?? null;
+  // Unknown OS, or the platform-specific lookup found nothing: fall back to
+  // the first installer-shaped asset so the user still has something to grab.
+  const fallback = assets.find((a) => /\.(exe|msi|dmg|deb|rpm)$/i.test(a.name));
+  return fallback
+    ? { name: fallback.name, url: fallback.browser_download_url }
+    : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +127,9 @@ export function findPlatformAsset(
 
 const STORAGE_KEY_DISMISSED = "neo:update:dismissed-until";
 
-function dismissedUntil(): string | null {
+/** The version the user dismissed, or `null` if they never dismissed one.
+ *  Used on startup so a released-but-dismissed version does not nag again. */
+export function dismissedUntil(): string | null {
   if (typeof localStorage === "undefined") return null;
   return localStorage.getItem(STORAGE_KEY_DISMISSED);
 }

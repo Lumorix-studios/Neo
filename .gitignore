@@ -111,6 +111,9 @@ CMakeLists.txt.user*
 # (merge-conflict markers removed — both rule sets above are active)
 *.keystore
 *.jks
+# Tauri updater signing keys — the private key must never be committed.
+# `tauri signer generate -w <path>` writes `<name>.key` alongside `<name>.key.pub`.
+*.key
 # Environment variables — never commit real Supabase credentials.
 # `.env.example` is the template and stays tracked.
 .env

@@ -5,7 +5,6 @@
 
 //author of this entire codebase is Madhusudhan thapa (madhusudhant207@gmail.com) and coding agents 
 // See LICENSE file in the project root for full license information.
-
 //cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
 //also cant assure you this will always stay opensource
 //            9/18/26
@@ -23,12 +22,15 @@ import CommandPalette from "../components/CommandPalette";
 import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import Markdown from "./components/Markdown";
-import BottomPanel, { type PanelTab } from "./components/BottomPanel";
+// import BottomPanel, { type PanelTab } from "./components/BottomPanel"; 
+//was the terminal panel for the main chat interface ->
+// but i assume there is no need for that as it exists inside the IDE
 import { isExtensionEnabled } from "./extensions";
 import { formatWithPrettier } from "./extensionsRuntime";
 import "./editor.css";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
+import LatticeLoader from '../components/LatticeLoader';
 import {
   loadSettings,
   saveSettings,
@@ -49,18 +51,20 @@ import {
 import * as cloudSync from "./lib/cloudSync";
 import {
   checkForUpdate,
-  type UpdateCheckResult,
+  dismissedUntil,
   setDismissedUntil,
   clearDismissedUntil,
+  type UpdateCheckResult,
 } from "./lib/updateCheck";
-import UpdateNotification from "./components/UpdateNotification";
+import UpdateNotification from "../components/UpdateNotification";
+import PromptBar from "../components/PromptBar";
 import { useDeepLinkAuth } from "./lib/deepLink";
 import * as byok from "./lib/byok";
 import { debugLog } from "./debugLog";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { isTauri } from "@tauri-apps/api/core";
-import { getProviderSpec, buildAuthHeaders, PROVIDER_OPTIONS, providerById } from "./providers";
-import type { ProviderSpec } from "./providers";
+import { getProviderSpec, buildAuthHeaders, PROVIDER_OPTIONS, providerById, PROVIDERS } from "./providers";
+import type { ProviderSpec, ProviderId } from "./providers";
 import AgenticActivity from "./components/AgenticActivity";
 import {
   AGENTIC_PROMPT,
@@ -105,7 +109,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ IoStop, IoTerminal, IoThumbsDownSharp, IoThumbsUpSharp, IoSend, IoSettings } from "react-icons/io5";
+import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ IoStop, /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSend, IoSettings } from "react-icons/io5";
 import { shortPath } from "./utils";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
@@ -215,21 +219,24 @@ function deriveTitle(messages: Message[]): string {
 }
 
 const SHARED_WS_KEY = "neo.ide.workspaceRoot";
-const APP_VERSION = invoke<string>("get_app_version");
 
-/** Fire one background update check on mount so the notification banner can
- *  appear without the user having to open the Help → Releases panel first. */
-useEffect(() => {
-  let cancelled = false;
-  const run = async () => {
-    const r = await checkForUpdate(APP_VERSION);
-    if (!cancelled && r.isUpdateAvailable) {
-      setUpdateNotification({ result: r, dismissedAt: null });
-    }
-  };
-  run();
-  return () => { cancelled = true; };
-}, []);
+/** Parse a PromptBar model key of the form `providerId:modelName`
+ *  (e.g. `"openai:gpt-4o"`) back into its provider + model.
+ *  Falls back to the provider's default model and the current settings'
+ *  provider when the key is missing or malformed. */
+function resolveModelOverride(key: string | undefined): { provider: ProviderId; model: string } | null {
+  if (!key) return null;
+  const colon = key.indexOf(":");
+  if (colon < 0) return null;
+  const pid = key.slice(0, colon) as ProviderId;
+  const mdl = key.slice(colon + 1);
+  if (!(pid in PROVIDERS) || !mdl) return null;
+  return { provider: pid, model: mdl };
+}
+
+/** Resolved once per process — the Rust side reports the version this binary
+ *  was built as, so it cannot change while the app is running. */
+const APP_VERSION = invoke<string>("get_app_version");
 
 /** Icon button for the VS Code-style activity bar rail. */
 function RailButton({
@@ -346,9 +353,9 @@ function MessageAction({
 
 export default function App() {
   const [modelOpen, setModelOpen] = useState(false);
-  const [onOpenTerminal, setOpenTerminal] = useState(false);
+  // const [onOpenTerminal, setOpenTerminal] = useState(false);
   // Which tab of the bottom dock is visible (terminal/problems/debug/…).
-  const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
+  // const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
@@ -362,6 +369,50 @@ export default function App() {
     result: UpdateCheckResult;
     dismissedAt: number | null;
   } | null>(null);
+
+  /** Ask the releases feed whether a newer build exists and surface the banner
+   *  when one does. `force` clears any earlier dismissal, so a manual
+   *  "Help → Check for Updates…" always re-prompts. Wrapped in `useCallback`
+   *  so the startup effect below can depend on it without re-firing. */
+  const runUpdateCheck = useCallback(async (force: boolean) => {
+    if (!isTauri()) return;
+    try {
+      if (force) clearDismissedUntil();
+      const current = await APP_VERSION;
+      const result = await checkForUpdate(current);
+      if (!result.isUpdateAvailable) {
+        setUpdateNotification(null);
+        return;
+      }
+      // A release the user already dismissed stays hidden until something
+      // newer ships — otherwise the banner would nag on every launch.
+      const dismissed = force ? null : dismissedUntil();
+      if (dismissed && dismissed === result.latestVersion) return;
+      setUpdateNotification({ result, dismissedAt: Date.now() });
+    } catch (err) {
+      debugLog("E", "App.tsx:runUpdateCheck", "update check failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, []);
+
+  // One background check on startup so the banner shows up on its own —
+  // the user should not have to go looking in the Help menu for it.
+  // Deferred a microtask so the check never sets state synchronously inside
+  // the effect body (matching how ProblemsPanel kicks off its first scan).
+  useEffect(() => {
+    void Promise.resolve().then(() => runUpdateCheck(false));
+  }, [runUpdateCheck]);
+
+  /** Hide the banner and remember the version, so this release does not
+   *  prompt again until a newer one is published. */
+  const handleDismissUpdate = useCallback(() => {
+    if (updateNotification) {
+      setDismissedUntil(updateNotification.result.latestVersion);
+    }
+    setUpdateNotification(null);
+  }, [updateNotification]);
+
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
@@ -503,7 +554,7 @@ export default function App() {
     }
     if ((e.ctrlKey || e.metaKey) && e.key === "`") {
       e.preventDefault();
-      setOpenTerminal((v) => !v);
+      // setOpenTerminal((v) => !v);
     }
     if ((e.ctrlKey || e.metaKey) && e.key === ",") {
       e.preventDefault();
@@ -1086,7 +1137,10 @@ export default function App() {
   // --- Extension contributions (VS Code-style activation) ----------------
   // Read live on every render so features activate the moment an extension
   // is installed/toggled in Settings (the panel reports changes back).
-  const markdownPreviewEnabled = isExtensionEnabled("md.markdown-preview");
+  // NOTE: `md.markdown-preview` lookup was removed because its only consumer
+  // (BottomPanel's `preview={{…}}` prop) is currently commented out in the
+  // render below. Restore it there if the preview dock is re-enabled:
+  //   const markdownPreviewEnabled = isExtensionEnabled("md.markdown-preview");
   const wordCountEnabled = isExtensionEnabled("status.word-count");
   const todoEnabled = isExtensionEnabled("status.todo-inspector");
   const statusExtensionsOn = wordCountEnabled || todoEnabled;
@@ -1163,13 +1217,17 @@ export default function App() {
     agentic: boolean,
     signal: AbortSignal,
     promptSuffix = "",
-    mcpTools?: Map<string, McpToolEntry>
+        mcpTools?: Map<string, McpToolEntry>,
+    modelOverride?: { provider: ProviderId; model: string },
   ): Promise<StreamRoundResult> => {
-    const s = getProviderSpec(settings);
-    const endpoint = s.buildUrl(settings);
+    const effectiveSettings: AISettings = modelOverride
+      ? { ...settings, provider: modelOverride.provider, model: modelOverride.model }
+      : settings;
+    const s = getProviderSpec(effectiveSettings);
+    const endpoint = s.buildUrl(effectiveSettings);
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...buildAuthHeaders(s, settings.apiKey),
+      ...buildAuthHeaders(s, effectiveSettings.apiKey),
     };
     
     const effectiveSettings: AISettings = agentic
@@ -2170,9 +2228,10 @@ MCP call rules:
           onOpenChatHistory={() => setHistorySidebarOpen(true)}
           onOpenIde={() => launchIdeWindowRef.current()}
           onOpenIdeWindow={() => void launchIdeWindow()}
-          onOpenTerminal={() => setOpenTerminal(true)}
+          // onOpenTerminal={() => setOpenTerminal(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onCheckForUpdates={() => void runUpdateCheck(true)}
           right={
             <>
               {/* Provider / model pill */}
@@ -2278,6 +2337,13 @@ MCP call rules:
         />
         <InfoPanel isOpen={infoPanelOpen} onClose={() => setInfoPanelOpen(false)} />
         <PrivacyPolicy isOpen={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
+        {updateNotification && (
+          <UpdateNotification
+            result={updateNotification.result}
+            available={updateNotification.result.isUpdateAvailable}
+            onDismiss={handleDismissUpdate}
+          />
+        )}
         <Tab2 isOpen={Tab2Open} onClose={() => setTab2Open(false)} />
         <SettingsPanel
           open={settingsOpen}
@@ -2298,9 +2364,9 @@ MCP call rules:
           {/* */}
           <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-(--border) bg-[var(--bg-panel)] py-1">
             <div className="w-full">
-              <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
+              {/* <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
                 <IoTerminal size={17} />
-              </RailButton>
+              </RailButton> */}
               <RailButton active={settingsOpen} title="Settings (Ctrl+,)" onClick={() => setSettingsOpen(true)}>
                 <IoSettings size={16} />
               </RailButton>
@@ -2499,7 +2565,27 @@ MCP call rules:
                           msg.content.trim().length === 0 ? (
                           <div className="flex items-center gap-2 py-2">
                             <span className="thinking-dot" />
-                            <span className="text-[11px] text-[var(--text-muted)]">Working…</span>
+                            <span className="text-[11px] text-[var(--text-muted)]">
+                              <LatticeLoader
+                                status="working"
+                                label="Thinking"
+                                doneLabel="Done in"
+                                errorLabel="Failed after"
+                                pattern="orbit"
+                                grid={3}
+                                shape="round"
+                                doneColor="#22c55e"
+                                errorColor="#ef4444"
+                                cellSize={6}
+                                gap={2}
+                                fontSize={14}
+                                step={90}
+                                idleOpacity={0.15}
+                                glow={false}
+                                glowColor=""
+                                showTimer
+                                color="#f5f5f5"
+                              /></span>
                           </div>
                         ) : (
                           <div className="group/msg min-w-0">
@@ -2639,19 +2725,19 @@ MCP call rules:
           </main>
         </div>
        
-        <BottomPanel
-          open={onOpenTerminal}
+        {/* <BottomPanel
+          // open={onOpenTerminal}
           tab={panelTab}
           onTab={setPanelTab}
-          onClose={() => setOpenTerminal(false)}
+          // onClose={() => setOpenTerminal(false)}
           root={workspaceRoot}
           onOpenFile={(p, line) => void openFileInEditor(p, line)}
-          terminalPrefs={{
-            fontSize: uiSettings.terminalFontSize,
-            scrollback: uiSettings.terminalScrollback,
-            cursorBlink: uiSettings.terminalCursorBlink,
-          }}
-          preview={
+          // terminalPrefs={{
+          //   fontSize: uiSettings.terminalFontSize,
+          //   scrollback: uiSettings.terminalScrollback,
+          //   cursorBlink: uiSettings.terminalCursorBlink,
+          // }} */}
+          {/* preview={
             markdownPreviewEnabled
               ? {
                   path: activeEditorPath,
@@ -2660,7 +2746,7 @@ MCP call rules:
                 }
               : null
           }
-        />
+        /> */}
         <StatusBar
           historySidebarOpen={historySidebarOpen}
           onToggleHistorySidebar={() => setHistorySidebarOpen((v) => !v)}
@@ -2728,13 +2814,13 @@ MCP call rules:
               shortcut: "Esc",
               action: isLoading ? stopChat : () => {},
             },
-            {
-              id: "open-terminal",
-              label: "Toggle Terminal",
-              category: "View",
-              shortcut: "Ctrl+`",
-              action: () => setOpenTerminal((v) => !v),
-            },
+            // {
+            //   id: "open-terminal",
+            //   label: "Toggle Terminal",
+            //   category: "View",
+            //   shortcut: "Ctrl+`",
+            //   action: () => setOpenTerminal((v) => !v),
+            // },
             {
               id: "open-ide-window",
               label: "Open IDE Window",
