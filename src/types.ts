@@ -6,6 +6,7 @@ export type ProviderId =
   | "openai"
   | "openrouter"
   | "groq"
+  | "nvidia"
   | "anthropic"
   | "google"
   | "ollama"

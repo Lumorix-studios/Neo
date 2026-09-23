@@ -7,6 +7,14 @@ import type { AgenticActivity as AgenticActivityType, FsEntry } from "../agentic
 import { TOOL_LABELS } from "../agentic";
 import { diffStats } from "../../src/diff";
 import { IoChevronForward } from "react-icons/io5";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  CommandLineIcon,
+  File02Icon,
+  PencilEdit01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import ThinkingIndicator from "../../components/ThinkingIndicator";
 
 interface AgenticActivityProps {
   items: AgenticActivityType[];
@@ -15,20 +23,50 @@ interface AgenticActivityProps {
   onDeny: (id: string) => void;
 }
 
-const STATUS_DOT: Record<AgenticActivityType["status"], string> = {
-  pending: "bg-blue-500",
-  running: "bg-blue-400 animate-pulse",
-  approved: "bg-zinc-500",
-  denied: "bg-red-500",
-  done: "bg-emerald-500",
-  error: "bg-red-500",
-};
+function toolName(tool: string): string {
+  return TOOL_LABELS[tool as keyof typeof TOOL_LABELS] ?? tool;
+}
 
-function shortPath(p: string): string {
-  if (p.length <= 56) return p;
-  const parts = p.replace(/\\/g, "/").split("/");
-  if (parts.length <= 2) return p;
-  return `${parts[0]}/…/${parts[parts.length - 1]}`;
+function duration(ms: number | undefined): string {
+  if (ms == null) return "";
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function toolIcon(tool: string) {
+  if (/search|list_dir|find|grep|glob|status|diff/i.test(tool)) return Search01Icon;
+  if (/write|append|replace|edit|delete|move|rename|copy|create/i.test(tool)) {
+    return PencilEdit01Icon;
+  }
+  if (/read|file|dir|open|info/i.test(tool)) return File02Icon;
+  return CommandLineIcon;
+}
+
+function toolArgument(item: AgenticActivityType): string {
+  const preferred = ["command", "path", "new_path", "query", "pattern", "url"];
+  for (const key of preferred) {
+    const value = item.args[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function ToolDetails({ item }: { item: AgenticActivityType }) {
+  const args = Object.entries(item.args);
+  return (
+    <div className="ml-6 mt-1 mb-2 space-y-2 border-l border-(--border) pl-3">
+      {args.length > 0 && (
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-4 text-[var(--text-faint)]">
+          {args.map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`).join("\n")}
+        </pre>
+      )}
+      <StructuredOutput item={item} />
+      {item.error && (
+        <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-4 text-red-300">
+          {item.error}
+        </pre>
+      )}
+    </div>
+  );
 }
 
 function Chevron({ open }: { open: boolean }) {
@@ -36,37 +74,6 @@ function Chevron({ open }: { open: boolean }) {
     <IoChevronForward
       className={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform ${open ? "rotate-90" : ""}`}
     />
-  );
-}
-
-function ArgsPreview({ args }: { args: Record<string, unknown> }) {
-  const [expanded, setExpanded] = useState(false);
-  const entries = Object.entries(args);
-  const isLong = entries.some(([, v]) => String(v).length > 120);
-
-  return (
-    <div className="mt-2 overflow-hidden rounded border border-zinc-800 bg-zinc-900/50">
-      <pre
-        className={`overflow-auto px-3 py-2 font-mono text-[11px] leading-5 text-[var(--text-secondary)] ${
-          expanded ? "max-h-64" : "max-h-24"
-        }`}
-      >
-        {entries.map(([k, v]) => (
-          <div key={k} className="break-all">
-            <span className="text-[var(--text-faint)]">{k}: </span>
-            {k === "path" || k === "new_path" ? shortPath(String(v)) : String(v)}
-          </div>
-        ))}
-      </pre>
-      {isLong && (
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full border-t border-zinc-800 px-3 py-1 text-left text-[10px] text-[var(--text-muted)] hover:bg-zinc-800/50 hover:text-[var(--text-primary)] transition-colors"
-        >
-          {expanded ? "Collapse" : "Expand"}
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -118,7 +125,6 @@ export default function AgenticActivity({
 }: AgenticActivityProps) {
   const [closed, setClosed] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<string[]>([]);
-  const [groupOpen, setGroupOpen] = useState(false);
 
   useEffect(() => {
     if (!pending) return;
@@ -149,28 +155,16 @@ export default function AgenticActivity({
       return acc;
     }, { adds: 0, dels: 0 });
 
-  const headerDot = pending ? STATUS_DOT.pending : activeCount > 0 ? STATUS_DOT.running : failedCount > 0 ? STATUS_DOT.error : STATUS_DOT.done;
-
   if (total === 0 && !pending) return null;
 
   return (
-    <div className="relative z-20 mx-auto w-full max-w-3xl px-5 pt-2">
-      <div className="space-y-2">
+    <div className="mx-auto w-full max-w-3xl px-5 py-2">
+      <div className="space-y-1">
         {pending && (
-          <div className="rounded border border-blue-500/30 bg-blue-500/5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT.pending}`} />
-                <span className="text-[12px] font-medium text-[var(--text-primary)]">
-                  {TOOL_LABELS[pending.tool as keyof typeof TOOL_LABELS] ?? pending.tool}
-                </span>
-                {typeof pending.args.path === "string" && (
-                  <span className="truncate font-mono text-[11px] text-[var(--text-muted)]">
-                    {shortPath(pending.args.path)}
-                  </span>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+            <HugeiconsIcon icon={toolIcon(pending.tool)} size={13} strokeWidth={1.8} />
+            <ThinkingIndicator label={`Waiting to use ${toolName(pending.tool)}`} />
+            <div className="ml-auto flex shrink-0 items-center gap-1">
                 <button
                   onClick={() => onDeny(pending.id)}
                   className="rounded px-2 py-1 text-[11px] text-[var(--text-muted)] transition hover:bg-zinc-800 hover:text-[var(--text-primary)]"
@@ -183,60 +177,56 @@ export default function AgenticActivity({
                 >
                   Approve
                 </button>
-              </div>
-            </div>
-            <div className="px-3 pb-2.5">
-              <ArgsPreview args={pending.args} />
             </div>
           </div>
         )}
 
         {total > 0 && (
-          <div className="overflow-hidden rounded border border-zinc-800 bg-zinc-900/40">
-            <div className="group/head flex w-full items-center gap-2 px-3 py-2 cursor-pointer" onClick={() => setGroupOpen(!groupOpen)}>
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${headerDot}`} />
-              <span className="text-[12px] font-medium text-[var(--text-primary)]">Agent Activity</span>
-              <span className="text-[11px] text-[var(--text-faint)]">
-                {total} calls {activeCount > 0 ? `· ${activeCount} running` : ""}
-              </span>
+          <div className="space-y-1">
+            <div className="px-1 text-[10px] text-[var(--text-faint)]">
+              {activeCount > 0 ? "Working" : failedCount > 0 ? "Agent activity" : `${total} tool${total === 1 ? "" : "s"} used`}
               {totals.adds + totals.dels > 0 && (
-                <span className="ml-auto font-mono text-[10px]">
+                <span className="ml-2 font-mono text-[10px]">
                   <span className="text-emerald-400">+{totals.adds}</span> <span className="text-red-400">−{totals.dels}</span>
                 </span>
               )}
-              <Chevron open={groupOpen} />
             </div>
-
-            {groupOpen && (
-              <div className="max-h-80 overflow-y-auto border-t border-zinc-800">
-                {visible.map((item) => {
+            <div className="space-y-0.5">
+              {visible.map((item) => {
           const open = expandedRows.includes(item.id);
           const hasDetail = !!(item.output || item.error || item.data);
           return (
-            <div key={item.id} className="group transition-colors hover:bg-(--fill-1)">
-              <button
-                onClick={() => hasDetail && toggleRow(item.id)}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${hasDetail ? "cursor-pointer" : ""}`}
-              >
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[item.status]}`} />
-                <span className="text-[12px] text-[var(--text-primary)]">
-                  {TOOL_LABELS[item.tool as keyof typeof TOOL_LABELS] ?? item.tool}
-                </span>
-                {typeof item.args.path === "string" && item.args.path && (
-                  <span className="flex-1 truncate font-mono text-[11px] text-[var(--text-muted)]">
-                    {shortPath(item.args.path)}
+            <div key={item.id} className="group">
+                <div
+                  role={hasDetail ? "button" : undefined}
+                  tabIndex={hasDetail ? 0 : undefined}
+                  onClick={() => hasDetail && toggleRow(item.id)}
+                  onKeyDown={(event) => {
+                    if (hasDetail && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      toggleRow(item.id);
+                    }
+                  }}
+                  className={`flex w-full items-center gap-2 px-1 py-1 text-left text-[11px] text-[var(--text-muted)] ${hasDetail ? "cursor-pointer hover:text-[var(--text-secondary)]" : ""}`}
+                >
+                  <HugeiconsIcon icon={toolIcon(item.tool)} size={13} strokeWidth={1.8} />
+                  <span className="font-medium">{item.status === "done" ? "Used" : item.status === "error" ? "Failed" : item.status === "denied" ? "Denied" : "Using"} {toolName(item.tool)}</span>
+                  <span className="min-w-0 truncate font-mono text-[10px] text-[var(--text-faint)]">
+                    {toolArgument(item)}
                   </span>
-                )}
-                {hasDetail && <Chevron open={open} />}
-                <span
-                  onClick={(e) => { e.stopPropagation(); remove(item.id); }}
+                  {item.status === "running" && <ThinkingIndicator label="" />}
+                  {item.durationMs != null && <span className="ml-auto shrink-0 text-[10px] text-[var(--text-faint)]">{duration(item.durationMs)}</span>}
+                  {hasDetail && <Chevron open={open} />}
+                  <span
+                    onClick={(e) => { e.stopPropagation(); remove(item.id); }}
                   className="ml-1 text-[11px] text-zinc-700 opacity-0 group-hover:opacity-100 hover:text-[var(--text-secondary)]"
                 >
                   ✕
                 </span>
-              </button>
+              </div>
               {open && (
-                <div className="px-3 pb-2">
+                <div className="px-1 pb-2">
+                  <ToolDetails item={item} />
                   {item.diff && item.diff.length > 0 && (
                     <div className="mb-2 overflow-hidden rounded border border-zinc-800 bg-black/40 font-mono text-[11px]">
                       {item.diff.map((l, i) => (
@@ -252,9 +242,8 @@ export default function AgenticActivity({
               )}
             </div>
           );
-                })}
-              </div>
-            )}
+              })}
+            </div>
           </div>
         )}
       </div>

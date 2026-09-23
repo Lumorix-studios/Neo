@@ -1,0 +1,10 @@
+src/App.tsx(1144,30): error TS2304: Cannot find name 'wordCountEnabled'.
+src/App.tsx(2683,41): error TS2304: Cannot find name 'buildAttachmentContext'.
+src/App.tsx(2684,37): error TS2304: Cannot find name 'expandCommand'.
+src/App.tsx(2688,58): error TS2304: Cannot find name 'pickFolder'.
+src/App.tsx(2688,73): error TS2304: Cannot find name 'pickFiles'.
+src/App.tsx(2744,32): error TS2304: Cannot find name 'wordCountEnabled'.
+src/ide/AgentPanel.tsx(1523,33): error TS2304: Cannot find name 'buildAttachmentContext'.
+src/ide/AgentPanel.tsx(1524,29): error TS2304: Cannot find name 'expandCommand'.
+src/ide/AgentPanel.tsx(1528,50): error TS2304: Cannot find name 'pickFolder'.
+src/ide/AgentPanel.tsx(1528,65): error TS2304: Cannot find name 'pickFiles'.

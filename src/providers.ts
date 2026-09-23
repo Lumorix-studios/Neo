@@ -64,7 +64,11 @@ export interface ProviderSpec {
  */
 interface OpenAiShape {
   choices?: Array<{
-    delta?: { content?: string };
+    delta?: {
+      content?: string | Array<{ text?: string }>;
+      reasoning_content?: string;
+      reasoning?: string;
+    };
     message?: { content?: string };
   }>;
 }
@@ -128,6 +132,8 @@ function ollamaUsage(j: unknown): { input?: number; output?: number } | null {
 
 export interface BuildBodyOptions {
   enableTools?: boolean;
+  /** Maximum number of output tokens for this turn, selected by PromptBar effort. */
+  maxOutputTokens?: number;
   /** Dynamic MCP tools discovered for this turn. */
   additionalTools?: Array<{
     name: string;
@@ -138,6 +144,24 @@ export interface BuildBodyOptions {
    * instead of functionCall parts (self-healing fallback when the Gemini API
    * rejects replayed calls missing their thought_signature). */
   forceTextTools?: boolean;
+}
+
+/** Conservative cross-provider budgets for the PromptBar effort selector. */
+export function outputTokensForEffort(effort: string | undefined): number {
+  switch (effort?.toLowerCase()) {
+    case "low":
+      return 1024;
+    case "medium":
+      return 4096;
+    case "high":
+      return 8192;
+    case "extra":
+      return 16384;
+    case "max":
+      return 32768;
+    default:
+      return 8192;
+  }
 }
 
 function openAiTools(opts?: BuildBodyOptions): object[] {
@@ -351,6 +375,27 @@ function bearer(key: string): string {
   return `Bearer ${key}`;
 }
 
+function nvidiaChatCompletionsUrl(baseUrl: string): string {
+  const base = baseUrl.trim().replace(/\/+$/, "");
+  if (/\/chat\/completions$/i.test(base)) return base;
+  if (/\/v1$/i.test(base)) return `${base}/chat/completions`;
+  return `${base}/v1/chat/completions`;
+}
+
+function openAiDeltaText(j: unknown): string | null {
+  const delta = (j as OpenAiShape)?.choices?.[0]?.delta;
+  const content = delta?.content;
+  if (typeof content === "string" && content.length > 0) return content;
+  if (Array.isArray(content)) {
+    const text = content.map((part) => part.text ?? "").join("");
+    if (text) return text;
+  }
+  for (const value of [delta?.reasoning_content, delta?.reasoning]) {
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return null;
+}
+
 /**
  * Build the authentication headers for a provider. Keys are only attached when
  * the provider requires auth and a key is present — self-hosted providers such
@@ -363,6 +408,30 @@ export function buildAuthHeaders(spec: ProviderSpec, apiKey: string): Record<str
     headers[spec.authHeader] = spec.authScheme === "bearer" ? bearer(apiKey) : apiKey;
   }
   return headers;
+}
+
+// ---------------------------------------------------------------------------
+// Models that reject native tool calls
+// ---------------------------------------------------------------------------
+// Some local models (e.g. Ollama's deepseek-coder) return
+// `400 … does not support tools` whenever a `tools` field is present. Once a
+// model rejects native tools we remember it for the session and omit `tools`
+// from every later request — the agent loop still works through the
+// text-based tool protocol (parseToolCalls in agentic.ts).
+const noNativeTools = new Set<string>();
+
+function noNativeToolsKey(s: AISettings): string {
+  return `${s.provider}|${s.baseUrl}|${s.model}`;
+}
+
+/** Remember that this model rejected native `tools` so buildBody omits them. */
+export function markNoNativeTools(s: AISettings): void {
+  noNativeTools.add(noNativeToolsKey(s));
+}
+
+/** True once this model has rejected native `tools` with a 400. */
+export function nativeToolsUnsupported(s: AISettings): boolean {
+  return noNativeTools.has(noNativeToolsKey(s));
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
@@ -381,13 +450,14 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       model: s.model,
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
+      max_tokens: opts?.maxOutputTokens,
       stream: true,
-      stream_options: { include_usage: true },
-      ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
+      ...(opts?.enableTools && !nativeToolsUnsupported(s)
+        ? { tools: openAiTools(opts), tool_choice: "auto" }
+        : {}),
     }),
     extractDelta: (j) => {
-      const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;
-      return typeof c === "string" && c.length > 0 ? c : null;
+      return openAiDeltaText(j);
     },
     extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
     extractUsage: openAiUsage,
@@ -419,6 +489,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       model: s.model,
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
+      max_tokens: opts?.maxOutputTokens,
       stream: true,
       ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
@@ -451,6 +522,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       model: s.model,
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
+      max_tokens: opts?.maxOutputTokens,
       stream: true,
       ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
@@ -465,6 +537,41 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
         : null,
     authErrorHint: (status) =>
       `Authentication failed (${status}). Check your Groq key at console.groq.com/keys.`,
+  },
+
+  nvidia: {
+    id: "nvidia",
+    label: "NVIDIA NIM",
+    note: "NVIDIA-hosted OpenAI-compatible inference API.",
+    defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
+    defaultModel: "meta/llama-3.1-8b-instruct",
+    needsAuth: true,
+    authHeader: "Authorization",
+    authScheme: "bearer",
+    authQueryParam: null,
+    extraHeaders: {},
+    buildUrl: (s) => nvidiaChatCompletionsUrl(s.baseUrl),
+    buildBody: (s, history, opts) => ({
+      model: s.model,
+      messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
+      temperature: s.temperature,
+      max_tokens: opts?.maxOutputTokens,
+      stream: true,
+      ...(opts?.enableTools && !nativeToolsUnsupported(s)
+        ? { tools: openAiTools(opts), tool_choice: "auto" }
+        : {}),
+    }),
+    extractDelta: (j) => {
+      return openAiDeltaText(j);
+    },
+    extractContent: (j) => (j as OpenAiShape)?.choices?.[0]?.message?.content ?? "",
+    extractUsage: openAiUsage,
+    validateAuth: (k) =>
+      !k
+        ? "An NVIDIA API key is required (get one at build.nvidia.com)."
+        : null,
+    authErrorHint: (status, s) =>
+      `NVIDIA NIM request failed (${status}). Verify your NVIDIA API key, model name "${s.model}", and that the model is available in your NIM account.`,
   },
 
   anthropic: {
@@ -482,7 +589,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       model: s.model,
       system: s.systemPrompt,
       messages: toAnthropicMessages(history),
-      max_tokens: 8192,
+      max_tokens: opts?.maxOutputTokens ?? 8192,
       temperature: s.temperature,
       stream: true,
       ...(opts?.enableTools ? { tools: anthropicTools(opts) } : {}),
@@ -526,7 +633,10 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     buildBody: (s, history, opts) => ({
       contents: toGeminiContents(history, opts?.forceTextTools === true),
       system_instruction: { parts: [{ text: s.systemPrompt }] },
-      generationConfig: { temperature: s.temperature },
+      generationConfig: {
+        temperature: s.temperature,
+        maxOutputTokens: opts?.maxOutputTokens,
+      },
       ...(opts?.enableTools ? { tools: [{ functionDeclarations: geminiTools(opts) }] } : {}),
     }),
     extractDelta: (j) => {
@@ -560,8 +670,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       model: s.model,
       messages: [{ role: "system", content: s.systemPrompt }, ...toOllamaMessages(history)],
       stream: true,
-      options: { temperature: s.temperature },
-      ...(opts?.enableTools ? { tools: openAiTools(opts) } : {}),
+      options: { temperature: s.temperature, num_predict: opts?.maxOutputTokens },
+      ...(opts?.enableTools && !nativeToolsUnsupported(s) ? { tools: openAiTools(opts) } : {}),
     }),
     // Ollama sends newline-delimited JSON (no `data:` prefix). The final chunk
     // has `done: true` and must be ignored.
@@ -594,8 +704,11 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       model: s.model,
       messages: [{ role: "system", content: s.systemPrompt }, ...toOpenAiMessages(history)],
       temperature: s.temperature,
+      max_tokens: opts?.maxOutputTokens,
       stream: true,
-      ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
+      ...(opts?.enableTools && !nativeToolsUnsupported(s)
+        ? { tools: openAiTools(opts), tool_choice: "auto" }
+        : {}),
     }),
     extractDelta: (j) => {
       const c = (j as OpenAiShape)?.choices?.[0]?.delta?.content;

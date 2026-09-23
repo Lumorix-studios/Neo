@@ -55,6 +55,8 @@ export interface AgenticActivity {
   tool: string;
   args: Record<string, unknown>;
   status: "pending" | "running" | "approved" | "denied" | "done" | "error";
+  startedAt?: number;
+  durationMs?: number;
   output?: string;
   error?: string;
   /** Structured tool payload (e.g. FsEntry[] from list_dir) for rich UI. */

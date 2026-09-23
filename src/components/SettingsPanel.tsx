@@ -633,9 +633,13 @@ export default function SettingsPanel({
   const handleAiProviderChange = (nextId: ProviderId) => {
     const spec = providerById(nextId);
     const prevSpec = aiSettings.provider ? providerById(aiSettings.provider) : undefined;
+    const knownProviderUrl = Object.values(PROVIDER_OPTIONS)
+      .map((provider) => providerById(provider.id).defaultBaseUrl)
+      .filter(Boolean);
     const usingDefaultUrl =
       !aiSettings.baseUrl ||
-      (prevSpec !== undefined && aiSettings.baseUrl === prevSpec.defaultBaseUrl);
+      (prevSpec !== undefined && aiSettings.baseUrl === prevSpec.defaultBaseUrl) ||
+      knownProviderUrl.includes(aiSettings.baseUrl);
     const usingDefaultModel =
       !aiSettings.model || (prevSpec !== undefined && aiSettings.model === prevSpec.defaultModel);
     onAiChange({
@@ -1923,7 +1927,7 @@ return (
                   </div>
                   <div>
                     <p className="text-[14px] font-semibold text-[var(--text-primary)]">Neo</p>
-                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.0.8 (Beta)</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.10 (Beta)</p>
                   </div>
                 </div>
 

@@ -51,11 +51,17 @@ export default function WindowControls() {
     "flex h-[34px] w-[44px] shrink-0 items-center justify-center transition-colors ";
 
   return (
-    <div className="flex items-stretch">
+    <div
+      className="flex items-stretch"
+      data-tauri-drag-region="false"
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
       <button
         type="button"
         title="Minimize"
         aria-label="Minimize window"
+        data-tauri-drag-region="false"
         onClick={minimizeWindow}
         className={`${base}text-[var(--text-secondary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]`}
       >
@@ -65,6 +71,7 @@ export default function WindowControls() {
         type="button"
         title={maximized ? "Restore" : "Maximize"}
         aria-label={maximized ? "Restore window" : "Maximize window"}
+        data-tauri-drag-region="false"
         onClick={() => {
           setMaximized((m) => !m);
           toggleMaximizeWindow();
@@ -77,6 +84,7 @@ export default function WindowControls() {
         type="button"
         title="Close"
         aria-label="Close window"
+        data-tauri-drag-region="false"
         onClick={closeWindow}
         className={`${base}text-[var(--text-secondary)] hover:bg-[#e5534b] hover:text-white`}
       >

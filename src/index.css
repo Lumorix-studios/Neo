@@ -162,6 +162,13 @@ select:focus-visible {
   outline-offset: 1px;
 }
 
+/* Explicit opt-out (e.g. PromptBar's composer textarea in the chat interface
+   and agent panel): higher specificity than the element selector above, so
+   `outline-none` actually wins and no focus ring paints on click. */
+.outline-none:focus-visible {
+  outline: none;
+}
+
 
 
 /* Hairline divider used between stacked panels */

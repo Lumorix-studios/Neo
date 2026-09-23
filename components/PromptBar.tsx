@@ -59,6 +59,8 @@ export interface PromptBarSendDetail {
 
 export interface PromptBarProps {
   placeholder?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
   sources?: PromptBarSource[];
   commands?: PromptBarCommand[];
   models?: PromptBarModel[];
@@ -66,10 +68,11 @@ export interface PromptBarProps {
   efforts?: string[];
   defaultEffort?: string;
   onEffortChange?: (effort: string) => void;
+  disabled?: boolean;
   busy?: boolean;
   onSend?: (text: string, detail: PromptBarSendDetail) => void;
   onStop?: () => void;
-  onAttach?: () => string | string[] | void | Promise<string | string[] | void>;
+  onAttach?: (key?: string) => string | string[] | void | Promise<string | string[] | void>;
   onDictate?: () => string | void | Promise<string | void>;
   background?: string;
   color?: string;
@@ -217,6 +220,8 @@ const STYLE = `
 
 const PromptBar: React.FC<PromptBarProps> = ({
   placeholder = 'Ask anything',
+  value,
+  onValueChange,
   sources = DEFAULT_SOURCES,
   commands = DEFAULT_COMMANDS,
   models = DEFAULT_MODELS,
@@ -224,6 +229,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   efforts = DEFAULT_EFFORTS,
   defaultEffort = '',
   onEffortChange,
+  disabled = false,
   busy = false,
   onSend,
   onStop,
@@ -257,7 +263,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const latest = useRef<Latest>({});
   latest.current = { onSend, onStop, onAttach, onDictate, onEffortChange };
 
-  const [draft, setDraft] = useState('');
+  const [internalDraft, setInternalDraft] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [modelKey, setModelKey] = useState(defaultModel);
   const [plusOpen, setPlusOpen] = useState(false);
@@ -272,6 +278,16 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const [listening, setListening] = useState(false);
   const [pressed, setPressed] = useState(false);
 
+  const draft = value ?? internalDraft;
+  const setDraft = useCallback(
+    (next: string | ((previous: string) => string)) => {
+      const resolved = typeof next === 'function' ? next(draft) : next;
+      if (value === undefined) setInternalDraft(resolved);
+      onValueChange?.(resolved);
+    },
+    [draft, onValueChange, value]
+  );
+
   const model = models.find(m => m.key === modelKey) ?? models[0];
   const token = dismissed ? null : parseToken(draft);
   const open = plusOpen ? 'at' : (token?.kind ?? (modelOpen ? 'model' : effortOpen ? 'effort' : null));
@@ -283,7 +299,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
     return [];
   }, [open, query, sources, commands, models]);
   const cursor = Math.min(active, Math.max(0, list.length - 1));
-  const canSend = draft.trim().length > 0 || attachments.length > 0;
+  const canSend = !disabled && (draft.trim().length > 0 || attachments.length > 0);
   const armed = busy || canSend;
   const level = efforts[effortIndex] ?? '';
   const maxed = efforts.length > 1 && effortIndex === efforts.length - 1;
@@ -481,7 +497,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
     const head = token ? draft.slice(0, token.start) : draft;
     if (row.attach) {
       setDraft(head);
-      Promise.resolve(latest.current.onAttach?.()).then(files => {
+      Promise.resolve(latest.current.onAttach?.(row.key)).then(files => {
         if (!files) return;
         setAttachments(a => [...a, ...(Array.isArray(files) ? files : [files])]);
       });
@@ -737,6 +753,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
           className="block w-full resize-none border-0 bg-transparent p-0 text-[14px] leading-[22px] text-inherit outline-none [font:inherit] [overflow-wrap:anywhere] placeholder:[color:color-mix(in_srgb,var(--pb-ink)_45%,transparent)] [@media(pointer:coarse)]:text-[16px]"
           rows={1}
           value={draft}
+          disabled={disabled}
           placeholder={listening ? 'Listening…' : placeholder}
           aria-label="Prompt"
           onChange={e => {

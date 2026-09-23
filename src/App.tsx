@@ -30,7 +30,7 @@ import { formatWithPrettier } from "./extensionsRuntime";
 import "./editor.css";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
-import LatticeLoader from '../components/LatticeLoader';
+import ThinkingIndicator from "../components/ThinkingIndicator";
 import {
   loadSettings,
   saveSettings,
@@ -58,13 +58,27 @@ import {
 } from "./lib/updateCheck";
 import UpdateNotification from "../components/UpdateNotification";
 import PromptBar from "../components/PromptBar";
+import {
+  buildAttachmentContext,
+  expandCommand,
+  pickFiles,
+  pickFolder,
+} from "./lib/attachments";
 import { useDeepLinkAuth } from "./lib/deepLink";
 import * as byok from "./lib/byok";
 import { debugLog } from "./debugLog";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { isTauri } from "@tauri-apps/api/core";
-import { getProviderSpec, buildAuthHeaders, PROVIDER_OPTIONS, providerById, PROVIDERS } from "./providers";
-import type { ProviderSpec, ProviderId } from "./providers";
+import {
+  getProviderSpec,
+  buildAuthHeaders,
+  markNoNativeTools,
+  outputTokensForEffort,
+  PROVIDER_OPTIONS,
+  providerById,
+} from "./providers";
+import type { ProviderSpec } from "./providers";
+import type { ProviderId } from "./types";
 import AgenticActivity from "./components/AgenticActivity";
 import {
   AGENTIC_PROMPT,
@@ -109,7 +123,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ IoStop, /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSend, IoSettings } from "react-icons/io5";
+import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSettings } from "react-icons/io5";
 import { shortPath } from "./utils";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
@@ -224,16 +238,6 @@ const SHARED_WS_KEY = "neo.ide.workspaceRoot";
  *  (e.g. `"openai:gpt-4o"`) back into its provider + model.
  *  Falls back to the provider's default model and the current settings'
  *  provider when the key is missing or malformed. */
-function resolveModelOverride(key: string | undefined): { provider: ProviderId; model: string } | null {
-  if (!key) return null;
-  const colon = key.indexOf(":");
-  if (colon < 0) return null;
-  const pid = key.slice(0, colon) as ProviderId;
-  const mdl = key.slice(colon + 1);
-  if (!(pid in PROVIDERS) || !mdl) return null;
-  return { provider: pid, model: mdl };
-}
-
 /** Resolved once per process — the Rust side reports the version this binary
  *  was built as, so it cannot change while the app is running. */
 const APP_VERSION = invoke<string>("get_app_version");
@@ -414,6 +418,7 @@ export default function App() {
   }, [updateNotification]);
 
   const [message, setMessage] = useState("");
+  const effortTokensRef = useRef(outputTokensForEffort("Medium"));
   const [messages, setMessages] = useState<Message[]>([]);
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [restored, setRestored] = useState(false);
@@ -1140,7 +1145,6 @@ export default function App() {
   // NOTE: `md.markdown-preview` lookup was removed because its only consumer
   // (BottomPanel's `preview={{…}}` prop) is currently commented out in the
   // render below. Restore it there if the preview dock is re-enabled:
-  //   const markdownPreviewEnabled = isExtensionEnabled("md.markdown-preview");
   const wordCountEnabled = isExtensionEnabled("status.word-count");
   const todoEnabled = isExtensionEnabled("status.todo-inspector");
   const statusExtensionsOn = wordCountEnabled || todoEnabled;
@@ -1220,9 +1224,21 @@ export default function App() {
         mcpTools?: Map<string, McpToolEntry>,
     modelOverride?: { provider: ProviderId; model: string },
   ): Promise<StreamRoundResult> => {
-    const effectiveSettings: AISettings = modelOverride
-      ? { ...settings, provider: modelOverride.provider, model: modelOverride.model }
-      : settings;
+    const effectiveSettings: AISettings = {
+      ...settings,
+      ...(modelOverride
+        ? { provider: modelOverride.provider, model: modelOverride.model }
+        : {}),
+      ...(agentic
+        ? {
+            systemPrompt: `${settings.systemPrompt}
+
+${AGENTIC_PROMPT}${promptSuffix ? `
+
+${promptSuffix}` : ""}`,
+          }
+        : {}),
+    };
     const s = getProviderSpec(effectiveSettings);
     const endpoint = s.buildUrl(effectiveSettings);
     const headers: Record<string, string> = {
@@ -1230,17 +1246,6 @@ export default function App() {
       ...buildAuthHeaders(s, effectiveSettings.apiKey),
     };
     
-    const effectiveSettings: AISettings = agentic
-      ? {
-          ...settings,
-          systemPrompt: `${settings.systemPrompt}
-
-${AGENTIC_PROMPT}${promptSuffix ? `
-
-${promptSuffix}` : ""}`,
-        }
-      : settings;
-   
     const additionalTools = mcpTools
       ? [...mcpTools.entries()].map(([name, tool]) => ({
           name,
@@ -1254,6 +1259,7 @@ ${promptSuffix}` : ""}`,
     const body = s.buildBody(effectiveSettings, history, {
       enableTools: agentic,
       additionalTools,
+      maxOutputTokens: effortTokensRef.current,
     });
 
     // Token budget guard — pause the run before spending when a configured
@@ -1316,16 +1322,26 @@ ${promptSuffix}` : ""}`,
         msg += ` ${s.authErrorHint(res.status, settings)}`;
       }
 
-      // Self-healing retry for Google thinking models: a 400 about a missing
-      // thought_signature means replayed functionCall parts lack the opaque
-      // signature the model originally returned (e.g. turns saved before
-      // signature capture existed). Signatures are unrecoverable, so retry
-      // once with every tool-call turn downgraded to plain text.
-      if (res.status === 400 && /thought[_ ]?signature/i.test(detail)) {
+      // Self-healing retries for two recoverable 400s:
+      //  1. Google thinking models — a missing thought_signature means replayed
+      //     functionCall parts lack the opaque signature the model originally
+      //     returned (turns saved before signature capture existed). The
+      //     signature is unrecoverable, so retry with tool-call turns
+      //     downgraded to plain text.
+      //  2. Local models that reject native tools outright (Ollama: "<model>
+      //     does not support tools"). Remember the model for this session —
+      //     buildBody omits `tools` for it from now on — and retry without
+      //     native tools; the agent loop still runs on the text-based tool
+      //     protocol (parseToolCalls below).
+      const sigHeal = res.status === 400 && /thought[_ ]?signature/i.test(detail);
+      const noToolsHeal = res.status === 400 && /does not support tools/i.test(detail);
+      if (sigHeal || noToolsHeal) {
+        if (noToolsHeal) markNoNativeTools(effectiveSettings);
         const retryBody = s.buildBody(effectiveSettings, history, {
-          enableTools: agentic,
+          enableTools: noToolsHeal ? false : agentic,
           additionalTools,
-          forceTextTools: true,
+          maxOutputTokens: effortTokensRef.current,
+          ...(sigHeal ? { forceTextTools: true } : {}),
         });
         const retryRes = await platformFetch(endpoint, {
           method: "POST",
@@ -1437,6 +1453,7 @@ ${promptSuffix}` : ""}`,
           }
         }
       }
+      buffer += decoder.decode();
       // Some providers close the response without a trailing newline.
       if (buffer.trim() && !signal.aborted) {
         let line = buffer.trim();
@@ -1467,6 +1484,7 @@ ${promptSuffix}` : ""}`,
           ...(s.buildBody(effectiveSettings, history, {
             enableTools: agentic,
             additionalTools,
+            maxOutputTokens: effortTokensRef.current,
           }) as Record<string, unknown>),
           stream: false,
         } as Record<string, unknown>;
@@ -2002,7 +2020,8 @@ MCP call rules:
             continue;
           }
 
-          patchActivity(id, { status: "running" });
+          const startedAt = Date.now();
+          patchActivity(id, { status: "running", startedAt });
           // A mutation invalidates every cached read-only result.
           readOnlyCache.clear();
           const result = await runToolCall(call);
@@ -2011,8 +2030,16 @@ MCP call rules:
           patchActivity(
             id,
             result.ok
-              ? { status: "done", output: result.output.slice(0, 4000) }
-              : { status: "error", error: result.output.slice(0, 2000) }
+              ? {
+                  status: "done",
+                  output: result.output.slice(0, 4000),
+                  durationMs: Date.now() - startedAt,
+                }
+              : {
+                  status: "error",
+                  error: result.output.slice(0, 2000),
+                  durationMs: Date.now() - startedAt,
+                }
           );
           // Reflect filesystem mutations in the editor immediately, show a
           // line-by-line diff in the activity feed, and open the changed file.
@@ -2566,26 +2593,8 @@ MCP call rules:
                           <div className="flex items-center gap-2 py-2">
                             <span className="thinking-dot" />
                             <span className="text-[11px] text-[var(--text-muted)]">
-                              <LatticeLoader
-                                status="working"
-                                label="Thinking"
-                                doneLabel="Done in"
-                                errorLabel="Failed after"
-                                pattern="orbit"
-                                grid={3}
-                                shape="round"
-                                doneColor="#22c55e"
-                                errorColor="#ef4444"
-                                cellSize={6}
-                                gap={2}
-                                fontSize={14}
-                                step={90}
-                                idleOpacity={0.15}
-                                glow={false}
-                                glowColor=""
-                                showTimer
-                                color="#f5f5f5"
-                              /></span>
+                              <ThinkingIndicator label="Thinking" />
+                            </span>
                           </div>
                         ) : (
                           <div className="group/msg min-w-0">
@@ -2627,13 +2636,13 @@ MCP call rules:
                   </div>
                 </div>
               )}
+              <AgenticActivity
+                items={activities}
+                pending={pendingApproval}
+                onApprove={handleApproveTool}
+                onDeny={handleDenyTool}
+              />
             </div>
-            <AgenticActivity
-              items={activities}
-              pending={pendingApproval}
-              onApprove={handleApproveTool}
-              onDeny={handleDenyTool}
-            />
             {error && (
               <div className="relative z-20 mx-auto w-full max-w-3xl px-5 pt-2">
                 <div className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3.5 py-2 text-[12.5px] leading-5 text-red-300">
@@ -2642,13 +2651,7 @@ MCP call rules:
               </div>
             )}
             <div className="relative z-20 shrink-0 px-5 pb-3 pt-2">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  sendMessage();
-                }}
-                className="mx-auto w-full max-w-3xl"
-              >
+              <div className="mx-auto w-full max-w-3xl">
                 {activeEditorPath ? (
                   <div className="mb-1.5 flex items-center gap-1.5 px-1">
                     <span
@@ -2666,61 +2669,37 @@ MCP call rules:
                     </span>
                   </div>
                 )}
-                <div className="relative rounded-lg border border-(--border) bg-[var(--bg-panel)] transition-colors duration-150 focus-within:border-blue-500/50 shadow-2xl">
-                  <textarea
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        e.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                    disabled={isLoading}
-                    placeholder={
-                      settings.apiKey || !spec.needsAuth
-                        ? "Ask the agent to fix, refactor, or build..."
-                        : "Configure your API key in Settings to start chatting"
-                    }
-                    rows={1}
-                    spellCheck={false}
-                    className="max-h-48 min-h-[54px] w-full resize-none bg-transparent px-3.5 pb-11 pt-3 pr-12 text-[13px] leading-6 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] disabled:opacity-60"
-                  />
-                  <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => launchIdeWindowRef.current()}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
-                      title="Open IDE window"
-                    >
-                      <IoAdd size={14} />
-                    </button>
-                    {isLoading ? (
-                      <button
-                        type="button"
-                        onClick={stopChat}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-(--fill-2) text-[var(--text-primary)] transition hover:bg-(--fill-3)"
-                        title="Stop streaming"
-                      >
-                        <IoStop size={11} />
-                      </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        disabled={!message.trim() || isLoading}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-(--fill-2) disabled:text-[var(--text-faint)]"
-                        title="Send message"
-                      >
-                        <IoSend size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                <PromptBar
+                  value={message}
+                  onValueChange={setMessage}
+                  onEffortChange={(effort) => {
+                    effortTokensRef.current = outputTokensForEffort(effort);
+                  }}
+                  busy={isLoading}
+                  onSend={(text, detail) => {
+                    void (async () => {
+                      const ctx = await buildAttachmentContext(detail.attachments);
+                      const body = [expandCommand(text), ctx].filter(Boolean).join("\n\n");
+                      void sendMessage(body);
+                    })();
+                  }}
+                  onAttach={(key) => (key === "folder" ? pickFolder() : pickFiles())}
+                  onStop={stopChat}
+                  placeholder={
+                    settings.apiKey || !spec.needsAuth
+                      ? "Ask the agent to fix, refactor, or build..."
+                      : "Configure your API key in Settings to start chatting"
+                  }
+                  models={[{ key: `${settings.provider}:${settings.model}`, name: settings.model }]}
+                  defaultModel={`${settings.provider}:${settings.model}`}
+                  defaultEffort="Medium"
+                  className="w-full"
+                />
                 <div className="mt-1.5 flex items-center justify-between px-1 text-[10.5px] text-[var(--text-faint)]">
                   <span>Enter to send · Shift+Enter for a new line</span>
                   <span>AI can make mistakes — verify important info.</span>
                 </div>
-              </form>
+              </div>
             </div>
           </main>
         </div>

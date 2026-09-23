@@ -3,16 +3,22 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 //main agent panel interface for the IDE window specifically
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import Markdown from "../components/Markdown";
 import AgenticActivity from "../components/AgenticActivity";
 import type { EditorTab } from "../components/CodeEditor";
 import type { AISettings, Message } from "../types";
-import { getProviderSpec, buildAuthHeaders } from "../providers";
+import {
+  getProviderSpec,
+  buildAuthHeaders,
+  markNoNativeTools,
+  outputTokensForEffort,
+} from "../providers";
 import type { ProviderSpec } from "../providers";
-import LatticeLoader from '../../components/LatticeLoader';
+import ThinkingIndicator from "../../components/ThinkingIndicator";
+import PromptBar from "../../components/PromptBar";
 import {
   activityId,
   executeTool,
@@ -32,13 +38,19 @@ import type { NativeToolAcc, ToolCall } from "../agentic";
 import { computeLineDiff } from "../diff";
 import { checkRateLimit, estimateTokens, recordUsage } from "../tokenUsage";
 import {
+  buildAttachmentContext,
+  expandCommand,
+  pickFiles,
+  pickFolder,
+} from "../lib/attachments";
+import {
   loadMcpServers,
   listMcpTools,
   callMcpTool,
   formatMcpToolSchema,
   type McpToolEntry,
 } from "../mcp";
-import { IoAdd, IoApps, IoArrowUpOutline, IoClose, IoFolderOutline, IoStop, IoTrashOutline } from "react-icons/io5";
+import { IoAdd, IoApps, IoClose, IoFolderOutline, IoTrashOutline } from "react-icons/io5";
 
 type JsonDict = Record<string, unknown>;
 
@@ -147,6 +159,7 @@ export default function AgentPanel({
   // --- chat state ----------------------------------------------------------
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const effortTokensRef = useRef(outputTokensForEffort("Medium"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activities, setActivities] = useState<AgenticActivityType[]>([]);
@@ -165,6 +178,10 @@ export default function AgentPanel({
   const streamRef = useRef<AbortController | null>(null);
   const approvalRef = useRef<{ id: string; resolve: (ok: boolean) => void } | null>(null);
   const streamedRef = useRef("");
+  const streamPaintRef = useRef<{ pending: string; frame: number | null }>({
+    pending: "",
+    frame: null,
+  });
 
   // Live mirrors of props for the async agent loop (no stale closures).
   const tabsRef = useRef(editorTabs);
@@ -199,7 +216,15 @@ export default function AgentPanel({
   }, [messages, activities, pendingApproval, busy]);
 
   // Abort any in-flight request when the panel unmounts.
-  useEffect(() => () => streamRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      streamRef.current?.abort();
+      if (streamPaintRef.current.frame !== null) {
+        window.cancelAnimationFrame(streamPaintRef.current.frame);
+      }
+    },
+    []
+  );
 
   /** Overwrite the trailing assistant bubble (used while streaming). */
   const setLastAssistant = (content: string) => {
@@ -276,7 +301,11 @@ export default function AgentPanel({
               : { type: "object", properties: {}, required: [] },
         }))
       : undefined;
-    const body = s.buildBody(effective, history, { enableTools, additionalTools });
+    const body = s.buildBody(effective, history, {
+      enableTools,
+      additionalTools,
+      maxOutputTokens: effortTokensRef.current,
+    });
 
     // Token budget guard — pause the agent before spending when a configured
     // limit (Settings → Dashboard) would be exceeded by this request.
@@ -322,11 +351,39 @@ export default function AgentPanel({
       } catch {
         /* keep the status-based detail */
       }
-      let msg = `API error (${res.status}): ${detail}`;
-      if (res.status === 401 || res.status === 403) {
-        msg += ` ${s.authErrorHint(res.status, settingsRef.current)}`;
+      // Self-healing retry: local models that reject native tools outright
+      // (Ollama: "<model> does not support tools"). Remember the model for
+      // this session — buildBody omits `tools` from now on — and retry once
+      // without native tools; the agent loop still runs on the text-based
+      // tool protocol (parseToolCalls).
+      if (res.status === 400 && /does not support tools/i.test(detail)) {
+        markNoNativeTools(effective);
+        try {
+          const retryRes = await platformFetch(endpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(
+              s.buildBody(effective, history, {
+                enableTools: false,
+                additionalTools,
+                maxOutputTokens: effortTokensRef.current,
+              })
+            ),
+            signal,
+          });
+          if (retryRes.ok) res = retryRes;
+        } catch {
+          if (signal.aborted) throw new Error("__ABORTED__");
+          /* fall through to the original error below */
+        }
       }
-      throw new Error(msg);
+      if (!res.ok) {
+        let msg = `API error (${res.status}): ${detail}`;
+        if (res.status === 401 || res.status === 403) {
+          msg += ` ${s.authErrorHint(res.status, settingsRef.current)}`;
+        }
+        throw new Error(msg);
+      }
     }
 
     const nativeAcc: NativeToolAcc[] = [];
@@ -334,18 +391,27 @@ export default function AgentPanel({
     let usageIn = 0;
     let usageOut = 0;
     let sawUsage = false;
-    let lastPaintAt = 0;
     const show = (text: string) => {
-      // Rendering Markdown for every provider token makes the UI spend more
-      // time painting than reading the response. Keep the stream responsive
-      // while still updating frequently enough to look live.
-      const now = performance.now();
-      if (now - lastPaintAt < 32) return;
-      lastPaintAt = now;
-      setLastAssistant(stabilizeStreamingMarkdown(stripToolCalls(text)));
+      // The network remains token-streamed, but painting once per animation
+      // frame prevents Markdown and the entire message list from rerendering
+      // for every token.
+      const state = streamPaintRef.current;
+      state.pending = stabilizeStreamingMarkdown(stripToolCalls(text));
+      if (state.frame !== null) return;
+      state.frame = window.requestAnimationFrame(() => {
+        state.frame = null;
+        setLastAssistant(state.pending);
+      });
     };
-    const showFinal = (text: string) =>
-      setLastAssistant(stabilizeStreamingMarkdown(stripToolCalls(text)));
+    const showFinal = (text: string) => {
+      const state = streamPaintRef.current;
+      if (state.frame !== null) {
+        window.cancelAnimationFrame(state.frame);
+        state.frame = null;
+      }
+      state.pending = stabilizeStreamingMarkdown(stripToolCalls(text));
+      setLastAssistant(state.pending);
+    };
 
     const processStreamLine = (rawLine: string) => {
       let line = rawLine.trim();
@@ -402,6 +468,7 @@ export default function AgentPanel({
         buffer = lines.pop() ?? "";
         for (const line of lines) processStreamLine(line);
       }
+      buffer += decoder.decode();
       // Fetch implementations are allowed to end without a trailing newline.
       // Processing this remainder is essential for the final text/tool-call
       // chunk, especially with local Ollama-compatible servers.
@@ -415,7 +482,11 @@ export default function AgentPanel({
     if (!round && nativeAcc.length === 0 && !signal.aborted) {
       try {
         const nonStreamBody = {
-          ...(s.buildBody(effective, history, { enableTools, additionalTools }) as JsonDict),
+          ...(s.buildBody(effective, history, {
+            enableTools,
+            additionalTools,
+            maxOutputTokens: effortTokensRef.current,
+          }) as JsonDict),
           stream: false,
         } as JsonDict;
         const nonStreamUrl = endpoint.includes("streamGenerateContent")
@@ -440,9 +511,19 @@ export default function AgentPanel({
             }
             if (round) showFinal(round);
           }
+        } else {
+          const fallbackDetail = (await fallbackRes.text().catch(() => "")).trim();
+          throw new Error(
+            `NVIDIA NIM returned no streamed content (${fallbackRes.status})${
+              fallbackDetail ? `: ${fallbackDetail.slice(0, 300)}` : "."
+            }`
+          );
         }
-      } catch {
-        /* stream error — keep whatever we have (may be empty) */
+      } catch (fallbackError) {
+        if (signal.aborted) throw new Error("__ABORTED__");
+        if (fallbackError instanceof Error && fallbackError.message.startsWith("NVIDIA NIM")) {
+          throw fallbackError;
+        }
       }
     }
 
@@ -818,7 +899,8 @@ Rules:
             continue;
           }
 
-          patchActivity(id, { status: "running" });
+          const startedAt = Date.now();
+          patchActivity(id, { status: "running", startedAt });
           // A mutation invalidates every cached read-only result.
           readOnlyCache.clear();
           const result = await runToolCall(call);
@@ -827,8 +909,16 @@ Rules:
           patchActivity(
             id,
             result.ok
-              ? { status: "done", output: result.output.slice(0, 4000) }
-              : { status: "error", error: result.output.slice(0, 2000) }
+              ? {
+                  status: "done",
+                  output: result.output.slice(0, 4000),
+                  durationMs: Date.now() - startedAt,
+                }
+              : {
+                  status: "error",
+                  error: result.output.slice(0, 2000),
+                  durationMs: Date.now() - startedAt,
+                }
           );
 
           // Reflect mutations in the editor, show a diff, open the file.
@@ -1158,11 +1248,6 @@ Rules:
     else void runAgent(trimmed, mode === "chat" ? "chat" : "agent");
   };
 
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    send();
-  };
-
   // Context-aware starter prompts for the empty state.
   const suggestions = workspaceRoot
     ? [
@@ -1277,9 +1362,7 @@ Rules:
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-5 pb-6 text-center">
-            <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-[var(--text-muted)]">
-              
-            </p>
+            <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-[var(--text-muted)]" />
             {!configured && (
               <button
                 type="button"
@@ -1290,6 +1373,7 @@ Rules:
               </button>
             )}
             <div className="mt-5 grid w-full max-w-[300px] grid-cols-1 gap-1.5">
+
               {suggestions.map((sg) => (
                 <button
                   key={sg.label}
@@ -1328,9 +1412,7 @@ Rules:
                   <div className="text-[12.5px] leading-6 text-[var(--text-primary)]">
                     {m.content ? (
                       <Markdown content={m.content} />
-                    ) : (
-                      <span className="thinking-dot" />
-                    )}
+                    ) : null}
                     {busy && i === messages.length - 1 && m.content && (
                       <span className="stream-caret" />
                     )}
@@ -1338,31 +1420,17 @@ Rules:
                 </div>
               )
             )}
-            {busy && (
+            {busy && !messages[messages.length - 1]?.content && (
               <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-                <span className="thinking-dot" />
-                <LatticeLoader
-                  status="working"
-                  label="Thinking"
-                  doneLabel="Done in"
-                  errorLabel="Failed after"
-                  pattern="orbit"
-                  grid={3}
-                  shape="round"
-                  doneColor="#22c55e"
-                  errorColor="#ef4444"
-                  cellSize={6}
-                  gap={2}
-                  fontSize={14}
-                  step={90}
-                  idleOpacity={0.15}
-                  glow={false}
-                  glowColor=""
-                  showTimer
-                  color="#f5f5f5"
-                />  
+                <ThinkingIndicator label="Thinking" />
               </div>
             )}
+            <AgenticActivity
+              items={activities}
+              pending={pendingApproval}
+              onApprove={handleApprove}
+              onDeny={handleDeny}
+            />
           </div>
         )}
       </div>
@@ -1413,13 +1481,6 @@ Rules:
         </div>
       )}
 
-      <AgenticActivity
-        items={activities}
-        pending={pendingApproval}
-        onApprove={handleApprove}
-        onDeny={handleDeny}
-      />
-
       {error && (
         <div className="shrink-0 px-3 pt-2">
           <div className="flex items-start justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[11.5px] leading-5 text-red-300">
@@ -1437,7 +1498,7 @@ Rules:
       )}
 
       {/* ── Composer ───────────────────────────────────────────────────────── */}
-      <form onSubmit={onSubmit} className="shrink-0 border-t border-(--border) p-2.5">
+      <div className="shrink-0 border-t border-(--border) p-2.5">
         {/* Context chips — what the agent can currently see. */}
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-0.5">
           {workspaceRoot ? (
@@ -1472,59 +1533,40 @@ Rules:
             </button>
           )}
         </div>
-        <div className="relative rounded-lg border border-(--border) bg-[var(--bg-elevated)] transition-colors duration-150 focus-within:border-(--border-strong)">
-          <textarea
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              e.target.style.height = "auto";
-              e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                e.currentTarget.form?.requestSubmit();
-              }
-            }}
-            disabled={!configured}
-            placeholder={
-              configured
-                ? workspaceRoot
-                  ? "Ask the agent to change something…"
-                  : "Ask anything, or open a folder to enable file tools…"
-                : "Configure an API key to use the agent"
-            }
-            rows={1}
-            spellCheck={false}
-            className="max-h-[140px] min-h-[46px] w-full resize-none bg-transparent px-3 pb-10 pt-2.5 pr-11 text-[12.5px] leading-5 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] disabled:opacity-60"
-          />
-          <div className="absolute bottom-1.5 right-1.5">
-            {busy ? (
-              <button
-                type="button"
-                onClick={stopAgent}
-                className="flex h-7 w-7 items-center justify-center rounded-md bg-(--fill-2) text-[var(--text-primary)] transition hover:bg-(--fill-3)"
-                title="Stop the agent"
-              >
-                <IoStop size={11} />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!input.trim() || !configured}
-                className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8e8e8] text-[#141414] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-(--fill-2) disabled:text-[var(--text-faint)]"
-                title="Send to agent"
-              >
-                <IoArrowUpOutline size={13} />
-              </button>
-            )}
-          </div>
-        </div>
+        <PromptBar
+          value={input}
+          onValueChange={setInput}
+          onEffortChange={(effort) => {
+            effortTokensRef.current = outputTokensForEffort(effort);
+          }}
+          disabled={!configured}
+          busy={busy}
+          onSend={(text, detail) => {
+            void (async () => {
+              const ctx = await buildAttachmentContext(detail.attachments);
+              const body = [expandCommand(text), ctx].filter(Boolean).join("\n\n");
+              send(body);
+            })();
+          }}
+          onAttach={(key) => (key === "folder" ? pickFolder() : pickFiles())}
+          onStop={stopAgent}
+          placeholder={
+            configured
+              ? workspaceRoot
+                ? "Ask the agent to change something…"
+                : "Ask anything, or open a folder to enable file tools…"
+              : "Configure an API key to use the agent"
+          }
+          models={[{ key: `${settings.provider}:${settings.model}`, name: settings.model || spec.label }]}
+          defaultModel={`${settings.provider}:${settings.model}`}
+          defaultEffort="Medium"
+          className="w-full"
+        />
         <div className="mt-1 flex items-center justify-between px-1 text-[10px] text-[var(--text-faint)]">
           <span>Ai can make mistakes: verify information</span>
           {/* <span>Destructive actions need approval</span> */}
         </div>
-      </form>
+      </div>
     </aside>
   );
 }

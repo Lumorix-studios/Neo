@@ -32,6 +32,7 @@ export const BYOK_PROVIDERS = [
   "openai",
   "openrouter",
   "groq",
+  "nvidia",
   "anthropic",
   "google",
   "custom",
