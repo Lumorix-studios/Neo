@@ -12,7 +12,6 @@ import {
   IoClose,
   IoCodeSlash,
   IoDocumentText,
-  IoEyeOutline,
   IoPulse,
   IoReloadOutline,
   IoTerminal,
@@ -20,12 +19,11 @@ import {
 } from "react-icons/io5";
 import TerminalView, { type TerminalPrefs } from "./TerminalView";
 import ProblemsPanel from "./ProblemsPanel";
-import Markdown from "./Markdown";
 import DebugConsole from "./DebugConsole";
 import OutputPanel from "./OutputPanel";
 import PortsPanel from "./PortsPanel";
 
-export type PanelTab = "terminal" | "problems" | "debug" | "output" | "ports" | "preview";
+export type PanelTab = "terminal" | "problems" | "debug" | "output" | "ports";
 
 interface BottomPanelProps {
   open: boolean;
@@ -38,11 +36,6 @@ interface BottomPanelProps {
   onOpenFile: (path: string, line?: number) => void;
   /** User-configurable terminal preferences (from Settings → Terminal). */
   terminalPrefs?: TerminalPrefs;
-  /**
-   * Live Markdown preview contributed by the Markdown Preview Enhanced
-   * extension — null while the extension is not installed/enabled.
-   */
-  preview?: { path: string | null; content: string } | null;
 }
 
 const MIN_HEIGHT = 140;
@@ -55,13 +48,6 @@ const TABS: { id: PanelTab; label: string; icon: React.ReactNode }[] = [
   { id: "ports", label: "Ports", icon: <IoPulse size={12} /> },
 ];
 
-/** Extension-contributed tab (Markdown Preview Enhanced). */
-const PREVIEW_TAB: { id: PanelTab; label: string; icon: React.ReactNode } = {
-  id: "preview",
-  label: "Preview",
-  icon: <IoEyeOutline size={12} />,
-};
-
 export default function BottomPanel({
   open,
   tab,
@@ -70,7 +56,6 @@ export default function BottomPanel({
   root,
   onOpenFile,
   terminalPrefs,
-  preview,
 }: BottomPanelProps) {
   // --- Terminal instance management ---
   const [terms, setTerms] = useState<number[]>([]);
@@ -180,7 +165,7 @@ export default function BottomPanel({
       <div className="flex h-8 shrink-0 items-stretch border-white/[0.00]">
         <div className="flex min-w-0 items-stretch"> {/*Dialed the border color down to reduce blockyness i guess */}
          
-          {[...TABS, ...(preview ? [PREVIEW_TAB] : [])].map((t) => (
+          {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -323,19 +308,6 @@ export default function BottomPanel({
         {tab === "debug" && <DebugConsole root={root} />}
         {tab === "output" && <OutputPanel />}
         {tab === "ports" && <PortsPanel active={open} />}
-        {tab === "preview" && (
-          <div className="h-full overflow-y-auto">
-            {preview?.path && /\.(md|markdown)$/i.test(preview.path) ? (
-              <div className="mx-auto max-w-3xl px-6 py-5 pb-10">
-                <Markdown content={preview.content} />
-              </div>
-            ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center text-[11.5px] text-[var(--text-muted)]">
-                Open a Markdown (.md) file in the editor to preview it here.
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
 

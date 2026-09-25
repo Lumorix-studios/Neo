@@ -20,3 +20,11 @@ project_id = "agenticcoder"
 # function additionally validates it with sb.auth.getUser() and enforces the
 # profiles.byok_enabled paywall flag.
 verify_jwt = true
+
+[functions.billing]
+# Stripe never sends a Supabase JWT, so the gateway must not demand one or the
+# webhook is rejected before the function can verify its signature. Nothing is
+# left unauthenticated: user routes verify the caller's JWT with
+# sb.auth.getUser(), and the webhook route verifies Stripe's signature against
+# STRIPE_WEBHOOK_SECRET.
+verify_jwt = false

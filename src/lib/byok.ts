@@ -5,15 +5,17 @@
 /**
  * BYOK (Bring Your Own Key) — provider API keys for Neo.
  *
- * Two storage modes:
- *  - Signed in  → the key is encrypted server-side (AES-GCM inside the
- *    `api-keys` Supabase Edge Function) and stored in the `user_api_keys`
- *    table. Access is gated by `profiles.byok_enabled`, the future paywall
- *    flag. The decrypted key is held in memory only — never written to disk.
- *  - Signed out → optional local fallback. Desktop builds store it in the
- *    OS app-data directory so it survives WebView/profile changes; browser
- *    builds use localStorage. Signed-in sessions never fall back to this
- *    local store.
+ * BYOK is the paid feature, so a key only ever exists inside a signed-in
+ * account: it is encrypted server-side (AES-GCM inside the `api-keys` Supabase
+ * Edge Function) and stored in the `user_api_keys` table, gated by the plan
+ * (`profiles.plan` / `profiles.byok_enabled`) that the edge function re-checks
+ * on every read. The decrypted key is held in memory only — never written to
+ * disk.
+ *
+ * Signed out → no key at all. There is deliberately no local key store: a
+ * device fallback handed the paid feature to users who never signed in (and
+ * never paid). The legacy device stores are still opened once by
+ * `clearLocalKey`, purely to purge keys written by older builds.
  */
 
 import { supabase, isSupabaseConfigured } from "./supabase";
@@ -112,10 +114,16 @@ const memoryKeys = new Map<string, string>();
 const remoteKeyCache = new Map<string, string | null>();
 const remoteKeyRequests = new Map<string, Promise<string | null>>();
 
-/** True when the signed-in user may store/remote-fetch API keys. */
+/**
+ * True when the user may store / read provider keys.
+ *
+ * BYOK is the paid feature, so this needs BOTH a signed-in account and the
+ * entitlement `getProfile()` resolves (`profiles.plan` includes BYOK, or
+ * `profiles.byok_enabled` was granted server-side). Signed out is always
+ * false — there is no local store to fall back to.
+ */
 export function byokAllowed(profile: { byokEnabled: boolean } | null, signedIn: boolean): boolean {
-  if (!signedIn) return true; // local fallback mode
-  return !!profile?.byokEnabled;
+  return signedIn && !!profile?.byokEnabled;
 }
 
 /** Fetch the decrypted key for a provider (signed-in users). */
@@ -197,20 +205,11 @@ export async function removeRemoteKey(provider: string): Promise<void> {
   await clearLocalKey(provider);
 }
 
-/** Local fallback (signed-out users). Desktop state uses Tauri app-data. */
-export async function getLocalKey(provider: string): Promise<string> {
-  return (await readLocalStore())[provider] ?? "";
-}
-
-export async function setLocalKey(provider: string, apiKey: string): Promise<void> {
-  const store = await readLocalStore();
-  if (apiKey.trim()) store[provider] = apiKey.trim();
-  else delete store[provider];
-  await writeLocalStore(store);
-  if (apiKey.trim()) memoryKeys.set(provider, apiKey.trim());
-  else memoryKeys.delete(provider);
-}
-
+/**
+ * Purge a key written by an older build's signed-out device store — desktop
+ * builds used the Tauri app-data dir, browser builds localStorage. Only ever
+ * called to clean up, never to read a key back.
+ */
 export async function clearLocalKey(provider: string): Promise<void> {
   const store = await readLocalStore();
   delete store[provider];
@@ -218,26 +217,21 @@ export async function clearLocalKey(provider: string): Promise<void> {
 }
 
 /**
- * Resolve the API key for a provider at call time:
- * 1. in-memory cloud key (already fetched), else remote fetch;
- * 2. local fallback for signed-out users only.
+ * Resolve the API key for a provider at call time.
  *
- * `byokEnabled` is the `profiles.byok_enabled` entitlement. When a signed-in
- * user's plan excludes BYOK we return no key at all — falling back to the local
- * store would silently bypass the paywall.
+ * BYOK is the paid feature, so a key is only returned for a signed-in user
+ * whose entitlement is `byokEnabled` (`byokAllowed`). Signed out, or without
+ * the entitlement, the answer is an empty key — never a device copy.
  */
 export async function resolveApiKey(
   provider: string,
   signedIn: boolean,
-  byokEnabled: boolean = true
+  byokEnabled: boolean
 ): Promise<string> {
-  if (signedIn) {
-    if (!byokEnabled) return "";
-    if (memoryKeys.has(provider)) return memoryKeys.get(provider) ?? "";
-    const remote = await fetchRemoteKey(provider);
-    return remote ?? "";
-  }
-  return await getLocalKey(provider);
+  if (!byokAllowed({ byokEnabled }, signedIn)) return "";
+  if (memoryKeys.has(provider)) return memoryKeys.get(provider) ?? "";
+  const remote = await fetchRemoteKey(provider);
+  return remote ?? "";
 }
 
 /** Drop in-memory copies (on sign-out). */
@@ -245,10 +239,4 @@ export function clearMemoryKeys(): void {
   memoryKeys.clear();
   remoteKeyCache.clear();
   remoteKeyRequests.clear();
-}
-
-/** Provider ids that currently have a stored key (for the settings UI). */
-export async function hasKeyHint(provider: string, signedIn: boolean): Promise<boolean> {
-  if (signedIn) return memoryKeys.has(provider);
-  return !!(await getLocalKey(provider));
 }

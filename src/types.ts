@@ -73,12 +73,17 @@ export function loadSettings(): AISettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    // The provider key is never read back from disk — BYOK keys are account
+    // only (src/lib/byok.ts) and get injected at runtime (src/store.ts already
+    // strips them on write).
+    return { ...DEFAULT_SETTINGS, ...parsed, apiKey: "" };
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
 export function saveSettings(settings: AISettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  // Never persist the provider key: it is the paid, account-only BYOK secret
+  // and would otherwise survive sign-out in localStorage.
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...settings, apiKey: "" }));
 }

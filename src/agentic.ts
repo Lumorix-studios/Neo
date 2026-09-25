@@ -755,7 +755,7 @@ export interface EditorContext {
  * Execute a single tool call. Returns a ToolResult that is fed back to the
  * model as a `<tool_result>` block.
  */
-export async function executeTool(
+async function executeToolUncached(
   name: string,
   args: Record<string, unknown>,
   workspaceRoot?: string | null,
@@ -1239,6 +1239,100 @@ export async function executeTool(
     };
   }
 }
+
+/* ── Tool result cache ─────────────────────────────────────────────────────── */
+/**
+ * Agents routinely re-read the same file, directory or search result several
+ * times in one turn (and parallel tool batches can contain duplicate calls).
+ * A short-lived cache plus in-flight de-duplication removes that repeated I/O
+ * while staying invisible to the model — entries expire after a few seconds and
+ * every mutating tool wipes the cache before and after it runs.
+ */
+const TOOL_CACHE_TTL_MS = 4000;
+const TOOL_CACHE_MAX_ENTRIES = 64;
+
+/** Read-only tools whose results can be safely reused for a few seconds. */
+const CACHEABLE_TOOLS = new Set<string>([
+  "read_file",
+  "read_file_range",
+  "list_dir",
+  "file_info",
+  "search_files",
+]);
+
+interface ToolCacheEntry {
+  at: number;
+  result: ToolResult;
+}
+
+const toolCache = new Map<string, ToolCacheEntry>();
+const toolInflight = new Map<string, Promise<ToolResult>>();
+
+/** Drop every cached tool result (used when files may have changed). */
+export function clearToolCache(): void {
+  toolCache.clear();
+}
+
+function cacheKeyFor(name: string, args: Record<string, unknown>, workspaceRoot?: string | null): string {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(args);
+  } catch {
+    serialized = "{}";
+  }
+  return `${name}|${workspaceRoot ?? ""}|${serialized}`;
+}
+
+function rememberToolResult(key: string, result: ToolResult): void {
+  if (toolCache.size >= TOOL_CACHE_MAX_ENTRIES) {
+    const oldest = toolCache.keys().next().value;
+    if (oldest !== undefined) toolCache.delete(oldest);
+  }
+  toolCache.set(key, { at: Date.now(), result });
+}
+
+/**
+ * Execute a single tool call. Returns a ToolResult that is fed back to the
+ * model as a `<tool_result>` block. Read-only tools are memoised briefly;
+ * mutating tools invalidate the cache so the next read sees fresh contents.
+ */
+export async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  workspaceRoot?: string | null,
+  editor?: EditorContext
+): Promise<ToolResult> {
+  const useCache = CACHEABLE_TOOLS.has(name);
+  const mutates = isDestructive(name) || name.startsWith("mcp_");
+  const key = cacheKeyFor(name, args, workspaceRoot);
+
+  if (useCache) {
+    const hit = toolCache.get(key);
+    if (hit && Date.now() - hit.at < TOOL_CACHE_TTL_MS) return hit.result;
+    const pending = toolInflight.get(key);
+    if (pending) return pending;
+  }
+
+  if (mutates) clearToolCache();
+
+  const run = (async () => {
+    const result = await executeToolUncached(name, args, workspaceRoot, editor);
+    if (useCache && result.ok) rememberToolResult(key, result);
+    if (mutates) clearToolCache();
+    return result;
+  })();
+
+  if (useCache) {
+    toolInflight.set(key, run);
+    void run.finally(() => {
+      if (toolInflight.get(key) === run) toolInflight.delete(key);
+    }).catch(() => {
+      /* the caller still receives the rejection from `run` */
+    });
+  }
+  return run;
+}
+
 
 function coerceArgs(raw: unknown): Record<string, unknown> {
   if (!raw) return {};

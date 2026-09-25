@@ -370,6 +370,11 @@ NEO does not directly handle or store users' complete payment card information.
 
 Billing and subscription functionality may require an active NEO account.
 
+Checkout is not handled inside the app: the plan buttons in Settings → Billing
+open the website that handles payments, and the account (plan + BYOK
+entitlement) is shared through the same Supabase project, so a purchase shows up
+in the app on the next account refresh.
+
 ---
 
 # Architecture

@@ -130,7 +130,7 @@ export interface NeoUser {
 export interface Profile extends NeoUser {
   /** Billing plan id from profiles.plan ("free" by default). */
   plan: string;
-  /** Paywall flag — flip server-side when BYOK goes paid. */
+  /** Entitlement for the paid BYOK feature (plan includes it, or granted server-side). */
   byokEnabled: boolean;
   createdAt: string | null;
   /** Set when the profiles row could not be loaded (grants/RLS/schema). */
@@ -143,9 +143,16 @@ function planIncludesByok(plan: string | null | undefined): boolean {
   return BYOK_PLAN_IDS.has((plan ?? "").trim().toLowerCase());
 }
 
+/**
+ * BYOK is the paid feature: a paid plan, or an explicit `byok_enabled = true`
+ * grant (comp / manual upgrade). Anything else is locked — including the old
+ * `byok_enabled` default of `true` that shipped in 0001_init, which is what
+ * made the paywall vanish. The `api-keys` edge function applies the same rule
+ * server-side, so the client can never award itself a key.
+ */
 function resolveByokEnabled(row?: { plan?: string | null; byok_enabled?: boolean | null } | null): boolean {
   if (planIncludesByok(row?.plan)) return true;
-  return row?.byok_enabled ?? true;
+  return row?.byok_enabled === true;
 }
 
 /** Map a supabase auth user + profile row to our app-level shape. */

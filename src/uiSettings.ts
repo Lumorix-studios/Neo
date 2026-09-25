@@ -3,7 +3,6 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { installedThemePresets } from "./extensions";
 export interface UiSettings {
   
   themeId: string;
@@ -110,7 +109,13 @@ export async function loadUiSettings(): Promise<UiSettings> {
   const raw = inTauri() ? await diskRead(UI_SETTINGS_KEY) : localStorage.getItem(UI_SETTINGS_KEY);
   if (!raw) return DEFAULT_UI_SETTINGS;
   try {
-    return { ...DEFAULT_UI_SETTINGS, ...JSON.parse(raw) };
+    const merged = { ...DEFAULT_UI_SETTINGS, ...JSON.parse(raw) };
+    // Theme ids contributed by the removed extensions system can no longer
+    // resolve — fall back to the default palette.
+    if (typeof merged.themeId !== "string" || !THEMES.some((t) => t.id === merged.themeId)) {
+      merged.themeId = DEFAULT_UI_SETTINGS.themeId;
+    }
+    return merged;
   } catch {
     return DEFAULT_UI_SETTINGS;
   }
@@ -279,8 +284,7 @@ export function deriveTheme(rawBase: string, brightness = 0, accent = "#3b82f6")
 }
 
 export function resolveThemeVars(s: UiSettings): Record<string, string> {
-  const extTheme = installedThemePresets().find((t) => t.id === s.themeId);
-  const theme = extTheme ?? THEMES.find((t) => t.id === s.themeId) ?? THEMES[0];
+  const theme = THEMES.find((t) => t.id === s.themeId) ?? THEMES[0];
   const custom = !!(s.customBackground && isValidHex(s.customBackground));
   const baseRaw = custom ? normalizeHex(s.customBackground as string) : theme.base;
   const d = deriveTheme(baseRaw, custom ? (s.bgBrightness ?? 0) : 0, s.accent);

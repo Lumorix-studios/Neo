@@ -21,7 +21,7 @@ import {
   Attachment01Icon,
   Calendar03Icon,
   Cancel01Icon,
-  ChartLineData01Icon,
+  // ChartLineData01Icon,
   File02Icon,
   Globe02Icon,
   HelpCircleIcon,
@@ -126,16 +126,15 @@ const EDGE = 11;
 const DEFAULT_SOURCES: PromptBarSource[] = [
   {
     key: 'files',
-    name: 'Photos & files',
+    name: 'Files/Folders',
     description: 'Upload from this device',
     icon: Attachment01Icon,
     attach: true
   },
-  { key: 'web', name: 'Web search', description: 'Live results', icon: Globe02Icon },
-  { key: 'sales', name: 'Sales data', description: 'Revenue and churn', icon: ChartLineData01Icon },
-  { key: 'docs', name: 'Documents', description: 'Specs, notes, briefs', icon: File02Icon },
-  { key: 'mail', name: 'Mail', description: 'Read and draft mail', icon: Mail01Icon },
-  { key: 'calendar', name: 'Calendar', description: 'Events and availability', icon: Calendar03Icon }
+  { key: 'web', name: 'Web search', description: 'Agent surfs the web', icon: Globe02Icon },
+
+  { key: 'mail', name: 'Mail', description: 'Agent handles email', icon: Mail01Icon },
+  { key: 'calendar', name: 'Calendar', description: 'Agent manages events and availability', icon: Calendar03Icon }
 ];
 const DEFAULT_COMMANDS: PromptBarCommand[] = [
   { key: 'summarize', name: '/summarize', description: 'Digest the thread so far' },

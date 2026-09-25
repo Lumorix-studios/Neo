@@ -3,11 +3,11 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 
-//author of this entire codebase is Madhusudhan thapa (madhusudhant207@gmail.com) and coding agents 
+//author of this entire codebase is Madhusudhan thapa (madhusudhant207@gmail.com) and coding agents
 // See LICENSE file in the project root for full license information.
 //cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
 //also cant assure you this will always stay opensource
-//            9/18/26
+//       last modified : 9/24/26
 import { lazy, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -22,11 +22,9 @@ import CommandPalette from "../components/CommandPalette";
 import StatusBar from "../components/StatusBar.tsx";
 import Tab2 from "../components/Tab2.tsx";
 import Markdown from "./components/Markdown";
-// import BottomPanel, { type PanelTab } from "./components/BottomPanel"; 
+// import BottomPanel, { type PanelTab } from "./components/BottomPanel";
 //was the terminal panel for the main chat interface ->
 // but i assume there is no need for that as it exists inside the IDE
-import { isExtensionEnabled } from "./extensions";
-import { formatWithPrettier } from "./extensionsRuntime";
 import "./editor.css";
 import type { AISettings, ChatSession, Message } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
@@ -123,8 +121,9 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSettings } from "react-icons/io5";
+import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSettings, /*IoInformation*/ IoPersonCircleOutline } from "react-icons/io5";
 import { shortPath } from "./utils";
+// import IdeMenuBar from "./components/IdeMenuBar.tsx";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 
@@ -364,9 +363,6 @@ export default function App() {
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  // Bumped when extensions are installed/toggled so contributed UI (preview
-  // tab, status-bar stats) re-evaluates immediately. Value itself is unused.
-  const [, setExtensionTick] = useState(0);
   const [Tab2Open, setTab2Open] = useState(false);
   // In-app update notification banner (from GitHub releases check).
   const [updateNotification, setUpdateNotification] = useState<{
@@ -551,12 +547,6 @@ export default function App() {
       launchIdeWindowRef.current();
     }
 
-    // Ctrl+Alt+F: Format Document (command contributed by the Prettier
-    // extension — a no-op while it is not installed and enabled).
-    if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "f") {
-      e.preventDefault();
-      void formatDocument(activeEditorRef.current);
-    }
     if ((e.ctrlKey || e.metaKey) && e.key === "`") {
       e.preventDefault();
       // setOpenTerminal((v) => !v);
@@ -659,7 +649,7 @@ export default function App() {
       const snapshot = await cloudSync.loadAll();
       if (snapshot.settings) {
         // Cloud rows NEVER carry the API key — fetchSettings() returns
-        // apiKey: "" on purpose (BYOK keys are local-only). Preserve the live
+        // apiKey: "" on purpose (BYOK keys are account-only). Preserve the live
         // in-memory key here, otherwise a token-refresh sign-in silently blanks
         // the provider credential and kills an in-flight streaming turn before
         // the agent reaches its tool loop (which reads as "key unbound" +
@@ -731,13 +721,13 @@ export default function App() {
 
   // ── BYOK key injection ─────────────────────────────────────────────────────
   // The API key is never persisted with settings — it is resolved at runtime
-  // from the encrypted cloud store (signed in) or the local fallback store.
+  // from the encrypted account store. BYOK is the paid feature, so there is no
+  // signed-out fallback and an unknown entitlement resolves to "no key".
   useEffect(() => {
     if (!restored) return;
     let cancelled = false;
-    // A paywalled plan resolves to no key at all (`byokEnabled === false`).
     void byok
-      .resolveApiKey(settings.provider, signedIn, accountProfile?.byokEnabled ?? true)
+      .resolveApiKey(settings.provider, signedIn, accountProfile?.byokEnabled ?? false)
       .then((key) => {
         if (cancelled) return;
         setSettings((prev) => (prev.apiKey === key ? prev : { ...prev, apiKey: key }));
@@ -1048,7 +1038,7 @@ export default function App() {
     }
   };
 
-  
+
   const launchIdeWindow = async () => {
     try {
       const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
@@ -1080,35 +1070,14 @@ export default function App() {
     launchIdeWindowRef.current = launchIdeWindow;
   });
 
-  /** Mark a tab dirty as its content changes. */
-  const updateEditorContent = (path: string, content: string) => {
-    setEditorTabs((prev) =>
-      prev.map((t) => (t.path === path ? { ...t, content, dirty: true } : t))
-    );
-  };
-
   /** Persist the active tab back to disk via the Tauri fs command. */
   // Declared as a hoisted function so effects above (auto-save, shortcuts)
   // can reference it without a use-before-declaration violation.
   async function saveEditorFile(path: string) {
     const tab = editorTabs.find((t) => t.path === path);
     if (!tab) return;
-    // Format-on-Save, contributed by the Prettier extension. The formatted
-    // text is written to disk and reflected back into the editor tab.
-    let contentToSave = tab.content;
-    if (isExtensionEnabled("prettier.formatter")) {
-      const formatted = await formatWithPrettier(path, tab.content);
-      if (formatted != null && formatted !== tab.content) {
-        contentToSave = formatted;
-        setEditorTabs((prev) =>
-          prev.map((t) =>
-            t.path === path ? { ...t, content: formatted, dirty: false } : t
-          )
-        );
-      }
-    }
     try {
-      await invoke("fs_write_file", { path, content: contentToSave });
+      await invoke("fs_write_file", { path, content: tab.content });
       setEditorTabs((prev) =>
         prev.map((t) => (t.path === path ? { ...t, dirty: false } : t))
       );
@@ -1116,38 +1085,6 @@ export default function App() {
       setError(`Failed to save ${path}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-
-  /**
-   * Format Document — command contributed by the Prettier extension.
-   * Uses ref mirrors so the (once-registered) global key handler always
-   * formats the tab that is active right now.
-   */
-  async function formatDocument(path: string | null) {
-    if (!isExtensionEnabled("prettier.formatter")) {
-      setError("Prettier is not active — install and enable it in Settings → Extensions.");
-      return;
-    }
-    const p = path ?? activeEditorRef.current;
-    if (!p) return;
-    const tab = editorTabsRef.current.find((t) => t.path === p);
-    if (!tab) return;
-    const out = await formatWithPrettier(p, tab.content);
-    if (out == null) {
-      setError(`Prettier: unsupported file type or syntax error in ${p}`);
-      return;
-    }
-    if (out !== tab.content) updateEditorContent(p, out);
-  }
-
-  // --- Extension contributions (VS Code-style activation) ----------------
-  // Read live on every render so features activate the moment an extension
-  // is installed/toggled in Settings (the panel reports changes back).
-  // NOTE: `md.markdown-preview` lookup was removed because its only consumer
-  // (BottomPanel's `preview={{…}}` prop) is currently commented out in the
-  // render below. Restore it there if the preview dock is re-enabled:
-  const wordCountEnabled = isExtensionEnabled("status.word-count");
-  const todoEnabled = isExtensionEnabled("status.todo-inspector");
-  const statusExtensionsOn = wordCountEnabled || todoEnabled;
 
   // Mirror of editorTabs for use inside intervals / async callbacks.
   const editorTabsRef = useRef<EditorTab[]>([]);
@@ -1245,7 +1182,7 @@ ${promptSuffix}` : ""}`,
       "Content-Type": "application/json",
       ...buildAuthHeaders(s, effectiveSettings.apiKey),
     };
-    
+
     const additionalTools = mcpTools
       ? [...mcpTools.entries()].map(([name, tool]) => ({
           name,
@@ -1443,7 +1380,7 @@ ${promptSuffix}` : ""}`,
             const delta = s.extractDelta(json);
             if (delta) {
               round += delta;
-              
+
               const shown = stabilizeStreamingMarkdown(stripToolCalls(base + round));
               streamedContentRef.current = shown;
               scheduleStreamingAssistantContent(shown);
@@ -1540,7 +1477,9 @@ ${promptSuffix}` : ""}`,
       const trimmedKey = settings.apiKey.trim();
       if (!trimmedKey) {
         setError(
-          `Please configure your ${s.label} API key in the AI Settings sidebar (Ctrl+B).`
+          signedIn
+            ? `No ${s.label} API key — add one under Settings → AI. Provider keys are part of the paid plan.`
+            : `Sign in under Settings → Account to use ${s.label} — provider keys are the paid feature and live in your account.`
         );
         return;
       }
@@ -1792,7 +1731,7 @@ MCP call rules:
               }
             : {}),
         });
-       
+
         const calls: { call: ToolCall; native: boolean; key: string }[] = [];
         const seenKeys = new Set<string>();
         for (const { call, native } of [
@@ -2381,7 +2320,6 @@ MCP call rules:
           onSelectLocalModel={handleSelectLocalModel}
           initialSection={settingsSection}
           onClose={() => setSettingsOpen(false)}
-          onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
           account={account}
           accountProfile={accountProfile}
           accountLoading={accountLoading}
@@ -2394,8 +2332,19 @@ MCP call rules:
               {/* <RailButton active={onOpenTerminal} title="Terminal (Ctrl+`)" onClick={() => setOpenTerminal((v) => !v)}>
                 <IoTerminal size={17} />
               </RailButton> */}
+
+              <RailButton
+                active={settingsOpen && settingsSection === "account"}
+                title="Account"
+                onClick={() => {
+                  setSettingsSection("account");
+                  setSettingsOpen(true);
+                }}
+              >
+                <IoPersonCircleOutline size={19} />
+              </RailButton>
               <RailButton active={settingsOpen} title="Settings (Ctrl+,)" onClick={() => setSettingsOpen(true)}>
-                <IoSettings size={16} />
+                <IoSettings size={18} />
               </RailButton>
             </div>
           </nav>
@@ -2447,7 +2396,7 @@ MCP call rules:
                   <div className="msg-in relative z-0 w-full max-w-2xl pb-24 text-center" data-debug="welcome-wrap">
 
                     {/* Emblem */}
-                    
+
 
                     {/* Welcome heading */}
                     <div className="relative z-0 flex items-center justify-center" data-debug="welcome-heading">
@@ -2460,7 +2409,7 @@ MCP call rules:
                         className="mb-3 justify-center text-center text-2xl text-[var(--text-primary)]"
                       />
                     </div>
-                    
+
                     {/* Status chips */}
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                       {/* <span
@@ -2504,15 +2453,15 @@ MCP call rules:
                         className="w-full rounded-[2px] transition hover:bg-(--fill-1)"
                         innerClassName="px-3 py-2.5 text-left"
                       >
-                        
-                         
+
+
                       <span className="flex items-center gap-2">
                         <IoAdd size={14} className="text-[var(--text-accent)]" />
                         <span className="block text-[12.5px] font-medium text-[var(--text-primary)]">Open a project</span>
                       </span>
-                      
+
                       <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-faint)]">Browse and edit files in a real workspace</span>
-                      
+
                       </StarBorder>
                       {[
                         {
@@ -2524,13 +2473,13 @@ MCP call rules:
                           label: "Find and fix bugs",
                           desc: "Scan for issues and apply fixes",
                           prompt: "Find and fix bugs and make sure they aren't repeated again",
-                         
+
                         },
                         {
                           label: "Write a new feature",
                           desc: "Describe it and Neo builds it",
                           prompt: "Write a new feature in my code",
-                          
+
                         },
                       ].map((card) => (
                         <StarBorder
@@ -2599,9 +2548,9 @@ MCP call rules:
                         ) : (
                           <div className="group/msg min-w-0">
                             <div className="mb-1.5 flex items-center gap-1.5">
-                              
+
                               <span className="text-[10px] font-medium tracking-[0.06em] text-[var(--text-muted)]">
-                                Assistant - 
+                                Assistant -
                               </span>
                             </div>
                             <div className="text-[13.5px] leading-7 text-[var(--text-primary)]">
@@ -2703,7 +2652,7 @@ MCP call rules:
             </div>
           </main>
         </div>
-       
+
         {/* <BottomPanel
           // open={onOpenTerminal}
           tab={panelTab}
@@ -2716,36 +2665,10 @@ MCP call rules:
           //   scrollback: uiSettings.terminalScrollback,
           //   cursorBlink: uiSettings.terminalCursorBlink,
           // }} */}
-          {/* preview={
-            markdownPreviewEnabled
-              ? {
-                  path: activeEditorPath,
-                  content:
-                    editorTabs.find((t) => t.path === activeEditorPath)?.content ?? "",
-                }
-              : null
-          }
-        /> */}
         <StatusBar
           historySidebarOpen={historySidebarOpen}
           onToggleHistorySidebar={() => setHistorySidebarOpen((v) => !v)}
           workspaceName={workspaceRoot?.split(/[\\/]/).filter(Boolean).pop() ?? null}
-          editorStats={
-            statusExtensionsOn
-              ? (() => {
-                  const c =
-                    editorTabs.find((t) => t.path === activeEditorPath)?.content ?? "";
-                  return {
-                    words: (c.match(/\S+/g) ?? []).length,
-                    chars: c.length,
-                    lines: c ? c.split("\n").length : 1,
-                    todos: (c.match(/\b(TODO|FIXME|HACK|XXX)\b/g) ?? []).length,
-                    showWords: wordCountEnabled,
-                    showTodos: todoEnabled,
-                  };
-                })()
-              : null
-          }
         />
         <CommandPalette
           isOpen={commandPaletteOpen}
@@ -2815,17 +2738,6 @@ MCP call rules:
               shortcut: "Ctrl+,",
               action: () => setSettingsOpen(true),
             },
-            ...(isExtensionEnabled("prettier.formatter")
-              ? [
-                  {
-                    id: "format-document",
-                    label: "Format Document (Prettier)",
-                    category: "Editor",
-                    shortcut: "Ctrl+Alt+F",
-                    action: () => void formatDocument(activeEditorRef.current),
-                  },
-                ]
-              : []),
           ]}
         />
       </div>

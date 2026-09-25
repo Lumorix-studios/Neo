@@ -5,18 +5,6 @@ interface Props {
   onToggleHistorySidebar: () => void;
   /** Open workspace folder name shown next to the brand. */
   workspaceName?: string | null;
-  /**
-   * Live editor stats contributed by status-bar extensions (Word Count,
-   * TODO Inspector) — null while neither is installed/enabled.
-   */
-  editorStats?: {
-    words: number;
-    chars: number;
-    lines: number;
-    todos: number;
-    showWords: boolean;
-    showTodos: boolean;
-  } | null;
 }
 
 function ToggleButton({
@@ -49,7 +37,6 @@ export default function StatusBar({
   historySidebarOpen,
   onToggleHistorySidebar,
   workspaceName,
-  editorStats,
 }: Props) {
 
   return (
@@ -69,21 +56,6 @@ export default function StatusBar({
       </div>
       {/* Right */}
       <div className="flex shrink-0 items-center gap-0.5">
-        {editorStats && (
-          <div className="mr-1.5 flex items-center gap-3 pr-1 text-[var(--text-muted)]">
-            {editorStats.showTodos && (
-              <span title="TODO / FIXME / HACK / XXX comments in the active file">
-                {editorStats.todos} TODOs
-              </span>
-            )}
-            {editorStats.showWords && (
-              <span title="Word, character and line count of the active file">
-                {editorStats.words} words · {editorStats.chars} chars ·{" "}
-                {editorStats.lines} lines
-              </span>
-            )}
-          </div>
-        )}
         <ToggleButton
           active={historySidebarOpen}
           onClick={onToggleHistorySidebar}

@@ -2,24 +2,14 @@
  * Author: madhusudhan
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
-/**
- * Billing — the subscription tab (free -> pro checkout).
- *
- * Renders plan cards, runs the checkout against the `billing` edge function
- * (src/lib/billing.ts), polls the order and refreshes the account when the
- * payment lands. The "Payment method" box is a deliberate placeholder: real
- * providers (Stripe / Razorpay / ...) are wired into the edge function and the
- * `checkoutUrl` it returns — this UI needs no changes for that.
- */
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { IoCardOutline, IoCheckmarkCircle, IoFlashOutline, IoLockClosedOutline, IoTimeOutline } from "react-icons/io5";
+
+import { memo, useCallback, useEffect } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  createCheckout,
-  pollOrder,
   PLAN_DISPLAY,
   PAID_PLANS,
-  type BillingOrder,
+  upgradeUrl,
   type PaidPlan,
 } from "../lib/billing";
 import type { NeoUser, Profile } from "../lib/auth";
@@ -27,25 +17,29 @@ import type { NeoUser, Profile } from "../lib/auth";
 interface BillingSectionProps {
   account: NeoUser | null;
   profile: Profile | null;
-  /** Re-read account/profile after a successful upgrade. */
+  /** Re-read account/profile (e.g. after returning from the checkout page). */
   onAccountRefresh: () => void;
   /** Jump to the Account tab (e.g. "sign in to upgrade"). */
   onGoToAccount: () => void;
 }
 
-type CheckoutState =
-  | { phase: "idle" }
-  | { phase: "creating" }
-  | { phase: "processing"; orderId: string; testMode: boolean }
-  | { phase: "done" }
-  | { phase: "error"; message: string };
+function planTitle(plan: string | null | undefined): string {
+  const clean = (plan ?? "free").trim().toLowerCase();
+  if (!clean || clean === "free") return "Free";
+  if (clean in PLAN_DISPLAY) return PLAN_DISPLAY[clean as PaidPlan].name;
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
 
-const CHECKOUT_INTERVAL_MS = 2000;
-const CHECKOUT_MAX_ATTEMPTS = 30; // ~60 s of polling before giving up
+/* One short line per plan — the long feature checklists were noise. */
+const PLAN_BLURB: Record<string, string> = {
+  free: "Local chats, local models (Ollama) and cloud sync of chats and settings.",
+  pro: "Everything in Free plus BYOK — encrypted provider keys and every cloud provider.",
+  team: "Everything in Pro plus shared team workspaces and centralised billing.",
+  enterprise: "Everything in Team plus SSO, audit logs and dedicated support.",
+};
 
-function formatAmount(cents: number, currency: string): string {
-  const symbol = currency.toLowerCase() === "usd" ? "$" : currency.toUpperCase() + " ";
-  return symbol + (cents / 100).toFixed(2);
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <p className="mb-2 text-[11px] text-[var(--text-muted)]">{children}</p>;
 }
 
 const BillingSection = memo(function BillingSection({
@@ -54,307 +48,191 @@ const BillingSection = memo(function BillingSection({
   onAccountRefresh,
   onGoToAccount,
 }: BillingSectionProps) {
-  const [checkout, setCheckout] = useState<CheckoutState>({ phase: "idle" });
-  const [order, setOrder] = useState<BillingOrder | null>(null);
-  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (pollTimer.current) clearTimeout(pollTimer.current);
-    },
-    []
-  );
-
   const plan = (profile?.plan ?? "free").trim().toLowerCase();
-  const isPro = plan === "pro" || plan === "team" || plan === "enterprise" || plan === "admin" || plan === "paid";
-  const purchasedPlan: PaidPlan = "pro";
+  const isPro = ["pro", "team", "enterprise", "admin", "paid"].includes(plan);
+  const currentTitle = planTitle(profile?.plan);
 
-  /** Poll the created order until it settles or the attempts run out. The
-   *  recursion lives in a nested `tick` (rather than the callback calling
-   *  itself) so the value is declared before it is read. */
-  const poll = useCallback(
-    (orderId: string, attemptsLeft: number) => {
-      const tick = async (remaining: number) => {
-        try {
-          const next = await pollOrder(orderId);
-          setOrder(next);
-          if (next.status === "paid") {
-            setCheckout({ phase: "done" });
-            onAccountRefresh();
-            return;
-          }
-          if (next.status === "failed" || next.status === "cancelled") {
-            setCheckout({ phase: "error", message: "Payment " + next.status + ". No charge was kept." });
-            return;
-          }
-          if (remaining <= 1) {
-            setCheckout({
-              phase: "error",
-              message: "Still waiting for the payment to confirm — reopen Billing to poll again.",
-            });
-            return;
-          }
-          pollTimer.current = setTimeout(() => void tick(remaining - 1), CHECKOUT_INTERVAL_MS);
-        } catch (e) {
-          setCheckout({ phase: "error", message: e instanceof Error ? e.message : String(e) });
-        }
-      };
-      pollTimer.current = setTimeout(() => void tick(attemptsLeft), CHECKOUT_INTERVAL_MS);
-    },
-    [onAccountRefresh]
-  );
+  /** Open the website checkout for a plan in the system browser. */
+  const openUpgrade = useCallback((target: PaidPlan) => {
+    const url = upgradeUrl(target);
+    openUrl(url).catch(() => {
+      window.open(url, "_blank");
+    });
+  }, []);
 
-  const startCheckout = useCallback(
-    async (target: PaidPlan) => {
-      if (!account) return;
-      setCheckout({ phase: "creating" });
-      setOrder(null);
-      try {
-        const res = await createCheckout(target);
-        if (res.status === "paid") {
-          // Test mode: the server auto-settled the order.
-          setCheckout({ phase: "done" });
-          onAccountRefresh();
-          return;
-        }
-        if (res.checkoutUrl) {
-          // A real provider is wired in — open its checkout, then poll.
-          window.open(res.checkoutUrl, "_blank");
-        }
-        setCheckout({ phase: "processing", orderId: res.orderId, testMode: res.testMode });
-        poll(res.orderId, CHECKOUT_MAX_ATTEMPTS);
-      } catch (e) {
-        setCheckout({ phase: "error", message: e instanceof Error ? e.message : String(e) });
-      }
-    },
-    [account, onAccountRefresh, poll]
-  );
+  // Checkout lives on the website: once the buyer comes back from paying, this
+  // window regains focus, so re-read the account and show the new plan at once
+  // (both share the same Supabase project).
+  useEffect(() => {
+    if (!account) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") onAccountRefresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [account, onAccountRefresh]);
 
+  /* ── Signed out ────────────────────────────────────────────────────────── */
   if (!account) {
     return (
-      <div>
-        <SectionTitle>Billing</SectionTitle>
-        <div className="rounded-md border border-(--border-strong) bg-(--fill-1) p-4 text-center">
-          <IoLockClosedOutline className="mx-auto mb-2 h-8 w-8 text-[var(--text-muted)]" />
-          <p className="text-[12.5px] text-[var(--text-primary)]">Sign in to manage your subscription</p>
-          <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
-            Subscriptions are tied to your Neo account — plans, invoices and the BYOK
-            entitlement follow you across devices.
-          </p>
-          <button
-            type="button"
-            onClick={onGoToAccount}
-            className="mt-3 rounded-md border border-(--border-strong) px-3 py-1.5 text-[11.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
-          >
-            Go to Account
-          </button>
-        </div>
+      <div className="space-y-6">
+        <section>
+          <SectionTitle>Locked</SectionTitle>
+          <div className="divide-y divide-(--border) rounded-md border border-(--border) bg-(--fill-1)">
+            <Row
+              title="Billing"
+              description="Plans, receipts and the provider-key entitlement live in your Neo account, so there is nothing to show until you sign in."
+            />
+            <Row title="Sign in required" description="Sign in or create an account to pick a plan.">
+              <button
+                type="button"
+                onClick={onGoToAccount}
+                className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-medium transition"
+                style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+              >
+                Go to Account
+              </button>
+            </Row>
+          </div>
+        </section>
       </div>
     );
   }
 
+  /* ── Signed in ─────────────────────────────────────────────────────────── */
   return (
-    <div>
-      <SectionTitle>Billing</SectionTitle>
-      <p className="pb-3 text-[11.5px] leading-5 text-[var(--text-muted)]">
-        You're on the <span className="font-medium text-[var(--text-primary)]">{plan}</span> plan.
-        {!isPro && " Upgrade to unlock BYOK — bring your own provider API keys, encrypted in your account."}
-      </p>
+    <div className="space-y-6">
 
-      {checkout.phase === "done" && (
-        <div className="mb-3 flex items-start gap-2 rounded-md border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-2.5">
-          <IoCheckmarkCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
-          <p className="text-[11.5px] leading-4 text-emerald-300/95">
-            Payment received — your account is now <strong>Pro</strong>. BYOK is unlocked;
-            store provider API keys from the AI settings tab.
-          </p>
+      <section>
+        <SectionTitle>Current plan</SectionTitle>
+        <div className="divide-y divide-(--border) rounded-md border border-(--border) bg-(--fill-1)">
+          <Row
+            title={currentTitle}
+            description={isPro ? "Monthly · cancel anytime." : "No payment method on file."}
+          >
+            <span className="text-[11.5px] text-[var(--text-secondary)]">
+              {isPro ? "BYOK included" : "BYOK not included"}
+            </span>
+          </Row>
         </div>
-      )}
+      </section>
 
-      {checkout.phase === "error" && (
-        <p className="mb-3 rounded-md border border-red-500/25 bg-red-500/[0.07] px-3 py-2 text-[11px] leading-4 text-red-400/90">
-          {checkout.message}
+      <section>
+        <SectionTitle>Choose a plan</SectionTitle>
+        <PlanList currentPlan={plan} onGet={openUpgrade} />
+      </section>
+
+      <section className="space-y-1">
+        <p className="text-[11px] leading-4 text-[var(--text-faint)]">
+          Plans are purchased on the Neo website — the buttons above open it in your browser. Your
+          account is shared, so a paid plan is already active here as soon as you sign back in. API
+          keys are encrypted with AES-256-GCM before they are stored in your account.
         </p>
-      )}
-
-      {checkout.phase === "processing" && (
-        <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2.5">
-          <IoTimeOutline className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <p className="text-[11.5px] leading-4 text-amber-300/95">
-            Waiting for payment confirmation{order ? " (order " + order.id.slice(0, 8) + "\u2026)" : ""}.
-            {checkout.testMode && " Test mode is on — no real charge is made."}
-          </p>
-        </div>
-      )}
-
-      {/* Plan cards */}
-      <div className="grid grid-cols-1 gap-2 pb-3">
-        <PlanCard
-          name="Free"
-          price="$0"
-          cadence="forever"
-          current={!isPro}
-          features={["Unlimited local chats", "Local models (Ollama)", "Cloud sync of chats & settings"]}
-          cta={null}
-        />
-        <PlanCard
-          name={PLAN_DISPLAY[purchasedPlan].name}
-          price={PLAN_DISPLAY[purchasedPlan].price}
-          cadence={PLAN_DISPLAY[purchasedPlan].cadence}
-          current={isPro}
-          highlight
-          features={[
-            "Everything in Free",
-            "BYOK — encrypted provider API keys in your account",
-            "All providers: OpenAI, Anthropic, Google, Groq, OpenRouter…",
-            "Priority support",
-          ]}
-          cta={
-            isPro ? (
-              <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-400">
-                <IoCheckmarkCircle className="h-4 w-4" /> Current plan
-              </span>
-            ) : (
-              <button
-                type="button"
-                disabled={checkout.phase === "creating" || checkout.phase === "processing"}
-                onClick={() => void startCheckout(purchasedPlan)}
-                className="flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium transition disabled:opacity-50"
-                style={{ background: "var(--accent)", color: "var(--on-accent)" }}
-              >
-                <IoFlashOutline className="h-4 w-4" />
-                {checkout.phase === "creating" ? "Starting checkout…" : "Upgrade to " + PLAN_DISPLAY[purchasedPlan].name}
-              </button>
-            )
-          }
-        />
-        {PAID_PLANS.filter((p) => p !== "pro").map((p) => (
-          <PlanCard
-            key={p}
-            name={PLAN_DISPLAY[p].name}
-            price={PLAN_DISPLAY[p].price}
-            cadence={PLAN_DISPLAY[p].cadence}
-            compact
-            features={[]}
-            cta={
-              <button
-                type="button"
-                disabled={checkout.phase === "creating" || checkout.phase === "processing"}
-                onClick={() => void startCheckout(p)}
-                className="w-full rounded-md border border-(--border-strong) px-3 py-1.5 text-[11.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
-              >
-                Choose {PLAN_DISPLAY[p].name}
-              </button>
-            }
-          />
-        ))}
-      </div>
-
-      {/* Payment-method placeholder — real providers render here later. */}
-      {!isPro && checkout.phase !== "done" && (
-        <div className="mb-3 rounded-md border border-(--border) bg-(--fill-1) p-3">
-          <div className="flex items-center gap-2 pb-2">
-            <IoCardOutline className="h-4 w-4 text-[var(--text-muted)]" />
-            <p className="text-[11.5px] font-medium text-[var(--text-primary)]">Payment method</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 pb-2 opacity-50">
-            <input
-              type="text"
-              disabled
-              placeholder="Card number"
-              className="col-span-2 rounded-md border border-(--border) bg-(--fill-2) px-2.5 py-1.5 text-[11.5px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)]"
-            />
-            <input
-              type="text"
-              disabled
-              placeholder="MM / YY"
-              className="rounded-md border border-(--border) bg-(--fill-2) px-2.5 py-1.5 text-[11.5px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)]"
-            />
-            <input
-              type="text"
-              disabled
-              placeholder="CVC"
-              className="rounded-md border border-(--border) bg-(--fill-2) px-2.5 py-1.5 text-[11.5px] text-[var(--text-primary)] placeholder:text-[var(--text-faint)]"
-            />
-          </div>
-          <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">
-            Card payments land here soon — the checkout pipeline is live end to end. Pressing
-            Upgrade records the order today; connect a provider in
-            <code className="mx-1 rounded bg-(--fill-2) px-1 py-px text-[10px]">supabase/functions/billing</code>
-            to take real money.
-          </p>
-        </div>
-      )}
-
-      {order && checkout.phase !== "idle" && (
-        <p className="text-[10.5px] text-[var(--text-faint)]">
-          Latest order: {order.id} · {formatAmount(order.amountCents, order.currency)} · {order.status}
-        </p>
-      )}
+      </section>
     </div>
   );
 });
 
-/* ── Plan card ─────────────────────────────────────────────────────────────── */
-function PlanCard({
-  name,
-  price,
-  cadence,
-  features,
-  current,
-  highlight = false,
-  compact = false,
-  cta,
+/* ── Rows + plan list ──────────────────────────────────────────────────────── */
+
+function Row({
+  title,
+  description,
+  children,
 }: {
-  name: string;
-  price: string;
-  cadence: string;
-  features: string[];
-  current?: boolean;
-  highlight?: boolean;
-  compact?: boolean;
-  cta: React.ReactNode;
+  title: string;
+  description?: string;
+  children?: React.ReactNode;
 }) {
   return (
-    <div
-      className={
-        "rounded-md border p-3 " +
-        (highlight ? "border-[var(--accent)]/50 bg-(--fill-1)" : "border-(--border) bg-(--fill-1)")
-      }
-    >
-      <div className="flex items-baseline justify-between">
-        <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {name}
-          {current && (
-            <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 py-px text-[9.5px] font-medium text-emerald-400">
-              current
-            </span>
-          )}
-        </p>
-        <p className="text-[11px] text-[var(--text-muted)]">
-          <span className="text-[15px] font-semibold text-[var(--text-primary)]">{price}</span> {cadence}
-        </p>
+    <div className="flex flex-col gap-2 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <div className="min-w-0">
+        <p className="text-[12.5px] text-[var(--text-primary)]">{title}</p>
+        {description && (
+          <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{description}</p>
+        )}
       </div>
-      {!compact && (
-        <ul className="pb-3 pt-2">
-          {features.map((f) => (
-            <li key={f} className="flex items-start gap-1.5 py-0.5 text-[11.5px] leading-4 text-[var(--text-secondary)]">
-              <IoCheckmarkCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400/80" />
-              {f}
-            </li>
-          ))}
-        </ul>
-      )}
-      {cta && <div className={compact ? "pt-1" : ""}>{cta}</div>}
+      {children && <div className="flex shrink-0 items-center gap-3">{children}</div>}
     </div>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+interface PlanRowData {
+  id: PaidPlan | "free";
+  name: string;
+  price: string;
+  cadence: string;
+}
+
+function PlanList({
+  currentPlan,
+  onGet,
+}: {
+  currentPlan: string;
+  /** Opens the website checkout for the clicked plan. */
+  onGet: (plan: PaidPlan) => void;
+}) {
+  const rows: PlanRowData[] = [
+    { id: "free", name: "Free", price: "$0", cadence: "forever" },
+    ...PAID_PLANS.map((p) => ({
+      id: p,
+      name: PLAN_DISPLAY[p].name,
+      price: PLAN_DISPLAY[p].price,
+      cadence: PLAN_DISPLAY[p].cadence,
+    })),
+  ];
+
   return (
-    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
-      {children}
-    </p>
+    <div className="divide-y divide-(--border) rounded-md border border-(--border) bg-(--fill-1)">
+      {rows.map((row) => {
+        const isCurrent = currentPlan === row.id;
+        const isFree = row.id === "free";
+        return (
+          <div
+            key={row.id}
+            className="flex flex-wrap items-center gap-3 px-3.5 py-3 sm:flex-nowrap sm:gap-6"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[12.5px] text-[var(--text-primary)]">
+                  {row.name}
+                  {isCurrent && (
+                    <span className="ml-2 text-[11px] text-[var(--text-muted)]">Current</span>
+                  )}
+                </span>
+                <span className="shrink-0 text-[11.5px] text-[var(--text-secondary)]">
+                  {row.price} <span className="text-[var(--text-muted)]">{row.cadence}</span>
+                </span>
+              </div>
+              <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">
+                {PLAN_BLURB[row.id] ?? ""}
+              </p>
+            </div>
+            {isCurrent ? (
+              <span className="shrink-0 text-[11px] text-[var(--text-faint)]">
+                {isFree ? "Your plan" : "Active"}
+              </span>
+            ) : isFree ? (
+              <span className="shrink-0 text-[11px] text-[var(--text-faint)]">Included</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onGet(row.id as PaidPlan)}
+                title={"Open checkout for " + row.name}
+                className="h-7 shrink-0 rounded-md px-2.5 text-[11px] font-medium text-[var(--on-accent)] transition hover:brightness-110"
+                style={{ background: "var(--accent)" }}
+              >
+                Get {row.name}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -176,8 +176,6 @@ export default function IdeWindowApp() {
   const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
   const signedIn = !!account;
-  // Bumped when extensions are installed/toggled so contributed UI re-evaluates.
-  const [, setExtensionTick] = useState(0);
   const uiSettingsLoadedRef = useRef(false);
   // Load persisted UI + AI settings once on mount (shared with the chat window).
   useEffect(() => {
@@ -257,7 +255,7 @@ export default function IdeWindowApp() {
   useEffect(() => {
     let cancelled = false;
     void byok
-      .resolveApiKey(aiSettings.provider, signedIn, accountProfile?.byokEnabled ?? true)
+      .resolveApiKey(aiSettings.provider, signedIn, accountProfile?.byokEnabled ?? false)
       .then((key) => {
         if (cancelled) return;
         setAiSettings((prev) =>
@@ -865,7 +863,6 @@ export default function IdeWindowApp() {
         onSelectLocalModel={handleSelectLocalModel}
         initialSection={settingsSection}
         onClose={() => setSettingsOpen(false)}
-        onExtensionsChanged={() => setExtensionTick((t) => t + 1)}
         account={account}
         accountProfile={accountProfile}
         accountLoading={accountLoading}

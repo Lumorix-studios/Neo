@@ -78,9 +78,15 @@ function planIncludesByok(plan: unknown): boolean {
   return typeof plan === "string" && BYOK_PLAN_IDS.has(plan.trim().toLowerCase());
 }
 
+/**
+ * BYOK is the paid feature: the plan has to include it, or the row carries an
+ * explicit `byok_enabled = true` grant. `!== false` used to be the test, which
+ * the old column default of `true` defeated — every free account passed, so the
+ * paywall did not exist.
+ */
 function hasByokAccess(profile: { byok_enabled?: boolean | null; plan?: string | null } | null): boolean {
   if (planIncludesByok(profile?.plan)) return true;
-  return profile?.byok_enabled !== false;
+  return profile?.byok_enabled === true;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {

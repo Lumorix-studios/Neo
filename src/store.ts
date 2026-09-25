@@ -44,7 +44,7 @@ function lsWrite(key: string, value: string): void {
 }
 
 /** Settings persisted to disk never contain the API key — BYOK keys live in
- *  their own store (cloud when signed in, local fallback otherwise). */
+ *  the account only (src/lib/byok.ts), so there is no device fallback. */
 function stripApiKey(s: AISettings): AISettings {
   const { apiKey, ...rest } = s;
   void apiKey;

@@ -3,9 +3,14 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 
+/**
+ * Account settings. Deliberately flat: hairline-divided rows on a single
+ * surface, no badges, no nested panels. Auth behaviour is unchanged — email
+ * auth, OAuth, password reset, profile updates, the BYOK upsell, sign-out and
+ * cloud-data deletion all go through `lib/auth` and `lib/cloudSync`.
+ */
 
 import { memo, useEffect, useState } from "react";
-import { useRef} from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   signInWithEmail,
@@ -22,8 +27,8 @@ import {
 } from "../lib/auth";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { deleteAllCloudData } from "../lib/cloudSync";
-import { IoLogoGithub, IoLogoGoogle, IoMailOutline } from "react-icons/io5";
-import { IoFlashOutline, IoInformationCircleOutline } from "react-icons/io5";
+import { IoLogoGithub, IoLogoGoogle } from "react-icons/io5";
+
 interface AccountSectionProps {
   account: NeoUser | null;
   profile: Profile | null;
@@ -43,6 +48,60 @@ function formatPlan(plan: string | null | undefined): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
+function providerName(provider: string | null | undefined): string {
+  if (provider === "github") return "GitHub";
+  if (provider === "google") return "Google";
+  return "Email";
+}
+
+function memberSince(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
+/* ── Flat primitives ───────────────────────────────────────────────────────── */
+
+const TEXT_BUTTON =
+  "shrink-0 text-[11.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-40";
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="divide-y divide-(--border) rounded-md border border-(--border) bg-(--fill-1)">
+      {children}
+    </div>
+  );
+}
+
+function Row({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <div className="min-w-0">
+        <p className="text-[12.5px] text-[var(--text-primary)]">{title}</p>
+        {description && (
+          <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{description}</p>
+        )}
+      </div>
+      {children && <div className="flex shrink-0 items-center gap-3">{children}</div>}
+    </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <p className="mb-2 text-[11px] text-[var(--text-muted)]">{children}</p>;
+}
+
+/* ── Account ───────────────────────────────────────────────────────────────── */
+
 const AccountSection = memo(function AccountSection({
   account,
   profile,
@@ -50,236 +109,236 @@ const AccountSection = memo(function AccountSection({
   onAccountRefresh,
   onOpenBilling,
 }: AccountSectionProps) {
-  const [mode, setMode] = useState<Mode>("sign-in");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  /**
-   * Draft display name. Kept together with the profile name it was derived from
-   * so a changed/loaded profile resets the draft during render instead of via a
-   * cascading setState-in-effect.
-   */
-  // --- "About builds" popover (sidebar footer) ---
-   
+  const [dangerOpen, setDangerOpen] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
   const profileName = profile?.name ?? "";
   const [draft, setDraft] = useState({ name: profileName, from: profileName });
   if (draft.from !== profileName) setDraft({ name: profileName, from: profileName });
   const displayName = draft.name;
-  const setDisplayName = (name: string) => setDraft({ name, from: profileName });
+
+  const copyText = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+      window.setTimeout(() => setCopied((c) => (c === label ? null : c)), 1600);
+    } catch {
+      /* Clipboard unavailable in this webview — ignore. */
+    }
+  };
+
+  const saveName = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await updateProfile({ displayName: displayName.trim() });
+      onAccountRefresh();
+      setNotice("Profile saved.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setBusy(false);
+  };
+
+  const removeCloudData = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteAllCloudData();
+      setNotice("Synced data deleted from your account.");
+      setDangerOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setBusy(false);
+  };
 
   if (!isSupabaseConfigured) {
     return (
-      <div className="p-1">
-        <SectionTitle>Account</SectionTitle>
-        <p className="text-[11.5px] leading-5 text-[var(--text-muted)]">
-          Cloud sync is not configured. Create a Supabase project, add
-          <code className="mx-1 rounded bg-(--fill-2) px-1 py-px text-[10.5px]">VITE_SUPABASE_URL</code>
-          and
-          <code className="mx-1 rounded bg-(--fill-2) px-1 py-px text-[10.5px]">VITE_SUPABASE_ANON_KEY</code>
-          to your <code className="rounded bg-(--fill-2) px-1 py-px text-[10.5px]">.env</code>, then restart the app.
-          See <code className="rounded bg-(--fill-2) px-1 py-px text-[10.5px]">SUPABASE_SETUP.md</code>.
-        </p>
-      </div>
+      <p className="text-[11.5px] leading-5 text-[var(--text-muted)]">
+        Cloud sync is not configured. Add <code>VITE_SUPABASE_URL</code> and{" "}
+        <code>VITE_SUPABASE_ANON_KEY</code> to your <code>.env</code>, then restart the app — see{" "}
+        <code>SUPABASE_SETUP.md</code>.
+      </p>
     );
   }
 
+  /* ── Signed in ─────────────────────────────────────────────────────────── */
   if (account) {
-    const initial = (account.name || account.email || "A").charAt(0).toUpperCase();
     const planLabel = formatPlan(profile?.plan);
-    const byokCopy = profile
-      ? profile.byokEnabled
-        ? `available on your ${planLabel} plan`
-        : `not included in your ${planLabel} plan`
-      : "checking your current plan";
+    const byok = Boolean(profile?.byokEnabled);
+    const since = memberSince(profile?.createdAt);
+    const dirty = displayName !== (profile?.name ?? "");
+    const email = account.email;
+
     return (
-      <div className="p-1">
-        <SectionTitle>Account</SectionTitle>
-        <div className="flex items-center gap-3 pb-3">
-          {account.avatarUrl ? (
-            <img
-              src={account.avatarUrl}
-              alt=""
-              className="h-11 w-11 shrink-0 rounded-full border border-(--border-strong) object-cover"
-            />
-          ) : (
-            <span
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[16px] font-semibold"
-              style={{ background: "var(--accent)", color: "var(--on-accent)" }}
-            >
-              {initial}
-            </span>
-          )}
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{account.name}</p>
-            <p className="truncate text-[11px] text-[var(--text-muted)]">
-              {account.email || account.provider}
-              {profile ? ` · ${planLabel} plan` : " · checking plan"}
-            </p>
-            {profile?.dbError && (
-              <p className="pt-1 text-[11px] leading-4 text-red-400/90">
-                Could not load your plan from the database: {profile.dbError}. Run
-                <code className="mx-1 rounded bg-(--fill-2) px-1 py-px text-[10.5px]">
-                  supabase/migrations/0003_restore_table_grants.sql
-                </code>
-                in the Supabase SQL editor, then sign out and back in.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <Row title="Display name" description="Shown with your account across devices.">
-          <div className="flex shrink-0 gap-1.5">
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              spellCheck={false}
-              className="w-44 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none transition focus:border-(--border-strong)"
-            />
-            <button
-              type="button"
-              disabled={busy || displayName === (profile?.name ?? "")}
-              onClick={async () => {
-                setBusy(true);
-                setError(null);
-                try {
-                  await updateProfile({ displayName });
-                  onAccountRefresh();
-                  setNotice("Profile saved.");
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                }
-                setBusy(false);
-              }}
-              className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
-            >
-              Save
-            </button>
-          </div>
-        </Row>
-
-        <p className="pb-3 pt-1 text-[11px] leading-5 text-[var(--text-muted)]">
-          Your chats and AI settings sync to your account. API keys (BYOK) are stored
-          encrypted in your account and are {byokCopy}.
-        </p>
-
-        {/* BYOK upsell — free plans can unlock it with a Pro subscription. */}
-        {profile && !profile.byokEnabled && onOpenBilling && (
-          <div className="mb-3 rounded-md /40 bg-(--fill-1) p-3">
-            <p className="pb-1 text-[12px] font-medium text-[var(--text-primary)]">
-              Unlock BYOK with Pro
-            </p>
-            <p className="pb-2 text-[11px] leading-4 text-[var(--text-muted)]">
-              Store your own OpenAI / Anthropic / Google / Groq API keys encrypted in your
-              account — available on every device you sign in from.
-            </p>
-            <button
-              type="button"
-              onClick={onOpenBilling}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12px] font-medium transition"
-              style={{ background: "var(--accent)", color: "var(--on-accent)" }}
-            >
-              <IoFlashOutline className="h-4 w-4" />
-              Get Pro — unlock BYOK
-            </button>
-          </div>
+      <div className="space-y-6">
+        {(error || notice) && (
+          <p
+            className={`text-[11.5px] leading-4 ${
+              error ? "text-red-400/90" : "text-[var(--text-muted)]"
+            }`}
+          >
+            {error ?? notice}
+          </p>
         )}
 
-        {error && <p className="pb-2 text-[11px] text-red-400/90">{error}</p>}
-        {notice && !error && <p className="pb-2 text-[11px] text-emerald-400/90">{notice}</p>}
-                
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="rounded-md border border-(--border-strong) px-3 py-1.5 text-[11.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
-        >
-          Sign out
-        </button>
-             
-        <div className="mt-4 border-t border-(--border) pt-3">
-          <SectionTitle>Danger zone</SectionTitle>
-          <Row
-            title="Delete synced data"
-            description="Erases every chat, AI setting and encrypted API key stored in your account. This device's copies stay put."
-          >
-            <button
-              type="button"
-              disabled={busy}
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    "Delete all data synced to your account? This cannot be undone."
-                  )
-                ) {
-                  return;
-                }
-                setBusy(true);
-                setError(null);
-                setNotice(null);
-                try {
-                  await deleteAllCloudData();
-                  setNotice("Synced data deleted from your account.");
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                }
-                setBusy(false);
-              }}
-              className="shrink-0 rounded-md border border-red-500/30 px-2.5 py-1 text-[11px] text-red-400/90 transition hover:bg-red-500/10 disabled:opacity-40"
+        <section>
+          <SectionTitle>Account</SectionTitle>
+          <Card>
+            <Row title="Display name" description="Shown in the title bar and on synced devices.">
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDraft({ name: e.target.value, from: draft.from })}
+                placeholder="Your name"
+                spellCheck={false}
+                className="h-7 w-40 rounded-md border border-(--border) bg-(--fill-2) px-2 text-[11.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
+              />
+              <button
+                type="button"
+                disabled={!dirty || busy}
+                onClick={() => void saveName()}
+                className={`${TEXT_BUTTON} ${dirty ? "text-(--accent)" : ""}`}
+              >
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </Row>
+            <Row title="Email" description="Used for sign-in, receipts and password recovery.">
+              <span className="max-w-[190px] truncate text-[11.5px] text-[var(--text-secondary)]">
+                {email || "—"}
+              </span>
+              {email && (
+                <button
+                  type="button"
+                  onClick={() => void copyText(email, "email")}
+                  className={TEXT_BUTTON}
+                >
+                  {copied === "email" ? "Copied" : "Copy"}
+                </button>
+              )}
+            </Row>
+            <Row
+              title="Plan"
+              description={
+                profile
+                  ? byok
+                    ? "BYOK included — provider keys are encrypted in your account."
+                    : `${planLabel} plan — provider keys need an upgrade.`
+                  : "Checking your plan…"
+              }
             >
-              Delete
-            </button>
-          </Row>
-        </div>
+              <span className="text-[11.5px] text-[var(--text-secondary)]">{planLabel}</span>
+              {profile && !byok && onOpenBilling && (
+                <button
+                  type="button"
+                  onClick={onOpenBilling}
+                  className="shrink-0 text-[11.5px] text-(--accent) underline-offset-2 hover:underline"
+                >
+                  Upgrade
+                </button>
+              )}
+            </Row>
+            <Row title="Signed in with">
+              <span className="text-[11.5px] text-[var(--text-secondary)]">
+                {providerName(account.provider)}
+              </span>
+            </Row>
+            {since && (
+              <Row title="Member since">
+                <span className="text-[11.5px] text-[var(--text-secondary)]">{since}</span>
+              </Row>
+            )}
+            <Row title="Sign out" description="Local data on this device is kept.">
+              <button type="button" onClick={() => void signOut()} className={TEXT_BUTTON}>
+                Sign out
+              </button>
+            </Row>
+          </Card>
+        </section>
+
+        <section>
+          <SectionTitle>Cloud data</SectionTitle>
+          <Card>
+            <Row
+              title="Delete synced data"
+              description="Erases chats, AI settings and encrypted API keys from your account. Device copies stay put."
+            >
+              {busy ? (
+                <span className="text-[11.5px] text-[var(--text-muted)]">Deleting…</span>
+              ) : dangerOpen ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void removeCloudData()}
+                    className="shrink-0 text-[11.5px] text-red-400/90 underline-offset-2 hover:underline"
+                  >
+                    Confirm delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDangerOpen(false)}
+                    className={TEXT_BUTTON}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setDangerOpen(true)} className={TEXT_BUTTON}>
+                  Delete…
+                </button>
+              )}
+            </Row>
+          </Card>
+          {dangerOpen && (
+            <p className="mt-1.5 text-[10.5px] text-[var(--text-faint)]">
+              This cannot be undone. Export anything important first.
+            </p>
+          )}
+        </section>
       </div>
     );
   }
 
   if (authLoading) {
+    return <p className="text-[11.5px] text-[var(--text-muted)]">Checking your session…</p>;
+  }
+
+  /* ── Signed out ────────────────────────────────────────────────────────── */
+  if (!account) {
     return (
-      <div className="p-1">
-        <SectionTitle>Account</SectionTitle>
-        <p className="text-[11.5px] leading-5 text-[var(--text-muted)]">
-          Checking your saved session and plan...
-        </p>
+      <div className="space-y-6">
+        <section>
+          <SectionTitle>Locked</SectionTitle>
+          <Card>
+            <Row
+              title="Account"
+              description="Your profile, plan, cloud data and provider keys are tied to a Neo account — sign in or create one to open them."
+            />
+          </Card>
+        </section>
+        <SignInUp />
       </div>
     );
   }
-
-  return (
-    <SignInUp
-      mode={mode}
-      setMode={setMode}
-      busy={busy}
-      setBusy={setBusy}
-      error={error}
-      notice={notice}
-      setError={setError}
-      setNotice={setNotice}
-    />
-  );
 });
 
-export default AccountSection;
-
 /* ── Signed-out form ───────────────────────────────────────────────────────── */
-function SignInUp(props: {
-  mode: Mode;
-  setMode: (m: Mode) => void;
-  busy: boolean;
-  setBusy: (b: boolean) => void;
-  error: string | null;
-  notice: string | null;
-  setError: (e: string | null) => void;
-  setNotice: (n: string | null) => void;
-}) {
-  const { mode, setMode, busy, setBusy, error, notice, setError, setNotice } = props;
+
+function SignInUp() {
+  const [mode, setMode] = useState<Mode>("sign-in");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [providers, setProviders] = useState<EnabledProviders | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  /**
-   * Which providers the Supabase project has switched on. `null` = still
-   * probing (or the probe failed) — buttons then behave normally.
-   */
-  const [providers, setProviders] = useState<EnabledProviders | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -303,136 +362,111 @@ function SignInUp(props: {
     }
     setBusy(false);
   };
-   const [buildsInfoOpen, setBuildsInfoOpen] = useState(false);
-    const buildsInfoRef = useRef<HTMLDivElement>(null);
-  
-    // Close the popover on outside click or Escape.
-    useEffect(() => {
-      if (!buildsInfoOpen) return;
-      const onPointerDown = (e: PointerEvent) => {
-        if (!buildsInfoRef.current?.contains(e.target as Node)) setBuildsInfoOpen(false);
-      };
-      const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape") setBuildsInfoOpen(false);
-      };
-      window.addEventListener("pointerdown", onPointerDown);
-      window.addEventListener("keydown", onKeyDown);
-      return () => {
-        window.removeEventListener("pointerdown", onPointerDown);
-        window.removeEventListener("keydown", onKeyDown);
-      };
-    }, [buildsInfoOpen]);
-  
+
+  const canSubmit = !busy && email.trim().length > 3 && password.length >= 6;
+
+  const submit = () =>
+    void runAuth(
+      () =>
+        mode === "sign-in"
+          ? signInWithEmail(email.trim(), password)
+          : signUpWithEmail(email.trim(), password),
+      (r) => {
+        const res = r as { needsEmailConfirmation?: boolean } | undefined;
+        if (res?.needsEmailConfirmation) {
+          setNotice("Check your inbox — confirm your email to finish signing up.");
+        }
+      }
+    );
+
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+  };
+
+  const reset = () =>
+    void runAuth(() => resetPassword(email.trim()), () => setNotice("Password-reset email sent."));
 
   return (
-    <div className="p-1">
-      <SectionTitle>Account</SectionTitle>
-      <p className="pb-3 text-[11.5px] leading-5 text-[var(--text-muted)]">
-        Signup/login
-      </p>
+    <div className="space-y-5">
+      <div>
+        <div className="flex gap-4 text-[12px]">
+          {(["sign-in", "sign-up"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => switchMode(m)}
+              className={
+                mode === m
+                  ? "text-[var(--text-primary)]"
+                  : "text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+              }
+            >
+              {m === "sign-in" ? "Sign in" : "Create account"}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-[11px] leading-4 text-[var(--text-muted)]">
+          Sync chats, settings and encrypted API keys across your devices.
+        </p>
+      </div>
 
       {providers?.email === false && (
-        <p className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/[0.06] px-2.5 py-2 text-[10.5px] leading-4 text-amber-400/90">
-          Email sign-in is switched off for this Supabase project. Turn it on under
-          Dashboard → Authentication → Sign In / Providers.
+        <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">
+          Email sign-in is switched off for this Supabase project. Turn it on under Dashboard →
+          Authentication → Sign In / Providers.
         </p>
       )}
 
-      <div className="flex flex-col gap-2 pb-3">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          spellCheck={false}
-          autoComplete="email"
-          className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-2 text-[12.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password (min. 6 characters)"
-          autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-          className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-2 text-[12.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
-        />
-         <div className="mt-auto px-2 py-1 text-[10px] text-[var(--text-faint)]">
-                          <div ref={buildsInfoRef} className="relative sm:text-right">
-                            <button
-                              type="button"
-                              aria-label="About Neo builds"
-                              aria-expanded={buildsInfoOpen}
-                              className="inline-flex items-center text-[var(--text-faint)] transition hover:text-[var(--text-secondary)]"
-                              onClick={() => setBuildsInfoOpen((v) => !v)}
-                            >
-                             <p className="text-sm font-medium m-4">Important information</p>
-                              
-                              <IoInformationCircleOutline className="h-4 w-4" />
-                            </button>
-              
-                            {buildsInfoOpen && (
-                              <div className="absolute bottom-0 right-10px z-50 ml-2 w-72 rounded-lg border border-(--border-strong) bg-[var(--bg-elevated)] p-4 text-left shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
-              
-                                <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
-                                 Google and Github OAuth features are currently down for maintenance. Please login using the email and password method or create an account. For any enquiries contact the maintainers. The official GitHub repository is {" "}
-                                  <a
-                                    href="https://github.com/Lumorix-studios/Neo"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[var(--text-primary)] hover:underline"
-                                  >
-                                    here
-                                  </a>
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
+      <div className="space-y-2.5">
+        <label className="block">
+          <span className="mb-1 block text-[11px] text-[var(--text-muted)]">Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            spellCheck={false}
+            autoComplete="email"
+            className="h-8 w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] text-[var(--text-muted)]">Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 6 characters"
+            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+            className="h-8 w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
+          />
+        </label>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
         <button
           type="button"
-          disabled={busy || !email.trim() || password.length < 6}
-          onClick={() =>
-            void runAuth(
-              () =>
-                mode === "sign-in"
-                  ? signInWithEmail(email.trim(), password)
-                  : signUpWithEmail(email.trim(), password),
-              (r) => {
-                const res = r as { needsEmailConfirmation?: boolean } | undefined;
-                if (res?.needsEmailConfirmation) {
-                  setNotice("Check your inbox — confirm your email to finish signing up.");
-                }
-              }
-            )
-          }
-          className="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium transition disabled:opacity-50 bg-white text-black hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
-          //style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+          disabled={!canSubmit}
+          onClick={submit}
+          className="h-8 rounded-md px-3.5 text-[12px] font-medium transition disabled:opacity-40"
+          style={{ background: "var(--accent)", color: "var(--on-accent)" }}
         >
-          <IoMailOutline size={14} />
-          {mode === "sign-in" ? "Sign in" : "Create account"}
+          {busy ? "Working…" : mode === "sign-in" ? "Sign in" : "Create account"}
         </button>
-        <div className="flex items-center justify-between text-[11px]">
-          <button
-            type="button"
-            onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}
-            className="text-[var(--text-muted)] underline-offset-2 transition hover:text-[var(--text-primary)] hover:underline"
-          >
-            {mode === "sign-in" ? "No account yet? Create one" : "Already have an account? Sign in"}
+        {mode === "sign-in" && (
+          <button type="button" disabled={busy || !email.trim()} onClick={reset} className={TEXT_BUTTON}>
+            Forgot password?
           </button>
-          {mode === "sign-in" && (
-            <button
-              type="button"
-              disabled={busy || !email.trim()}
-              onClick={() =>
-                void runAuth(() => resetPassword(email.trim()), () => setNotice("Password-reset email sent."))
-              }
-              className="text-[var(--text-muted)] underline-offset-2 transition hover:text-[var(--text-primary)] hover:underline"
-            >
-              Forgot password?
-            </button>
-          )}
-        </div>
+        )}
       </div>
+
+      {error && <p className="text-[11.5px] leading-4 text-red-400/90">{error}</p>}
+      {notice && !error && (
+        <p className="text-[11.5px] leading-4 text-[var(--text-muted)]">{notice}</p>
+      )}
+
       <OAuthButtons
         busy={busy}
         runAuth={runAuth}
@@ -443,12 +477,38 @@ function SignInUp(props: {
           });
         }}
       />
-      {error && <p className="pt-2 text-[11px] leading-4 text-red-400/90">{error}</p>}
-      {notice && !error && <p className="pt-2 text-[11px] leading-4 text-emerald-400/90">{notice}</p>}
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setInfoOpen((v) => !v)}
+          aria-expanded={infoOpen}
+          className="text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+        >
+          {infoOpen ? "Hide OAuth status & help" : "OAuth status & help"}
+        </button>
+        {infoOpen && (
+          <p className="mt-1.5 text-[11px] leading-5 text-[var(--text-muted)]">
+            Google and GitHub OAuth may be down for maintenance — email and password sign-in always
+            works. For enquiries, open an issue on the{" "}
+            <a
+              href="https://github.com/Lumorix-studios/Neo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-[var(--text-secondary)]"
+            >
+              official repository
+            </a>
+            .
+          </p>
+        )}
+      </div>
     </div>
   );
 }
+
 /* ── OAuth buttons (GitHub / Google) ───────────────────────────────────────── */
+
 function OAuthButtons({
   busy,
   runAuth,
@@ -462,89 +522,55 @@ function OAuthButtons({
 }) {
   const githubOff = providers?.github === false;
   const googleOff = providers?.google === false;
+  const oauth = (provider: "github" | "google") => ({
+    disabled: busy || (provider === "github" ? githubOff : googleOff),
+    title:
+      provider === "github"
+        ? githubOff
+          ? providerDisabledMessage("github")
+          : "Continue with GitHub"
+        : googleOff
+          ? providerDisabledMessage("google")
+          : "Continue with Google",
+    onClick: () =>
+      void runAuth(async () => {
+        const url = await signInWithOAuth(provider);
+        await openUrl(url);
+      }),
+  });
+
+  const off = [githubOff ? "GitHub" : null, googleOff ? "Google" : null].filter(Boolean).join(" and ");
+
   return (
-    <>
-      <div className="flex items-center gap-2 pb-3">
-        <span className="h-px flex-1 bg-(--border)" />
-        <span className="text-[10px] uppercase tracking-wider text-[var(--text-faint)]">or continue with</span>
-        <span className="h-px flex-1 bg-(--border)" />
-      </div>
+    <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          disabled={busy || githubOff}
-          title={githubOff ? providerDisabledMessage("github") : "Continue with GitHub"}
-          onClick={() =>
-            void runAuth(async () => {
-              const url = await signInWithOAuth("github");
-              await openUrl(url);
-            })
-          }
-          className="flex items-center justify-center gap-2 rounded-md border border-(--border-strong) px-3 py-2 text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2) disabled:opacity-50"
+          {...oauth("github")}
+          className="flex h-8 items-center justify-center gap-2 rounded-md border border-(--border) text-[11.5px] text-[var(--text-secondary)] transition-colors hover:bg-(--fill-1) hover:text-[var(--text-primary)] disabled:opacity-40"
         >
-          <IoLogoGithub size={15} />
+          <IoLogoGithub size={13} />
           GitHub
         </button>
         <button
           type="button"
-          disabled={busy || googleOff}
-          title={googleOff ? providerDisabledMessage("google") : "Continue with Google"}
-          onClick={() =>
-            void runAuth(async () => {
-              const url = await signInWithOAuth("google");
-              await openUrl(url);
-            })
-          }
-          className="flex items-center justify-center gap-2 rounded-md border border-(--border-strong) px-3 py-2 text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2) disabled:opacity-50"
+          {...oauth("google")}
+          className="flex h-8 items-center justify-center gap-2 rounded-md border border-(--border) text-[11.5px] text-[var(--text-secondary)] transition-colors hover:bg-(--fill-1) hover:text-[var(--text-primary)] disabled:opacity-40"
         >
-          <IoLogoGoogle size={14} />
+          <IoLogoGoogle size={12} />
           Google
         </button>
       </div>
-      {(githubOff || googleOff) && (
-        <p className="pt-2 text-[10.5px] leading-4 text-amber-400/90">
-          {[
-            githubOff ? "GitHub" : null,
-            googleOff ? "Google" : null,
-          ].filter(Boolean).join(" and ")} sign-in is switched off in Supabase.{" "}
-          <button
-            type="button"
-            onClick={onRecheck}
-            className="underline underline-offset-2 hover:text-amber-300"
-          >
+      {off && (
+        <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">
+          {off} sign-in is switched off in Supabase.{" "}
+          <button type="button" onClick={onRecheck} className="underline underline-offset-2">
             Recheck
           </button>
         </p>
       )}
-    </>
-  );
-}
-
-/* ── Small shared bits ─────────────────────────────────────────────────────── */
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
-      {children}
-    </p>
-  );
-}
-
-function Row({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <div className="min-w-0">
-        <p className="text-[12.5px] font-medium text-[var(--text-primary)]">{title}</p>
-        {description && <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">{description}</p>}
-      </div>
-      {children}
     </div>
   );
 }
+
+export default AccountSection;

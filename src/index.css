@@ -296,3 +296,21 @@ select:focus-visible {
   z-index: 10;
   background: var(--bg-base);
 }
+
+/* Accessibility — suppress mobile tap highlights and respect the OS
+ * "reduce motion" preference. Both are invisible on the desktop shell. */
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

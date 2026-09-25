@@ -14,7 +14,6 @@ import {
   resolveThemeVars,
   clearRecentFiles,
   clearRecentFolders,
-  type ThemePreset,
   type UiSettings,
 } from "../uiSettings";
 import type { AISettings, ProviderId } from "../types";
@@ -32,31 +31,14 @@ import {
   findAvailableOllamaPort 
 } from "../serverManager";
 import { ensureOllamaReady } from "../localModels";
-import {
-  EXTENSIONS,
-  loadExtensionState,
-  installExtension,
-  uninstallExtension,
-  setExtensionEnabled,
-  clearExtensionState,
-  installedThemePresets,
-  type ExtensionCategory,
-  type ExtensionDef,
-  type ExtensionState,
-} from "../extensions";
 import LocalModels from "../../components/LocalModels";
 import AccountSection from "./AccountSection";
 import BillingSection from "./BillingSection";
 import type { NeoUser, Profile as AccountProfile } from "../lib/auth";
-import {
-  clearLocalKey,
-  setLocalKey,
-  saveRemoteKey,
-  removeRemoteKey,
-} from "../lib/byok";
+import { byokAllowed, saveRemoteKey, removeRemoteKey } from "../lib/byok";
 import * as cloudSync from "../lib/cloudSync";
 
-import { IoApps, IoCardOutline, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
+import { IoCardOutline, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoLockClosedOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
 import {
   formatTokens,
   getCachedRateSettings,
@@ -73,7 +55,6 @@ export type SectionId =
   | "appearance"
   | "ai"
   | "editor"
-  | "extensions"
   | "terminal"
   | "files"
   | "data"
@@ -97,8 +78,6 @@ interface SettingsPanelProps {
   /** Section to show when the panel opens (defaults to "appearance"). */
   initialSection?: SectionId | null;
   onClose: () => void;
-  /** Fired whenever an extension is installed / uninstalled / toggled. */
-  onExtensionsChanged?: () => void;
   /** Signed-in account (null when signed out). */
   account?: NeoUser | null;
   /** Full profile incl. the BYOK entitlement flag. */
@@ -163,7 +142,7 @@ function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 w-28 cursor-pointer appearance-none rounded-full bg-(--fill-2) accent-[var(--accent)]"
+        className="h-1.5 w-28 cursor-pointer appearance-none rounded-full bg-(--fill-2) accent-[var(--accent)]"
       />
       <span className="w-12 text-right text-[11px] tabular-nums text-[var(--text-secondary)]">
         {value}
@@ -183,160 +162,29 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-b border-(--border) py-3 last:border-0">
+    <div className="flex flex-col gap-2.5 border-b border-(--border) py-3.5 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       <div className="min-w-0">
         <p className="text-[12.5px] font-medium text-[var(--text-primary)]">{title}</p>
         {description && (
           <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{description}</p>
         )}
       </div>
-      {children}
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 sm:justify-end">{children}</div>
     </div>
   );
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="mb-1 mt-6 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--text-faint)] first:mt-0">
-      {children}
-    </h3>
-  );
-}
-
-/* ── Extensions marketplace pieces ─────────────────────────────────── */
-
-const EXT_CATEGORIES: Array<ExtensionCategory | "All" | "Installed"> = [
-  "All",
-  "Themes",
-  "Formatters",
-  "Tools",
-  "Other",
-  "Installed",
-];
-
-const CATEGORY_TILE: Record<ExtensionCategory, { bg: string; fg: string }> = {
-  Themes: { bg: "rgba(139,92,246,0.16)", fg: "#c4b5fd" },
-  Formatters: { bg: "rgba(247,185,62,0.14)", fg: "#fcd34d" },
-  Tools: { bg: "rgba(52,211,153,0.14)", fg: "#6ee7b7" },
-  Other: { bg: "rgba(76,141,255,0.16)", fg: "#93c5fd" },
-};
-
-function ExtensionCard({
-  ext,
-  state,
-  onInstall,
-  onUninstall,
-  onToggle,
-}: {
-  ext: ExtensionDef;
-  state: ExtensionState;
-  onInstall: () => void;
-  onUninstall: () => void;
-  onToggle: (enabled: boolean) => void;
-}) {
-  const installed = state.installed.includes(ext.id);
-  const enabled = installed && state.enabled.includes(ext.id);
-  const tile = CATEGORY_TILE[ext.category];
-  return (
-    <div
-      className={`flex gap-3 rounded-lg border p-3 transition ${
-        installed
-          ? "border-(--accent)/40 bg-(--fill-1)"
-          : "border-(--border) hover:border-(--border-strong) hover:bg-(--fill-1)"
-      }`}
-    >
-      {ext.theme ? (
-        <div
-          className="flex h-10 w-10 shrink-0 flex-col overflow-hidden rounded-lg border border-(--border-strong)"
-          title={`${ext.theme.label} palette`}
-        >
-          <div className="flex-[3]" style={{ background: ext.theme.base }} />
-          <div className="flex-1" style={{ background: ext.theme.elevated }} />
-          <div className="flex-1" style={{ background: ext.theme.active }} />
-        </div>
-      ) : (
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-          style={{ background: `${ext.color ?? "#8a8a93"}1f` }}
-        >
-          {ext.icon && <ext.icon size={22} color={ext.color ?? "var(--text-secondary)"} />}
-        </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[12.5px] font-medium text-[var(--text-primary)]">{ext.name}</span>
-          <span className="shrink-0 text-[10px] text-[var(--text-faint)]">v{ext.version}</span>
-          {installed && (
-            <span
-              className={`shrink-0 rounded-full px-1.5 py-px text-[9.5px] font-medium ${
-                enabled ? "bg-[rgba(52,211,153,0.14)] text-[#6ee7b7]" : "bg-(--fill-2) text-[var(--text-faint)]"
-              }`}
-            >
-              {enabled ? "Enabled" : "Disabled"}
-            </span>
-          )}
-        </div>
-        <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{ext.description}</p>
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {ext.features.map((f) => (
-            <span
-              key={f}
-              className="rounded bg-(--fill-2) px-1.5 py-px text-[9.5px] text-[var(--text-secondary)]"
-            >
-              {f}
-            </span>
-          ))}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--text-faint)]">
-          <span>{ext.publisher}</span>
-          <span>⬇ {ext.installs}</span>
-          <span>★ {ext.rating.toFixed(1)}</span>
-          <span
-            className="rounded px-1"
-            style={{ background: tile.bg, color: tile.fg }}
-          >
-            {ext.category}
-          </span>
-          {ext.theme && <span className="text-[var(--text-faint)]">Adds a theme to Appearance</span>}
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-col items-end justify-between gap-1.5">
-        {installed ? (
-          <>
-            <button
-              type="button"
-              onClick={onUninstall}
-              className="rounded-md border border-(--border-strong) px-2 py-1 text-[10.5px] text-[var(--text-secondary)] transition hover:border-[#e5534b]/40 hover:text-[#e5534b]"
-            >
-              Uninstall
-            </button>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[var(--text-faint)]">{enabled ? "On" : "Off"}</span>
-              <Toggle checked={enabled} onChange={onToggle} />
-            </div>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={onInstall}
-            className="rounded-md bg-(--accent) px-3 py-1 text-[10.5px] font-medium text-(--on-accent) transition hover:brightness-110"
-          >
-            Install
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  return <p className="mb-2 mt-6 text-[11px] text-[var(--text-muted)] first:mt-0">{children}</p>;
 }
 
 /** Export a JSON snapshot of all settings via a browser download. */
-function exportSettingsSnapshot(ui: UiSettings, ai: AISettings, ext: ExtensionState): void {
+function exportSettingsSnapshot(ui: UiSettings, ai: AISettings): void {
   const snapshot = {
     app: "Neo",
     exportedAt: new Date().toISOString(),
     uiSettings: ui,
     aiSettings: ai,
-    extensions: ext,
   };
   const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -348,84 +196,95 @@ function exportSettingsSnapshot(ui: UiSettings, ai: AISettings, ext: ExtensionSt
 }
 /* ── Main panel ────────────────────────────────────────────────────── */
 
-const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ReactNode }> = [
+interface SectionMeta {
+  id: SectionId;
+  label: string;
+  hint: string;
+  group: "Personal" | "Workspace" | "System";
+  keywords: string;
+  icon: React.ReactNode;
+}
+
+const SECTIONS: SectionMeta[] = [
   {
     id: "account",
     label: "Account",
-    icon: (
-      <IoPersonCircleOutline className="h-3.5 w-3.5" />
-    ),
+    hint: "Profile, sync and signed-in devices",
+    group: "Personal",
+    keywords: "profile email plan sign in sign out sync avatar name",
+    icon: <IoPersonCircleOutline className="h-3.5 w-3.5" />,
   },
   {
     id: "billing",
     label: "Billing",
-    icon: (
-      <IoCardOutline className="h-3.5 w-3.5" />
-    ),
+    hint: "Plans, checkout and payment status",
+    group: "Personal",
+    keywords: "pro team enterprise subscription payment card invoice upgrade",
+    icon: <IoCardOutline className="h-3.5 w-3.5" />,
   },
   {
     id: "appearance",
     label: "Appearance",
-    icon: (
-      <IoContrastOutline className="h-3.5 w-3.5" />
-    ),
+    hint: "Theme, background, accent and contrast",
+    group: "Workspace",
+    keywords: "theme dark light color colour accent background contrast",
+    icon: <IoContrastOutline className="h-3.5 w-3.5" />,
   },
   {
     id: "ai",
     label: "AI",
-    icon: (
-      <IoCode size={13} />
-    ),
+    hint: "Providers, models, keys and MCP tools",
+    group: "Workspace",
+    keywords: "provider model api key byok ollama openai anthropic google groq mcp tools",
+    icon: <IoCode size={13} />,
   },
   {
     id: "dashboard",
     label: "Dashboard",
-    icon: (
-      <IoStatsChartOutline className="h-3.5 w-3.5" />
-    ),
+    hint: "Token usage and rate-limit estimates",
+    group: "Workspace",
+    keywords: "tokens usage cost rate limits statistics budget",
+    icon: <IoStatsChartOutline className="h-3.5 w-3.5" />,
   },
-
   {
     id: "files",
     label: "Files & Save",
-    icon: (
-      <IoDocumentOutline className="h-3.5 w-3.5" />
-    ),
+    hint: "Autosave and recent items",
+    group: "Workspace",
+    keywords: "autosave recent files folders save",
+    icon: <IoDocumentOutline className="h-3.5 w-3.5" />,
   },
   {
     id: "shortcuts",
     label: "Shortcuts",
-    icon: (
-      <IoKeyOutline className="h-3.5 w-3.5" />
-    ),
-  },
-  {
-    id: "extensions",
-    label: "Extensions",
-    icon: (
-      <IoApps className="h-3.5 w-3.5" />
-    ),
+    hint: "Keyboard bindings at a glance",
+    group: "Workspace",
+    keywords: "keyboard keys hotkeys bindings commands",
+    icon: <IoKeyOutline className="h-3.5 w-3.5" />,
   },
   {
     id: "terminal",
     label: "Terminal",
-    icon: (
-      <IoTerminal className="h-3.5 w-3.5" />
-    ),
+    hint: "Shell, fonts and scrollback",
+    group: "System",
+    keywords: "shell command prompt font cursor scrollback",
+    icon: <IoTerminal className="h-3.5 w-3.5" />,
   },
   {
     id: "data",
     label: "Privacy & Data",
-    icon: (
-      <IoShieldCheckmarkOutline className="h-3.5 w-3.5" />
-    ),
+    hint: "Local storage, cloud data and recents",
+    group: "System",
+    keywords: "privacy data storage cloud delete clear recents reset",
+    icon: <IoShieldCheckmarkOutline className="h-3.5 w-3.5" />,
   },
   {
     id: "about",
     label: "About",
-    icon: (
-      <IoInformationCircleOutline className="h-3.5 w-3.5" />
-    ),
+    hint: "Version, links and build information",
+    group: "System",
+    keywords: "version update github links help credits",
+    icon: <IoInformationCircleOutline className="h-3.5 w-3.5" />,
   },
 ];
 
@@ -465,13 +324,20 @@ export default function SettingsPanel({
   onSelectLocalModel,
   initialSection,
   onClose,
-  onExtensionsChanged,
   account = null,
   accountProfile = null,
   accountLoading = false,
   onAccountRefresh,
 }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionId>("appearance");
+  /** Filters the navigation only — section content is untouched. */
+  const [navQuery, setNavQuery] = useState("");
+  const navQueryNormalized = navQuery.trim().toLowerCase();
+  const visibleSections = navQueryNormalized
+    ? SECTIONS.filter((s) =>
+        `${s.label} ${s.hint} ${s.group} ${s.keywords}`.toLowerCase().includes(navQueryNormalized)
+      )
+    : SECTIONS;
   // Stable callbacks: keep AccountSection / BillingSection (both memoised)
   // from re-rendering whenever an unrelated settings field changes.
   const refreshAccount = useCallback(() => onAccountRefresh?.(), [onAccountRefresh]);
@@ -492,10 +358,6 @@ export default function SettingsPanel({
   const [mcpEnv, setMcpEnv] = useState("");
   const [mcpError, setMcpError] = useState("");
   const [mcpTest, setMcpTest] = useState<Record<string, string>>({});
-  // --- Extensions marketplace state ---
-  const [extState, setExtState] = useState<ExtensionState>(() => loadExtensionState());
-  const [extQuery, setExtQuery] = useState("");
-  const [extCategory, setExtCategory] = useState<ExtensionCategory | "All" | "Installed">("All");
   // --- BYOK key management state (Account-aware) ---
   const signedIn = !!account;
   const [byokDraft, setByokDraft] = useState("");
@@ -512,23 +374,30 @@ export default function SettingsPanel({
   }, [aiSettings.provider, signedIn]);
 
   const keyConfigured = !!aiSettings.apiKey;
-  const byokPaywalled = !accountLoading && signedIn && accountProfile?.byokEnabled === false;
+  /**
+   * BYOK is the paid feature: it needs a signed-in account whose plan includes
+   * it. While the profile is still loading we show neither the editor nor the
+   * lock copy, so a slow network never flashes "locked" at a paying user.
+   */
+  const byokEntitled = byokAllowed(accountProfile, signedIn);
+  const byokLocked = !accountLoading && !byokEntitled;
 
-  /** Persist the BYOK key: encrypted server-side when signed in, local otherwise. */
+  /** Persist the provider key — encrypted server-side, account only. */
   const handleSaveByokKey = async () => {
+    if (!byokEntitled) {
+      setByokMsg(
+        signedIn
+          ? "Provider keys are included on paid plans — pick one under Billing."
+          : "Sign in to store a provider key in your account."
+      );
+      return;
+    }
     setByokBusy(true);
     setByokMsg(null);
     try {
-      if (signedIn) {
-        await saveRemoteKey(aiSettings.provider, byokDraft);
-        onAiChange({ ...aiSettings, apiKey: byokDraft.trim() });
-        setByokMsg("Key saved to your account (encrypted server-side).");
-      } else {
-        const normalized = byokDraft.trim();
-        await setLocalKey(aiSettings.provider, normalized);
-        onAiChange({ ...aiSettings, apiKey: normalized });
-        setByokMsg("Key saved on this device. Sign in to encrypt it in your account.");
-      }
+      await saveRemoteKey(aiSettings.provider, byokDraft);
+      onAiChange({ ...aiSettings, apiKey: byokDraft.trim() });
+      setByokMsg("Key saved to your account (encrypted server-side).");
       setByokDraft("");
     } catch (e) {
       let message = e instanceof Error ? e.message : String(e);
@@ -536,13 +405,9 @@ export default function SettingsPanel({
         message =
           "API-key storage is not configured on the server. Set the Supabase secret BYOK_ENCRYPTION_KEY to 64 hexadecimal characters, then redeploy the api-keys function.";
       }
-      if (
-        signedIn &&
-        accountProfile?.byokEnabled !== false &&
-        /upgraded plan|paywall|byok requires/i.test(message)
-      ) {
+      if (/upgraded plan|paywall|byok requires/i.test(message)) {
         message =
-          "Your account plan has API-key access, but the deployed api-keys function still returned a paywall. Redeploy the Supabase function, or set byok_enabled=true for this account until the new function is live.";
+          "Your plan includes API-key access, but the deployed api-keys function still returned a paywall. Redeploy the Supabase function, or set byok_enabled=true for this account until the new function is live.";
       }
       setByokMsg(message);
     } finally {
@@ -551,13 +416,13 @@ export default function SettingsPanel({
   };
 
   const handleRemoveByokKey = async () => {
+    if (!byokEntitled) return;
     setByokBusy(true);
     setByokMsg(null);
     try {
-      if (signedIn) await removeRemoteKey(aiSettings.provider);
-      await clearLocalKey(aiSettings.provider);
+      await removeRemoteKey(aiSettings.provider);
       onAiChange({ ...aiSettings, apiKey: "" });
-      setByokMsg(signedIn ? "Key removed from your account." : "Key removed.");
+      setByokMsg("Key removed from your account.");
     } catch (e) {
       setByokMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -774,60 +639,81 @@ export default function SettingsPanel({
 
   if (!open) return null;
 
-  // Built-in themes plus any palettes contributed by enabled theme extensions.
-  const extThemes: ThemePreset[] = installedThemePresets();
-  const allThemes: ThemePreset[] = [...THEMES, ...extThemes];
-  const theme = allThemes.find((t) => t.id === settings.themeId) ?? allThemes[0];
+  const theme = THEMES.find((t) => t.id === settings.themeId) ?? THEMES[0];
 
-  const q = extQuery.trim().toLowerCase();
   // Token usage snapshot for the Dashboard tab; usageTick only forces a
   // re-render every 2s while the tab is open.
   const usageSnapshot = getUsageSnapshot();
   void usageTick;
-  const visibleExtensions = EXTENSIONS.filter((e) => {
-    if (extCategory === "Installed" && !extState.installed.includes(e.id)) return false;
-    if (extCategory !== "All" && extCategory !== "Installed" && e.category !== extCategory) return false;
-    if (q && !`${e.name} ${e.publisher} ${e.description}`.toLowerCase().includes(q)) return false;
-    return true;
-  });
-  const installedCount = extState.installed.length;
-return (
+  const activeMeta = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
+  return (
     <div
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-(--scrim) px-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-(--scrim) p-2 backdrop-blur-[2px] sm:p-6"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="panel-in flex h-[560px] max-h-[88vh] w-full max-w-3xl overflow-hidden rounded-xl border border-(--border-strong) bg-[var(--bg-base)] shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
+      <div className="panel-in flex h-[min(680px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-(--border) bg-[var(--bg-base)] shadow-[0_16px_48px_rgba(0,0,0,0.45)] sm:flex-row">
         {/* ── Left nav */}
-        <aside className="flex w-44 shrink-0 flex-col border-r border-(--border) bg-[var(--bg-panel)] p-2">
-          <p className="px-2 pb-2 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--text-faint)]">
+        <aside className="flex shrink-0 flex-col border-b border-(--border) bg-[var(--bg-panel)] sm:w-[212px] sm:border-b-0 sm:border-r">
+          <p className="hidden px-3.5 pb-1.5 pt-3.5 text-[11px] text-[var(--text-muted)] sm:block">
             Settings
           </p>
-          <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-            {SECTIONS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSection(s.id)}
-                className={`flex items-center gap-2 rounded-md px-2 py-[6px] text-left text-[12px] transition-colors ${
-                  section === s.id
-                    ? "bg-(--fill-2) text-[var(--text-primary)]"
-                    : "text-[var(--text-secondary)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
-                }`}
-              >
-                <span className={section === s.id ? "text-(--accent)" : "text-[var(--text-muted)]"}>
-                  {s.icon}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{s.label}</span>
-                {s.id === "extensions" && installedCount > 0 && (
-                  <span className="rounded-full bg-(--accent-soft) px-1.5 text-[9.5px] font-medium text-(--accent)">
-                    {installedCount}
+          <div className="hidden px-2.5 pb-2 pt-2.5 sm:block">
+            <div className="relative">
+              <IoSearch className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-faint)]" />
+              <input
+                type="text"
+                value={navQuery}
+                onChange={(e) => setNavQuery(e.target.value)}
+                placeholder="Search settings"
+                spellCheck={false}
+                aria-label="Search settings"
+                className="h-7 w-full rounded-md border border-(--border) bg-(--fill-1) pl-7 pr-2 text-[11.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
+              />
+            </div>
+          </div>
+          <nav className="flex min-h-0 flex-1 items-center gap-0.5 overflow-x-auto p-1.5 sm:flex-col sm:items-stretch sm:overflow-x-visible sm:overflow-y-auto sm:p-2">
+
+            {visibleSections.length === 0 && (
+              <p className="hidden px-2 py-3 text-[11px] leading-4 text-[var(--text-muted)] sm:block">
+                No settings match “{navQuery.trim()}”.
+              </p>
+            )}
+            {visibleSections.map((s) => {
+              const active = section === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSection(s.id)}
+                  aria-current={active ? "page" : undefined}
+                  title={s.label}
+                  className={`flex shrink-0 items-center justify-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] transition-colors sm:w-full sm:justify-start sm:py-[6px] ${
+                    active
+                      ? "bg-(--fill-2) text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <span className={active ? "text-(--accent)" : "text-[var(--text-muted)]"}>
+                    {s.icon}
                   </span>
-                )}
-              </button>
-            ))}
+                  <span className="hidden min-w-0 flex-1 truncate sm:inline">{s.label}</span>
+                  {!signedIn && (s.id === "account" || s.id === "billing") && (
+                    <span
+                      className="hidden shrink-0 text-[var(--text-faint)] sm:inline"
+                      role="img"
+                      aria-label="Sign in required"
+                      title="Sign in required"
+                    >
+                      <IoLockClosedOutline className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </nav>
-          <div className="mt-auto px-2 py-1 text-[10px] text-[var(--text-faint)]">
-            <div ref={buildsInfoRef} className="relative sm:text-right">
+          <div className="hidden px-3 py-2.5 text-[10px] text-[var(--text-faint)] sm:block">
+            <div ref={buildsInfoRef} className="relative flex items-center justify-between gap-2">
+              <span>Neo 1.10 · Beta</span>
               <button
                 type="button"
                 aria-label="About Neo builds"
@@ -870,34 +756,33 @@ return (
         </aside>
 
         {/* ── Content */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-11 shrink-0 items-center justify-between border-b border-(--border) px-4">
-            <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">
-              {SECTIONS.find((s) => s.id === section)?.label}
-            </h2>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-4 py-2.5">
+            <div className="min-w-0">
+              <h2 className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+                {activeMeta.label}
+              </h2>
+              <p className="mt-0.5 truncate text-[11px] text-[var(--text-muted)]">{activeMeta.hint}</p>
+            </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close settings"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              <IoClose size={11} />
+              <IoClose size={12} />
             </button>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div className="mx-auto w-full max-w-3xl px-4 py-4">
+
             {section === "appearance" && (
               <div>
                 <SectionTitle>Theme</SectionTitle>
-                {extThemes.length > 0 && (
-                  <p className="mb-1.5 text-[10.5px] text-[var(--text-faint)]">
-                    {extThemes.length} theme{extThemes.length === 1 ? "" : "s"} from your extensions — manage them under Extensions.
-                  </p>
-                )}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {allThemes.map((t) => {
+                  {THEMES.map((t) => {
                     const selected = settings.themeId === t.id && !settings.customBackground;
-                    const fromExtension = t.id.startsWith("ext.");
                     return (
                       <button
                         key={t.id}
@@ -920,11 +805,6 @@ return (
                         </div>
                         <span className={`flex items-center gap-1.5 text-[11.5px] ${selected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>
                           {t.label}
-                          {fromExtension && (
-                            <span className="rounded bg-(--fill-2) px-1 py-px text-[8.5px] uppercase tracking-wide text-[var(--text-faint)]">
-                              Ext
-                            </span>
-                          )}
                         </span>
                       </button>
                     );
@@ -1221,12 +1101,14 @@ return (
                   !aiNeedsKey
                     ? "Not required for this provider."
                     : accountLoading
-                      ? "Checking your account before choosing local or encrypted storage."
-                      : signedIn
-                      ? "Stored encrypted (AES-256-GCM) in your account — never written to disk."
-                      : "Stored locally on this device. Sign in to store it encrypted in your account."
+                      ? "Checking your account and plan before loading provider keys."
+                      : !signedIn
+                        ? "Sign in required — keys live in your account, on a paid plan."
+                        : byokEntitled
+                          ? "Stored encrypted (AES-256-GCM) in your account — never written to disk."
+                          : "Locked — provider keys are included on paid plans."
                 }>
-                  {aiNeedsKey && (
+                  {aiNeedsKey && !accountLoading && byokEntitled && (
                     <div className="flex shrink-0 items-center gap-1.5">
                       <span
                         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -1238,18 +1120,20 @@ return (
                       </span>
                     </div>
                   )}
+                  {aiNeedsKey && byokLocked && (
+                    <span className="shrink-0 text-[10.5px] text-[var(--text-muted)]">locked</span>
+                  )}
                 </Row>
                 {aiNeedsKey && accountLoading && (
                   <p className="pb-3 text-[11px] leading-4 text-[var(--text-muted)]">
-                    Checking your saved session and plan before editing API keys.
+                    Checking your saved session and plan before loading API keys.
                   </p>
                 )}
-                {aiNeedsKey && !accountLoading && !byokPaywalled && (
+                {aiNeedsKey && byokEntitled && (
                   <div className="flex flex-col gap-1.5 pb-3">
                     <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">
-                      {signedIn
-                        ? "Your key is encrypted before it is stored in your account. It is only decrypted in memory when Neo needs it."
-                        : "This key is stored locally on this device. Sign in if you want encrypted account storage and access across devices."}
+                      Your key is encrypted before it is stored in your account. It is only
+                      decrypted in memory when Neo needs it.
                     </p>
                     <div className="flex gap-1.5">
                       <div className="relative flex-1">
@@ -1277,7 +1161,7 @@ return (
                       <button
                         type="button"
                         disabled={byokBusy || accountLoading || !byokDraft.trim()}
-                        title={signedIn ? "Encrypt and save this key to your account" : "Save this key on this device"}
+                        title="Encrypt and save this key to your account"
                         onClick={() => void handleSaveByokKey()}
                         className="shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition disabled:opacity-40"
                         style={{ background: "var(--accent)", color: "var(--on-accent)" }}
@@ -1300,11 +1184,33 @@ return (
                     )}
                   </div>
                 )}
-                {aiNeedsKey && byokPaywalled && (
-                  <p className="pb-3 text-[11px] leading-4 text-[var(--text-muted)]">
-                    BYOK requires an upgraded plan — your keys stay safely stored but
-                    can no longer be edited until the plan is active again.
-                  </p>
+                {aiNeedsKey && byokLocked && (
+                  <div className="flex flex-col gap-2 pb-3">
+                    <p className="text-[11px] leading-4 text-[var(--text-muted)]">
+                      {signedIn
+                        ? "Provider keys are the paid feature and your plan doesn't include them. Upgrade to add a key — it is encrypted in your account and never written to disk."
+                        : "Provider keys are the paid feature and live in your account. Sign in or create one to add a key — it is encrypted server-side, never written to disk."}
+                    </p>
+                    <div className="flex gap-1.5">
+                      {!signedIn && (
+                        <button
+                          type="button"
+                          onClick={() => setSection("account")}
+                          className="rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+                        >
+                          Sign in
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={openBilling}
+                        className="rounded-md px-2.5 py-1 text-[11px] font-medium transition"
+                        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+                      >
+                        See plans
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 <SectionTitle>Model</SectionTitle>
@@ -1491,8 +1397,8 @@ return (
 
                 <p className="pt-1 text-[10.5px] text-[var(--text-faint)]">
                   {signedIn
-                    ? "AI settings sync to your account. API keys are stored separately."
-                    : "AI settings are stored locally on this device. Sign in to sync them across devices."}
+                    ? "AI settings sync to your account. Provider keys are stored separately, encrypted."
+                    : "AI settings are stored locally on this device. Sign in to sync them and to add provider keys."}
                 </p>
               </div>
               ))}
@@ -1579,79 +1485,6 @@ return (
               </div>
             )}
 
-            {section === "extensions" && (
-              <div>
-                {/* Search + filter toolbar */}
-                <div className="sticky -top-4 z-10 -mx-4 mb-3 bg-[var(--bg-base)]/95 px-4 pb-2 pt-1 backdrop-blur-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="relative min-w-0 flex-1">
-                      <IoSearch size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-faint)]" />
-                      <input
-                        value={extQuery}
-                        onChange={(e) => setExtQuery(e.target.value)}
-                        placeholder="Search extensions…"
-                        spellCheck={false}
-                        className="w-full rounded-md border border-(--border) bg-(--fill-1) py-1.5 pl-8 pr-2.5 text-[12px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
-                      />
-                    </div>
-                    <span className="shrink-0 text-[10.5px] text-[var(--text-faint)]">
-                      {installedCount} installed
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {EXT_CATEGORIES.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setExtCategory(c)}
-                        className={`rounded-full border px-2.5 py-0.5 text-[10.5px] transition ${
-                          extCategory === c
-                            ? "border-(--accent)/60 bg-(--accent-soft) text-[var(--text-primary)]"
-                            : "border-(--border) text-[var(--text-secondary)] hover:bg-(--fill-1)"
-                        }`}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {visibleExtensions.map((ext) => (
-                    <ExtensionCard
-                      key={ext.id}
-                      ext={ext}
-                      state={extState}
-                      onInstall={() => {
-                        setExtState(installExtension(ext.id));
-                        onExtensionsChanged?.();
-                      }}
-                      onUninstall={() => {
-                        setExtState(uninstallExtension(ext.id));
-                        onExtensionsChanged?.();
-                      }}
-                      onToggle={(enabled) => {
-                        setExtState(setExtensionEnabled(ext.id, enabled));
-                        onExtensionsChanged?.();
-                      }}
-                    />
-                  ))}
-                  {visibleExtensions.length === 0 && (
-                    <p className="py-8 text-center text-[11.5px] text-[var(--text-faint)]">
-                      No extensions match your search.
-                    </p>
-                  )}
-                </div>
-
-                <p className="pt-3 text-[10.5px] text-[var(--text-faint)]">
-                  Extensions activate immediately — Prettier adds Format Document +
-                  Format on Save, Markdown Preview adds a Preview tab in the dock,
-                  Word Count / TODO Inspector pin stats to the status bar, and
-                  theme extensions appear under Appearance. State is stored locally
-                  on this device.
-                </p>
-              </div>
-            )}
 
             {section === "terminal" && (
               <div>
@@ -1822,10 +1655,10 @@ return (
             {section === "data" && (
               <div>
                 <SectionTitle>Backup</SectionTitle>
-                <Row title="Export settings" description="Download all UI, AI and extension settings as a JSON file.">
+                <Row title="Export settings" description="Download all UI and AI settings as a JSON file.">
                   <button
                     type="button"
-                    onClick={() => exportSettingsSnapshot(settings, aiSettings, extState)}
+                    onClick={() => exportSettingsSnapshot(settings, aiSettings)}
                     className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   >
                     Export JSON
@@ -1833,19 +1666,6 @@ return (
                 </Row>
 
                 <SectionTitle>Local caches</SectionTitle>
-                <Row title="Clear extension installs" description="Uninstalls every extension and forgets enabled state.">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearExtensionState();
-                      setExtState(loadExtensionState());
-                      onExtensionsChanged?.();
-                    }}
-                    className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
-                  >
-                    Clear
-                  </button>
-                </Row>
                 <Row title="Clear MCP servers" description="Removes all configured MCP server endpoints.">
                   <button
                     type="button"
@@ -1933,7 +1753,7 @@ return (
 
                 <SectionTitle>Important information</SectionTitle>
                 <p className="text-[11.5px] leading-5 text-[var(--text-secondary)]">
-                 UI settings, extensions, MCP servers, token usage and terminal state are stored
+                 UI settings, MCP servers, token usage and terminal state are stored
                  locally on this device. When you sign in, your chats, AI settings, profile and
                  BYOK API keys are stored in your Supabase account (API keys encrypted
                  server-side). No telemetry is collected. The AI provider you choose may collect
@@ -1973,14 +1793,18 @@ return (
                 </p>
               </div>
             )}
+            </div>
           </div>
           {/* Footer */}
-          <footer className="flex h-11 shrink-0 items-center justify-between border-t border-(--border) px-4">
-            <span className="text-[10.5px] text-[var(--text-faint)]">Changes apply instantly</span>
+          <footer className="flex h-10 shrink-0 items-center justify-between border-t border-(--border) px-4">
+            <span className="flex items-center gap-1.5 text-[10.5px] text-[var(--text-faint)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              Changes apply instantly
+            </span>
             <button
               type="button"
               onClick={() => onChange({ ...DEFAULT_UI_SETTINGS })}
-              className="rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+              className="rounded-lg border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               Reset to defaults
             </button>
