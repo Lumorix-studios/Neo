@@ -5,17 +5,14 @@
 /**
  * BYOK (Bring Your Own Key) — provider API keys for Neo.
  *
- * BYOK is the paid feature, so a key only ever exists inside a signed-in
- * account: it is encrypted server-side (AES-GCM inside the `api-keys` Supabase
- * Edge Function) and stored in the `user_api_keys` table, gated by the plan
- * (`profiles.plan` / `profiles.byok_enabled`) that the edge function re-checks
- * on every read. The decrypted key is held in memory only — never written to
- * disk.
+ * A key only exists inside a signed-in account: it is encrypted server-side
+ * (AES-GCM inside the `api-keys` Supabase Edge Function) and stored in the
+ * `user_api_keys` table. The decrypted key is held in memory only — never
+ * written to disk.
  *
- * Signed out → no key at all. There is deliberately no local key store: a
- * device fallback handed the paid feature to users who never signed in (and
- * never paid). The legacy device stores are still opened once by
- * `clearLocalKey`, purely to purge keys written by older builds.
+ * Signed out → no key at all. There is deliberately no local key store: keys
+ * belong to the account, not the device. The legacy device stores are still
+ * opened once by `clearLocalKey`, purely to purge keys written by older builds.
  */
 
 import { supabase, isSupabaseConfigured } from "./supabase";
@@ -42,20 +39,14 @@ export const BYOK_PROVIDERS = [
 
 /**
  * Turn a supabase-js functions error into a readable message. Edge Function
- * non-2xx responses throw `FunctionsHttpError`, whose JSON body (e.g. the
- * paywall `{ paywalled: true }` payload) is attached as `.context`.
+ * non-2xx responses throw `FunctionsHttpError`, whose JSON body is attached
+ * as `.context`.
  */
 async function invokeErrorMessage(error: unknown, fallback: string): Promise<string> {
   const ctx = (error as { context?: unknown } | null)?.context;
   if (ctx && typeof (ctx as Response).clone === "function") {
     try {
-      const body = (await (ctx as Response).clone().json()) as {
-        error?: string;
-        paywalled?: boolean;
-      };
-      if (body?.paywalled) {
-        return "BYOK requires an upgraded plan — upgrade to store API keys in your account.";
-      }
+      const body = (await (ctx as Response).clone().json()) as { error?: string };
       if (body?.error) return body.error;
     } catch {
       /* body already consumed, or not JSON */
@@ -117,13 +108,12 @@ const remoteKeyRequests = new Map<string, Promise<string | null>>();
 /**
  * True when the user may store / read provider keys.
  *
- * BYOK is the paid feature, so this needs BOTH a signed-in account and the
- * entitlement `getProfile()` resolves (`profiles.plan` includes BYOK, or
- * `profiles.byok_enabled` was granted server-side). Signed out is always
- * false — there is no local store to fall back to.
+ * Keys live in the account, so being signed in is the only requirement — there
+ * is no paid-plan gate any more. Signed out is always false: there is no local
+ * store to fall back to.
  */
 export function byokAllowed(profile: { byokEnabled: boolean } | null, signedIn: boolean): boolean {
-  return signedIn && !!profile?.byokEnabled;
+  return signedIn && profile?.byokEnabled !== false;
 }
 
 /** Fetch the decrypted key for a provider (signed-in users). */
@@ -148,14 +138,13 @@ async function fetchRemoteKeyOnce(provider: string): Promise<string | null> {
     method: "GET",
     headers: { "x-neo-provider": provider },
   });
-  const payload = data as { apiKey?: string; error?: string; paywalled?: boolean } | null;
+  const payload = data as { apiKey?: string; error?: string } | null;
   // #region agent log
   debugLog("D", "byok.ts:fetchRemoteKey", "api-keys GET", {
     provider,
     hasKey: !!payload?.apiKey,
     invokeError: error?.message ?? null,
     bodyError: payload?.error ?? null,
-    paywalled: payload?.paywalled ?? false,
   });
   // #endregion
   if (error) {
@@ -219,9 +208,8 @@ export async function clearLocalKey(provider: string): Promise<void> {
 /**
  * Resolve the API key for a provider at call time.
  *
- * BYOK is the paid feature, so a key is only returned for a signed-in user
- * whose entitlement is `byokEnabled` (`byokAllowed`). Signed out, or without
- * the entitlement, the answer is an empty key — never a device copy.
+ * A key is only returned for a signed-in user — signed out, the answer is an
+ * empty key, never a device copy.
  */
 export async function resolveApiKey(
   provider: string,

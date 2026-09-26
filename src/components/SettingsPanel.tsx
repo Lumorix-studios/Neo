@@ -33,12 +33,11 @@ import {
 import { ensureOllamaReady } from "../localModels";
 import LocalModels from "../../components/LocalModels";
 import AccountSection from "./AccountSection";
-import BillingSection from "./BillingSection";
 import type { NeoUser, Profile as AccountProfile } from "../lib/auth";
 import { byokAllowed, saveRemoteKey, removeRemoteKey } from "../lib/byok";
 import * as cloudSync from "../lib/cloudSync";
 
-import { IoCardOutline, IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoLockClosedOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
+import { IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoLockClosedOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
 import {
   formatTokens,
   getCachedRateSettings,
@@ -60,7 +59,6 @@ export type SectionId =
   | "data"
   | "shortcuts"
   | "account"
-  | "billing"
   | "about";
 
 interface SettingsPanelProps {
@@ -215,14 +213,6 @@ const SECTIONS: SectionMeta[] = [
     icon: <IoPersonCircleOutline className="h-3.5 w-3.5" />,
   },
   {
-    id: "billing",
-    label: "Billing",
-    hint: "Plans, checkout and payment status",
-    group: "Personal",
-    keywords: "pro team enterprise subscription payment card invoice upgrade",
-    icon: <IoCardOutline className="h-3.5 w-3.5" />,
-  },
-  {
     id: "appearance",
     label: "Appearance",
     hint: "Theme, background, accent and contrast",
@@ -338,10 +328,9 @@ export default function SettingsPanel({
         `${s.label} ${s.hint} ${s.group} ${s.keywords}`.toLowerCase().includes(navQueryNormalized)
       )
     : SECTIONS;
-  // Stable callbacks: keep AccountSection / BillingSection (both memoised)
-  // from re-rendering whenever an unrelated settings field changes.
+  // Stable callbacks: keep AccountSection (memoised) from re-rendering
+  // whenever an unrelated settings field changes.
   const refreshAccount = useCallback(() => onAccountRefresh?.(), [onAccountRefresh]);
-  const openBilling = useCallback(() => setSection("billing"), []);
   const [bgDraft, setBgDraft] = useState(settings.customBackground ?? "#0e0e0e");
   const [bgBrightness, setBgBrightness] = useState(settings.bgBrightness ?? 0);
   // --- AI settings state (mirrors the previous chat settings sidebar) ---
@@ -375,9 +364,10 @@ export default function SettingsPanel({
 
   const keyConfigured = !!aiSettings.apiKey;
   /**
-   * BYOK is the paid feature: it needs a signed-in account whose plan includes
-   * it. While the profile is still loading we show neither the editor nor the
-   * lock copy, so a slow network never flashes "locked" at a paying user.
+   * BYOK keys live in the account, so the only requirement now is being signed
+   * in — there is no paid plan gating them. While the profile is still loading
+   * we show neither the editor nor the sign-in prompt, so a slow network never
+   * flashes "locked" at a returning user.
    */
   const byokEntitled = byokAllowed(accountProfile, signedIn);
   const byokLocked = !accountLoading && !byokEntitled;
@@ -385,11 +375,7 @@ export default function SettingsPanel({
   /** Persist the provider key — encrypted server-side, account only. */
   const handleSaveByokKey = async () => {
     if (!byokEntitled) {
-      setByokMsg(
-        signedIn
-          ? "Provider keys are included on paid plans — pick one under Billing."
-          : "Sign in to store a provider key in your account."
-      );
+      setByokMsg("Sign in to store a provider key in your account.");
       return;
     }
     setByokBusy(true);
@@ -407,7 +393,7 @@ export default function SettingsPanel({
       }
       if (/upgraded plan|paywall|byok requires/i.test(message)) {
         message =
-          "Your plan includes API-key access, but the deployed api-keys function still returned a paywall. Redeploy the Supabase function, or set byok_enabled=true for this account until the new function is live.";
+          "The deployed api-keys function still enforces the old paywall. Redeploy the Supabase function (see supabase/migrations/0006_remove_paywalls.sql).";
       }
       setByokMsg(message);
     } finally {
@@ -697,7 +683,7 @@ export default function SettingsPanel({
                     {s.icon}
                   </span>
                   <span className="hidden min-w-0 flex-1 truncate sm:inline">{s.label}</span>
-                  {!signedIn && (s.id === "account" || s.id === "billing") && (
+                  {!signedIn && s.id === "account" && (
                     <span
                       className="hidden shrink-0 text-[var(--text-faint)] sm:inline"
                       role="img"
@@ -981,15 +967,6 @@ export default function SettingsPanel({
                 profile={accountProfile}
                 authLoading={accountLoading}
                 onAccountRefresh={refreshAccount}
-                onOpenBilling={openBilling}
-              />
-            )}
-            {section === "billing" && (
-              <BillingSection
-                account={account}
-                profile={accountProfile}
-                onAccountRefresh={refreshAccount}
-                onGoToAccount={() => setSection("account")}
               />
             )}
             {section === "ai" &&
@@ -1101,12 +1078,12 @@ export default function SettingsPanel({
                   !aiNeedsKey
                     ? "Not required for this provider."
                     : accountLoading
-                      ? "Checking your account and plan before loading provider keys."
+                      ? "Checking your account before loading provider keys."
                       : !signedIn
-                        ? "Sign in required — keys live in your account, on a paid plan."
+                        ? "Sign in required — keys live in your account."
                         : byokEntitled
                           ? "Stored encrypted (AES-256-GCM) in your account — never written to disk."
-                          : "Locked — provider keys are included on paid plans."
+                          : "Locked — sign in to store a provider key in your account."
                 }>
                   {aiNeedsKey && !accountLoading && byokEntitled && (
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -1126,7 +1103,7 @@ export default function SettingsPanel({
                 </Row>
                 {aiNeedsKey && accountLoading && (
                   <p className="pb-3 text-[11px] leading-4 text-[var(--text-muted)]">
-                    Checking your saved session and plan before loading API keys.
+                    Checking your saved session before loading API keys.
                   </p>
                 )}
                 {aiNeedsKey && byokEntitled && (
@@ -1187,27 +1164,17 @@ export default function SettingsPanel({
                 {aiNeedsKey && byokLocked && (
                   <div className="flex flex-col gap-2 pb-3">
                     <p className="text-[11px] leading-4 text-[var(--text-muted)]">
-                      {signedIn
-                        ? "Provider keys are the paid feature and your plan doesn't include them. Upgrade to add a key — it is encrypted in your account and never written to disk."
-                        : "Provider keys are the paid feature and live in your account. Sign in or create one to add a key — it is encrypted server-side, never written to disk."}
+                      Provider keys live in your account, encrypted server-side and never written to
+                      disk. Sign in or create an account to add one.
                     </p>
                     <div className="flex gap-1.5">
-                      {!signedIn && (
-                        <button
-                          type="button"
-                          onClick={() => setSection("account")}
-                          className="rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
-                        >
-                          Sign in
-                        </button>
-                      )}
                       <button
                         type="button"
-                        onClick={openBilling}
-                        className="rounded-md px-2.5 py-1 text-[11px] font-medium transition"
-                        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
+                        onClick={() => setSection("account")}
+                        className="rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] font-medium transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+                        style={{ background: "var(--accent)", color: "var(--on-accent)", borderColor: "transparent" }}
                       >
-                        See plans
+                        Sign in
                       </button>
                     </div>
                   </div>

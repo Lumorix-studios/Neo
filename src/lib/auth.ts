@@ -128,31 +128,23 @@ export interface NeoUser {
 }
 
 export interface Profile extends NeoUser {
-  /** Billing plan id from profiles.plan ("free" by default). */
+  /** Legacy plan id from profiles.plan. Kept for display only — nothing is gated on it. */
   plan: string;
-  /** Entitlement for the paid BYOK feature (plan includes it, or granted server-side). */
+  /** Always true for a signed-in account (BYOK is no longer a paid feature). */
   byokEnabled: boolean;
   createdAt: string | null;
   /** Set when the profiles row could not be loaded (grants/RLS/schema). */
   dbError?: string | null;
 }
 
-const BYOK_PLAN_IDS = new Set(["admin", "pro", "team", "enterprise", "paid"]);
-
-function planIncludesByok(plan: string | null | undefined): boolean {
-  return BYOK_PLAN_IDS.has((plan ?? "").trim().toLowerCase());
-}
-
 /**
- * BYOK is the paid feature: a paid plan, or an explicit `byok_enabled = true`
- * grant (comp / manual upgrade). Anything else is locked — including the old
- * `byok_enabled` default of `true` that shipped in 0001_init, which is what
- * made the paywall vanish. The `api-keys` edge function applies the same rule
- * server-side, so the client can never award itself a key.
+ * BYOK used to be a paid feature gated on `profiles.plan` / `byok_enabled`.
+ * There is no paywall any more, so every signed-in account is entitled and the
+ * plan column is purely informational. The `api-keys` edge function applies
+ * the same rule server-side, so the client can never award itself a key.
  */
-function resolveByokEnabled(row?: { plan?: string | null; byok_enabled?: boolean | null } | null): boolean {
-  if (planIncludesByok(row?.plan)) return true;
-  return row?.byok_enabled === true;
+function resolveByokEnabled(): boolean {
+  return true;
 }
 
 /** Map a supabase auth user + profile row to our app-level shape. */
@@ -238,7 +230,7 @@ export async function getCurrentUser(): Promise<NeoUser | null> {
   return toNeoUser(data.session.user, profile ?? undefined);
 }
 
-/** Full profile (includes the BYOK paywall flag). Null when signed out. */
+/** Full profile (includes the BYOK entitlement flag). Null when signed out. */
 export async function getProfile(): Promise<Profile | null> {
   if (!isSupabaseConfigured) return null;
   const sb = supabase();
@@ -251,7 +243,7 @@ export async function getProfile(): Promise<Profile | null> {
     .eq("id", data.session.user.id)
     .maybeSingle();
   const resolvedPlan = rowError ? "unavailable" : (row?.plan ?? "free");
-  const resolvedByok = rowError ? false : resolveByokEnabled(row);
+  const resolvedByok = resolveByokEnabled();
   // #region agent log
   debugLog("A", "auth.ts:getProfile", "profile entitlements", {
     runId: "post-fix",

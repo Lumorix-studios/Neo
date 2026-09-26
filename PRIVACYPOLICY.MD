@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last Updated:** August 22, 2026
+**Last Updated:** September 25, 2026
 
 ## AgenticCoder Privacy Policy
 
@@ -8,17 +8,48 @@ Thank you for using AgenticCoder.
 
 AgenticCoder is an **early-stage development project**. Features, functionality, and behavior may change without notice as the software continues to evolve. By using this application, you acknowledge that it is provided in its current state and may contain bugs, errors, or incomplete functionality.
 
+## No Payment Information
+
+AgenticCoder is **free**. There is no subscription, no paid plan, and no
+checkout. Lumorix Studios does not process, collect, or store any payment or
+card information. No feature of the application is gated behind a paid tier.
+
 ## Data Collection
 
-AgenticCoder **does not collect, transmit, sell, or store your personal data** on any servers operated by us.
+AgenticCoder is **local-first**. The application does not collect or transmit
+your personal data unless you choose to create an account.
 
-All application data, including settings and configuration, is saved **only on your device**. We do not have access to this information.
+### Without an account
+
+All application data, including settings and configuration, is saved **only on
+your device**. We do not have access to this information. The editor, filesystem
+tools, terminal, and local models (Ollama) work fully offline.
+
+### With an account (opt-in)
+
+If you choose to sign in, we use **Supabase** to provide the backend for that
+account. Signing in means the following is stored on our servers so the feature
+can work:
+
+* **Account information** — email address, display name, avatar URL, account
+  identifier, and the date you joined
+* **Authentication data** — login events, session information, and security
+  signals, used to protect your account
+* **Application data you sync** — chat history and application settings you
+  choose to synchronize
+* **Provider API keys (BYOK)** — if you store a key, it is encrypted
+  server-side (AES-256-GCM) before storage. The decrypted key exists only in
+  memory on your device while the application is running and is never written to
+  disk. Keys are scoped to your account and are not readable by other users.
+
+An account is **optional**. You can use AgenticCoder without signing in, and you
+can delete your synced data at any time from Settings → Privacy & Data.
 
 ## Local Storage
 
 Application preferences, configuration, and other locally stored data remain on your device.
 
-AgenticCoder does not automatically upload or synchronize this information to any servers operated by us.
+AgenticCoder does not automatically upload or synchronize this information to any servers operated by us, except for data you explicitly choose to sync while signed in.
 
 ## Filesystem Access (Code Editor & Agentic File Tools)
 
@@ -61,9 +92,11 @@ You assume full responsibility for any actions taken using the software and any 
 
 ## Open Source License
 
-AgenticCoder is distributed under the **MIT License**.
+AgenticCoder is distributed under the **NEO Source-Available License 1.0**.
 
-The software is provided free of charge under the terms of the MIT License. The license grants permission to use, modify, distribute, and sublicense the software, subject to the conditions of the MIT License.
+The license grants permission to use, modify, and share the software for
+personal and other non-commercial purposes. Commercial redistribution requires
+prior written permission from Lumorix Studios.
 
 The software is provided **without warranty** as described in the license.
 

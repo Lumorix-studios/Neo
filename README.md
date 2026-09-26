@@ -293,7 +293,7 @@ NEO uses **Supabase** for backend services such as:
 * User accounts
 * Persistent application data
 * Cloud-synchronized data
-* Subscription-related application state
+* Encrypted storage of your own provider API keys (BYOK)
 
 Workspace files remain on the user's machine and are accessed locally by the desktop application.
 
@@ -352,7 +352,7 @@ Depending on the feature, information stored through the backend may include:
 * Account information
 * Application preferences
 * Chat history
-* Subscription state
+* Encrypted provider API keys (BYOK)
 * Cloud-synchronized application data
 * Other application metadata
 
@@ -360,20 +360,18 @@ The exact data stored may change as NEO develops.
 
 ---
 
-# Billing
+# Licensing and Cost
 
-NEO uses **Stripe** for payment processing and subscription management.
+NEO is **free to use**. There is no subscription, no paid tier, and no paywall.
+All features — including cloud sync and encrypted provider-key storage (BYOK) —
+are available to every signed-in account at no charge.
 
-Stripe handles payment processing infrastructure, while NEO uses subscription information to determine access to paid functionality.
+An account is required only for the features that need a backend (sign-in, cloud
+sync, and BYOK key storage). Local development features, the editor, and local
+model support (Ollama) work without signing in.
 
-NEO does not directly handle or store users' complete payment card information.
-
-Billing and subscription functionality may require an active NEO account.
-
-Checkout is not handled inside the app: the plan buttons in Settings → Billing
-open the website that handles payments, and the account (plan + BYOK
-entitlement) is shared through the same Supabase project, so a purchase shows up
-in the app on the next account refresh.
+There is no in-app checkout and no payment processing. Lumorix Studios does not
+collect payment information.
 
 ---
 
@@ -417,7 +415,8 @@ NEO uses a hybrid web, native, and cloud architecture.
                            |
                      +-----+-----+
                      |           |
-                  Supabase     Stripe
+                  Supabase     Edge Functions
+                              (api-keys)
 ```
 
 ---
@@ -483,11 +482,11 @@ Supabase provides functionality such as:
 
 ---
 
-# Payments
+# Pricing
 
-NEO uses **Stripe** for subscription and payment infrastructure.
-
-Stripe handles payment processing while NEO uses subscription information to manage access to paid application functionality.
+NEO is free. There are no paid plans, no subscriptions, and no paywalls —
+every feature is available to all users. Lumorix Studios does not process
+payments.
 
 ---
 
@@ -576,7 +575,6 @@ Current development areas include:
 * Development workflows
 * Performance
 * Cloud infrastructure
-* Billing infrastructure
 * Cross-platform support
 * Interface refinement
 * Stability
@@ -603,7 +601,6 @@ Planned and ongoing areas include:
 * Agent observability
 * Cloud synchronization
 * Account functionality
-* Subscription features
 * Stability improvements
 
 ---
@@ -623,9 +620,16 @@ https://github.com/Lumorix-studios/Neo
 
 # License
 
-NEO is licensed under the **Apache License 2.0**.
+NEO is licensed under the **NEO Source-Available License 1.0** — see the
+[`LICENSE`](LICENSE) file for the complete terms.
 
-You are free to use, modify, distribute, and commercially use the software, subject to the terms and conditions of the license.
+In short: you may use, study, and modify NEO for personal and other
+non-commercial purposes, and share it with others non-commercially. Commercial
+redistribution requires prior written permission from Lumorix Studios.
+
+**Note:** earlier revisions of this README referenced the Apache License 2.0 and
+the MIT License. Neither was accurate — the `LICENSE` file has always governed
+the project.
 
 See the [`LICENSE`](LICENSE) file for the complete license text.
 

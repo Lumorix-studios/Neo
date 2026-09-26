@@ -6,8 +6,8 @@
 /**
  * Account settings. Deliberately flat: hairline-divided rows on a single
  * surface, no badges, no nested panels. Auth behaviour is unchanged — email
- * auth, OAuth, password reset, profile updates, the BYOK upsell, sign-out and
- * cloud-data deletion all go through `lib/auth` and `lib/cloudSync`.
+ * auth, OAuth, password reset, profile updates, sign-out and cloud-data
+ * deletion all go through `lib/auth` and `lib/cloudSync`.
  */
 
 import { memo, useEffect, useState } from "react";
@@ -35,18 +35,9 @@ interface AccountSectionProps {
   authLoading?: boolean;
   /** Ask the app to re-read the account/profile after profile edits. */
   onAccountRefresh: () => void;
-  /** Open the Billing tab (BYOK upsell for free plans). */
-  onOpenBilling?: () => void;
 }
 
 type Mode = "sign-in" | "sign-up";
-
-function formatPlan(plan: string | null | undefined): string {
-  const clean = (plan ?? "free").trim();
-  if (!clean) return "Free";
-  if (clean.toLowerCase() === "unavailable") return "Unavailable";
-  return clean.charAt(0).toUpperCase() + clean.slice(1);
-}
 
 function providerName(provider: string | null | undefined): string {
   if (provider === "github") return "GitHub";
@@ -107,7 +98,6 @@ const AccountSection = memo(function AccountSection({
   profile,
   authLoading = false,
   onAccountRefresh,
-  onOpenBilling,
 }: AccountSectionProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,8 +160,6 @@ const AccountSection = memo(function AccountSection({
 
   /* ── Signed in ─────────────────────────────────────────────────────────── */
   if (account) {
-    const planLabel = formatPlan(profile?.plan);
-    const byok = Boolean(profile?.byokEnabled);
     const since = memberSince(profile?.createdAt);
     const dirty = displayName !== (profile?.name ?? "");
     const email = account.email;
@@ -220,27 +208,6 @@ const AccountSection = memo(function AccountSection({
                   className={TEXT_BUTTON}
                 >
                   {copied === "email" ? "Copied" : "Copy"}
-                </button>
-              )}
-            </Row>
-            <Row
-              title="Plan"
-              description={
-                profile
-                  ? byok
-                    ? "BYOK included — provider keys are encrypted in your account."
-                    : `${planLabel} plan — provider keys need an upgrade.`
-                  : "Checking your plan…"
-              }
-            >
-              <span className="text-[11.5px] text-[var(--text-secondary)]">{planLabel}</span>
-              {profile && !byok && onOpenBilling && (
-                <button
-                  type="button"
-                  onClick={onOpenBilling}
-                  className="shrink-0 text-[11.5px] text-(--accent) underline-offset-2 hover:underline"
-                >
-                  Upgrade
                 </button>
               )}
             </Row>
@@ -318,7 +285,7 @@ const AccountSection = memo(function AccountSection({
           <Card>
             <Row
               title="Account"
-              description="Your profile, plan, cloud data and provider keys are tied to a Neo account — sign in or create one to open them."
+              description="Your profile, cloud data and provider keys are tied to a Neo account — sign in or create one to open them."
             />
           </Card>
         </section>

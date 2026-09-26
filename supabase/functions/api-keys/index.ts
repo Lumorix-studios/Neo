@@ -72,22 +72,10 @@ const ALLOWED_PROVIDERS = new Set([
   "openai", "openrouter", "groq", "nvidia", "anthropic", "google", "custom",
 ]);
 
-const BYOK_PLAN_IDS = new Set(["admin", "pro", "team", "enterprise", "paid"]);
-
-function planIncludesByok(plan: unknown): boolean {
-  return typeof plan === "string" && BYOK_PLAN_IDS.has(plan.trim().toLowerCase());
-}
-
-/**
- * BYOK is the paid feature: the plan has to include it, or the row carries an
- * explicit `byok_enabled = true` grant. `!== false` used to be the test, which
- * the old column default of `true` defeated — every free account passed, so the
- * paywall did not exist.
- */
-function hasByokAccess(profile: { byok_enabled?: boolean | null; plan?: string | null } | null): boolean {
-  if (planIncludesByok(profile?.plan)) return true;
-  return profile?.byok_enabled === true;
-}
+// BYOK is no longer a paid feature: any authenticated account may store and
+// read its own provider keys. Authentication alone is the gate — the profile
+// row is not consulted, so a missing/denied `plan` or `byok_enabled` can never
+// lock a signed-in user out of their own keys.
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -105,26 +93,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const userId = authData.user.id;
 
     // Service-role client: the only role allowed to touch the policy-less
-    // `user_api_keys` table, and the authoritative reader for the paywall.
+    // `user_api_keys` table. Every query below is scoped to `userId`.
     const admin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
-
-    // Enforce the paywall flag from the profile row. Read it with the service
-    // role on purpose: 0002_harden_profiles revokes client UPDATE on
-    // `plan` / `byok_enabled`, but the gate must never depend on RLS being
-    // configured correctly — this read is the one that actually stops a
-    // downgraded user from pulling a decrypted key.
-    const { data: profile, error: profileErr } = await admin
-      .from("profiles")
-      .select("byok_enabled, plan")
-      .eq("id", userId)
-      .maybeSingle();
-    if (profileErr) return json({ error: "Could not load profile." }, 500);
-    if (!hasByokAccess(profile)) {
-      return json({ error: "BYOK requires an upgraded plan.", paywalled: true }, 402);
-    }
 
     const url = new URL(req.url);
     // The client sends the provider as a header (supabase-js `functions.invoke`

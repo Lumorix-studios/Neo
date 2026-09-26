@@ -721,8 +721,8 @@ export default function App() {
 
   // ── BYOK key injection ─────────────────────────────────────────────────────
   // The API key is never persisted with settings — it is resolved at runtime
-  // from the encrypted account store. BYOK is the paid feature, so there is no
-  // signed-out fallback and an unknown entitlement resolves to "no key".
+  // from the encrypted account store. Keys belong to the account, so there is
+  // no signed-out fallback and an unknown profile resolves to "no key".
   useEffect(() => {
     if (!restored) return;
     let cancelled = false;
@@ -1478,8 +1478,8 @@ ${promptSuffix}` : ""}`,
       if (!trimmedKey) {
         setError(
           signedIn
-            ? `No ${s.label} API key — add one under Settings → AI. Provider keys are part of the paid plan.`
-            : `Sign in under Settings → Account to use ${s.label} — provider keys are the paid feature and live in your account.`
+            ? `No ${s.label} API key — add one under Settings → AI. Provider keys are stored encrypted in your account.`
+            : `Sign in under Settings → Account to use ${s.label} — provider keys live in your account.`
         );
         return;
       }
