@@ -1575,7 +1575,7 @@ export default function SettingsPanel({
                   />
                 </Row>
 
-                <SectionTitle>Recent requests</SectionTitle>
+                <SectionTitle>Recent usage</SectionTitle>
                 {usageSnapshot.recent.length === 0 ? (
                   <p className="text-[11.5px] text-[var(--text-muted)]">
                     No AI requests recorded yet.
@@ -1587,12 +1587,11 @@ export default function SettingsPanel({
                         key={`${r.at}-${i}`}
                         className="flex items-center justify-between rounded-md border border-(--border) px-3 py-1.5 text-[11px]"
                       >
-                        <span className="min-w-0 truncate text-[var(--text-secondary)]">
+                        <span className="min-w-0 truncate text-white-600">
                           {r.provider} · {r.model}
                         </span>
-                        <span className="ml-3 shrink-0 tabular-nums text-[var(--text-muted)]">
-                          {new Date(r.at).toLocaleTimeString()} · ↑{formatTokens(r.input)} ↓
-                          {formatTokens(r.output)}
+                        <span className="ml-3 shrink-0 tabular-nums text-emerald-400">
+                          {new Date(r.at).toLocaleTimeString()} | Input:{formatTokens(r.input)} | Output:{formatTokens(r.output)}
                         </span>
                       </div>
                     ))}
@@ -1614,7 +1613,7 @@ export default function SettingsPanel({
 
                 <p className="pt-2 text-[10.5px] text-[var(--text-faint)]">
                   Counts include chat and agent rounds — exact when the provider reports usage,
-                  char/4 estimates otherwise. Stored only on this device.
+                  char/4 estimates otherwise. 
                 </p>
               </div>
             )}
@@ -1625,10 +1624,14 @@ export default function SettingsPanel({
                 <Row title="Export settings" description="Download all UI and AI settings as a JSON file.">
                   <button
                     type="button"
-                    onClick={() => exportSettingsSnapshot(settings, aiSettings)}
+                    onClick={() => {
+                      exportSettingsSnapshot(settings, aiSettings);
+                      alert("Settings exported successfully in your downloads folder.");
+                    }}
                     className="shrink-0 rounded-md border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
                   >
                     Export JSON
+                    <></>
                   </button>
                 </Row>
 

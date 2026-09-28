@@ -3,12 +3,6 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 
-/**
- * Account settings. Deliberately flat: hairline-divided rows on a single
- * surface, no badges, no nested panels. Auth behaviour is unchanged — email
- * auth, OAuth, password reset, profile updates, sign-out and cloud-data
- * deletion all go through `lib/auth` and `lib/cloudSync`.
- */
 
 import { memo, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -27,7 +21,7 @@ import {
 } from "../lib/auth";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { deleteAllCloudData } from "../lib/cloudSync";
-import { IoLogoGithub, IoLogoGoogle } from "react-icons/io5";
+import { IoLogoGithub, IoLogoGoogle, IoTrash, IoExit } from "react-icons/io5";
 
 interface AccountSectionProps {
   account: NeoUser | null;
@@ -55,7 +49,7 @@ function memberSince(value: string | null | undefined): string | null {
 /* ── Flat primitives ───────────────────────────────────────────────────────── */
 
 const TEXT_BUTTON =
-  "shrink-0 text-[11.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-40";
+  "shrink-0 text-[11.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--primary)] disabled:opacity-40";
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
@@ -205,8 +199,9 @@ const AccountSection = memo(function AccountSection({
                 <button
                   type="button"
                   onClick={() => void copyText(email, "email")}
-                  className={TEXT_BUTTON}
+                  className="shrink-0 text-[11.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-40"
                 >
+
                   {copied === "email" ? "Copied" : "Copy"}
                 </button>
               )}
@@ -222,8 +217,8 @@ const AccountSection = memo(function AccountSection({
               </Row>
             )}
             <Row title="Sign out" description="Local data on this device is kept.">
-              <button type="button" onClick={() => void signOut()} className={TEXT_BUTTON}>
-                Sign out
+              <button type="button" onClick={() => void signOut()} className="shrink-0 text-[11.5px] text-[var(--text-muted)] transition-colors hover:text-red-500 disabled:opacity-40">
+                <IoExit size={16}/>
               </button>
             </Row>
           </Card>
@@ -242,22 +237,27 @@ const AccountSection = memo(function AccountSection({
                 <>
                   <button
                     type="button"
-                    onClick={() => void removeCloudData()}
+                    onClick={() => {
+                      void removeCloudData();
+                      alert("Cloud data deleted.");
+                    }}
                     className="shrink-0 text-[11.5px] text-red-400/90 underline-offset-2 hover:underline"
                   >
+
                     Confirm delete
+                    <></>
                   </button>
                   <button
                     type="button"
                     onClick={() => setDangerOpen(false)}
-                    className={TEXT_BUTTON}
+                    className="shrink-0 text-[11.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-40"
                   >
                     Cancel
                   </button>
                 </>
               ) : (
-                <button type="button" onClick={() => setDangerOpen(true)} className={TEXT_BUTTON}>
-                  Delete…
+                <button type="button" onClick={() => setDangerOpen(true)} className="shrink-0 text-[11.5px] text-[var(--text-muted)] transition-colors hover:text-red-500 disabled:opacity-40">
+                  <IoTrash size={16}/>
                 </button>
               )}
             </Row>
