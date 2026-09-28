@@ -25,7 +25,10 @@ import {
   listMcpTools, 
   stopStdio, 
   describeServer, 
-  type McpServerConfig 
+  discoverMcpServers,
+  serverFingerprint,
+  type McpServerConfig,
+  type DiscoveredServer
 } from "../mcp";
 import { 
   findAvailableOllamaPort 
@@ -84,6 +87,8 @@ interface SettingsPanelProps {
   accountLoading?: boolean;
   /** Re-read the account/profile after edits in the Account tab. */
   onAccountRefresh?: () => void;
+  /** Open workspace folder — used to discover a project-scoped `.mcp.json`. */
+  workspaceRoot?: string | null;
 }
 
 /* ── Small building blocks ─────────────────────────────────────────── */
@@ -318,6 +323,7 @@ export default function SettingsPanel({
   accountProfile = null,
   accountLoading = false,
   onAccountRefresh,
+  workspaceRoot = null,
 }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionId>("appearance");
   /** Filters the navigation only — section content is untouched. */
@@ -347,6 +353,12 @@ export default function SettingsPanel({
   const [mcpEnv, setMcpEnv] = useState("");
   const [mcpError, setMcpError] = useState("");
   const [mcpTest, setMcpTest] = useState<Record<string, string>>({});
+  // --- MCP auto-discovery state ---
+  const [mcpDiscovered, setMcpDiscovered] = useState<DiscoveredServer[] | null>(null);
+  const [mcpScanBusy, setMcpScanBusy] = useState(false);
+  /** Ids of discovered entries the user has imported, so the row can be
+   *  marked as done instead of silently vanishing from the list. */
+  const [mcpImported, setMcpImported] = useState<string[]>([]);
   // --- BYOK key management state (Account-aware) ---
   const signedIn = !!account;
   const [byokDraft, setByokDraft] = useState("");
@@ -592,6 +604,56 @@ export default function SettingsPanel({
     const next = mcpServers.filter((s) => s.id !== id);
     setMcpServers(next);
     saveMcpServers(next);
+  };
+
+  /** Scan for MCP configs other tools already wrote on this machine. */
+  const scanForMcpServers = async () => {
+    setMcpScanBusy(true);
+    try {
+      const found = await discoverMcpServers(workspaceRoot);
+      setMcpDiscovered(found);
+      setMcpImported([]);
+      if (found.length === 0) {
+        setMcpError(
+          "No MCP config files found. Neo looks for Claude Desktop, Cursor, VS Code, Windsurf and .mcp.json — add a server manually if you keep your config elsewhere."
+        );
+      }
+    } finally {
+      setMcpScanBusy(false);
+    }
+  };
+
+  /** Copy one discovered server into our own config, keeping it editable. */
+  const importDiscoveredServer = (entry: DiscoveredServer) => {
+    // Fresh id: the discovered one is regenerated on every scan, so reusing it
+    // would collide with a previously imported copy of the same server.
+    const server: McpServerConfig = { ...entry.server, id: makeServerId(), enabled: true };
+    const next = [...mcpServers, server];
+    setMcpServers(next);
+    saveMcpServers(next);
+    setMcpImported((prev) => [...prev, serverFingerprint(server)]);
+  };
+
+  /** Import every discovered server that isn't already configured. */
+  const importAllDiscovered = () => {
+    const existing = new Set(mcpServers.map(serverFingerprint));
+    const fresh = (mcpDiscovered ?? []).filter((d) => !existing.has(serverFingerprint(d.server)));
+    if (fresh.length === 0) return;
+    // De-dupe against each other too, so importing "all" from two apps that both
+    // list the same server doesn't create a duplicate pair.
+    const seen = new Set(existing);
+    const toAdd: McpServerConfig[] = [];
+    for (const d of fresh) {
+      const fp = serverFingerprint(d.server);
+      if (seen.has(fp)) continue;
+      seen.add(fp);
+      toAdd.push({ ...d.server, id: makeServerId(), enabled: true });
+    }
+    if (toAdd.length === 0) return;
+    const next = [...mcpServers, ...toAdd];
+    setMcpServers(next);
+    saveMcpServers(next);
+    setMcpImported(toAdd.map(serverFingerprint));
   };
 
   /** Live connectivity check: handshake + tools/list. */
@@ -1211,6 +1273,84 @@ export default function SettingsPanel({
 
                 <SectionTitle>MCP servers</SectionTitle>
                 <div className="flex flex-col gap-2 pb-2">
+                  {/* Auto-discovery: pick up servers the user already configured
+                      in Claude Desktop / Cursor / VS Code / Windsurf / .mcp.json. */}
+                  <div className="rounded-md border border-dashed border-(--border-strong) bg-(--fill-1) px-2.5 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-medium text-[var(--text-primary)]">
+                          Import from other apps
+                        </p>
+                        <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">
+                          Scans Claude Desktop, Cursor, VS&nbsp;Code, Windsurf and{" "}
+                          <code className="font-mono text-[10px]">.mcp.json</code> for servers you
+                          already set up. Imported servers stay fully editable here.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void scanForMcpServers()}
+                        disabled={mcpScanBusy}
+                        className="shrink-0 rounded border border-(--border-strong) px-2 py-1 text-[10.5px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-50"
+                      >
+                        {mcpScanBusy ? "Scanning…" : "Scan"}
+                      </button>
+                    </div>
+
+                    {mcpDiscovered !== null && mcpDiscovered.length > 0 && (
+                      <div className="mt-2 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-[var(--text-faint)]">
+                            {mcpDiscovered.length} found
+                          </span>
+                          <button
+                            type="button"
+                            onClick={importAllDiscovered}
+                            className="rounded border border-(--border-strong) px-2 py-0.5 text-[10px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+                          >
+                            Import all
+                          </button>
+                        </div>
+                        {mcpDiscovered.map((d, i) => {
+                          const fp = serverFingerprint(d.server);
+                          const already = mcpServers.some((s) => serverFingerprint(s) === fp);
+                          const done = already || mcpImported.includes(fp);
+                          return (
+                            <div
+                              key={`${d.path}:${d.name}:${i}`}
+                              className="flex items-center gap-2 rounded border border-(--border) bg-(--bg-elevated) px-2 py-1.5"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="truncate text-[11.5px] font-medium text-[var(--text-primary)]">
+                                    {d.name}
+                                  </span>
+                                  <span className="shrink-0 rounded border border-(--border-strong) px-1 py-px text-[9px] uppercase tracking-wide text-[var(--text-faint)]">
+                                    {d.server.transport}
+                                  </span>
+                                </div>
+                                <div className="truncate text-[10px] text-[var(--text-faint)]">
+                                  {describeServer(d.server)}
+                                </div>
+                                <div className="truncate text-[9.5px] text-[var(--text-faint)]">
+                                  from {d.app}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => importDiscoveredServer(d)}
+                                disabled={done}
+                                className="shrink-0 rounded border border-(--border-strong) px-2 py-1 text-[10px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:opacity-40"
+                              >
+                                {done ? "Added" : "Import"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
                   {mcpServers.length === 0 && (
                     <p className="text-[11px] leading-4 text-[var(--text-muted)]">
                       Connect MCP servers to extend the agent with external tools — remote

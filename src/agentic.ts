@@ -602,7 +602,7 @@ function stripHtml(html: string): string {
 }
 
 /** One parsed organic search result. */
-interface WebSearchResult {
+export interface WebSearchResult {
   title: string;
   url: string;
   snippet: string;
@@ -1116,6 +1116,9 @@ async function executeToolUncached(
               return {
                 ok: true,
                 output: out.length > 12000 ? `${out.slice(0, 12000)}\n... [truncated]` : out,
+                // Structured payload so the activity feed can render these as
+                // clickable links instead of a wall of plain text.
+                data: results,
               };
             }
             failures.push(`${engine.name}: no parseable results`);

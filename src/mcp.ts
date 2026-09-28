@@ -105,6 +105,190 @@ export function makeServerId(): string {
   return `mcp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// ── Config auto-discovery ─────────────────────────────────────────────────────
+
+/** A config file found on this machine, as reported by the Rust side. */
+export interface McpConfigHit {
+  app: string;
+  path: string;
+}
+
+/** One server parsed out of a discovered config file. */
+export interface DiscoveredServer {
+  app: string;
+  path: string;
+  name: string;
+  server: McpServerConfig;
+}
+
+/**
+ * Stable fingerprint used to tell "the same server" apart across config files.
+ * Two entries with the same endpoint (or the same command + args) are the same
+ * server, however differently the two files happen to name it.
+ */
+export function serverFingerprint(s: McpServerConfig): string {
+  if (s.transport === "stdio") {
+    return `stdio:${(s.command ?? "").trim().toLowerCase()}|${(s.args ?? []).join(" ").trim().toLowerCase()}`;
+  }
+  return `http:${(s.url ?? "").trim().toLowerCase().replace(/\/+$/, "")}`;
+}
+
+/**
+ * Expand environment references, delegating to the Rust implementation.
+ *
+ * This is essential, not cosmetic: Claude Desktop configs routinely carry
+ * literal `${APPDATA}` / `%VAR%` in args and env values, and storing them
+ * verbatim makes the server fail to spawn (ENOENT). The Rust spawn path
+ * expands command/args/cwd itself, but env *values* are handed to the child
+ * process untouched — so they must be expanded here, at import time.
+ *
+ * Unknown variables are left as written, matching the Rust behaviour.
+ */
+async function expandEnvRefs(value: string): Promise<string> {
+  if (!value.includes("$") && !value.includes("%")) return value;
+  try {
+    return await invoke<string>("expand_env_string", { input: value });
+  } catch {
+    return value; // non-Tauri (browser dev) — leave as-is rather than fail
+  }
+}
+
+/** Coerce a foreign config entry into our own shape, or null if unusable. */
+async function parseForeignEntry(name: string, raw: unknown): Promise<McpServerConfig | null> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const e = raw as Record<string, unknown>;
+
+  // Some clients use `type: "http"` / `type: "sse"` instead of inferring from
+  // the presence of a url. Honour an explicit `type` when it's an http-ish one.
+  const type = typeof e.type === "string" ? e.type.toLowerCase() : "";
+  const url = typeof e.url === "string" ? e.url.trim() : "";
+  if (url || type === "http" || type === "sse" || type === "streamable-http") {
+    if (!url) return null;
+    const headers =
+      e.headers && typeof e.headers === "object" && !Array.isArray(e.headers)
+        ? Object.fromEntries(
+            Object.entries(e.headers as Record<string, unknown>)
+              .filter(([, v]) => typeof v === "string")
+              .map(([k, v]) => [k, v as string])
+          )
+        : undefined;
+    const expandedHeaders = headers
+      ? Object.fromEntries(
+          await Promise.all(
+            Object.entries(headers).map(async ([k, v]) => [k, await expandEnvRefs(v)])
+          )
+        )
+      : undefined;
+    return normalizeServer({
+      ...e,
+      id: makeServerId(),
+      name: String(e.name ?? name),
+      enabled: true,
+      transport: "http",
+      url: await expandEnvRefs(url),
+      headers:
+        expandedHeaders && Object.keys(expandedHeaders).length > 0 ? expandedHeaders : undefined,
+    });
+  }
+
+  const command = typeof e.command === "string" ? e.command.trim() : "";
+  if (!command) return null;
+  const rawEnv =
+    e.env && typeof e.env === "object" && !Array.isArray(e.env)
+      ? Object.fromEntries(
+          Object.entries(e.env as Record<string, unknown>)
+            .filter(([, v]) => typeof v === "string")
+            .map(([k, v]) => [k, v as string])
+        )
+      : undefined;
+  const expandedEnv = rawEnv
+    ? Object.fromEntries(
+        await Promise.all(
+          Object.entries(rawEnv).map(async ([k, v]) => [k, await expandEnvRefs(v)])
+        )
+      )
+    : undefined;
+  const rawArgs = Array.isArray(e.args) ? e.args.map((a) => String(a)) : undefined;
+  const expandedArgs = rawArgs
+    ? await Promise.all(rawArgs.map((a) => expandEnvRefs(a)))
+    : undefined;
+  return normalizeServer({
+    ...e,
+    id: makeServerId(),
+    name: String(e.name ?? name),
+    enabled: true,
+    transport: "stdio",
+    command: await expandEnvRefs(command),
+    args: expandedArgs,
+    cwd: typeof e.cwd === "string" ? await expandEnvRefs(e.cwd) : undefined,
+    env: expandedEnv && Object.keys(expandedEnv).length > 0 ? expandedEnv : undefined,
+  });
+}
+
+/**
+ * Parse one MCP config file's `mcpServers` block.
+ *
+ * Returns an empty list (never throws) for a missing file, malformed JSON or an
+ * unexpected shape — a broken config in someone else's app must never break
+ * ours. Callers can show a partial list.
+ */
+export async function parseMcpConfigFile(
+  app: string,
+  path: string
+): Promise<DiscoveredServer[]> {
+  let text: string;
+  try {
+    text = await invoke<string>("fs_read_file", { path });
+  } catch {
+    return []; // vanished or unreadable between the scan and the read
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!json || typeof json !== "object") return [];
+
+  const root = json as Record<string, unknown>;
+  // VS Code nests servers under `servers` and requires per-entry `type`; most
+  // other clients use `mcpServers`. Accept either, preferring `mcpServers`.
+  const block =
+    root.mcpServers ?? root.servers ?? (root as unknown as Record<string, unknown>);
+  if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+
+  const out: DiscoveredServer[] = [];
+  for (const [name, entry] of Object.entries(block as Record<string, unknown>)) {
+    const server = await parseForeignEntry(name, entry).catch(() => null);
+    if (server) out.push({ app, path, name: server.name, server });
+  }
+  return out;
+}
+
+/**
+ * Scan the machine for MCP configs written by other tools and parse them.
+ *
+ * Returns everything found, including servers the user already has configured
+ * here — filtering is the caller's job so it can show "already added" state
+ * rather than silently hiding entries.
+ */
+export async function discoverMcpServers(
+  workspaceRoot?: string | null
+): Promise<DiscoveredServer[]> {
+  let hits: McpConfigHit[];
+  try {
+    hits = await invoke<McpConfigHit[]>("mcp_discover_configs", {
+      workspaceRoot: workspaceRoot ?? null,
+    });
+  } catch {
+    return [];
+  }
+  const groups = await Promise.all(
+    hits.map((h) => parseMcpConfigFile(h.app, h.path).catch(() => []))
+  );
+  return groups.flat();
+}
+
 /** Human-readable target for list rows ("https://…" or `npx -y pkg`). */
 export function describeServer(s: McpServerConfig): string {
   if (s.transport === "stdio") {

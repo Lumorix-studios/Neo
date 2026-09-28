@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last Updated:** September 25, 2026
+**Last Updated:** September 28, 2026
 
 ## AgenticCoder Privacy Policy
 
@@ -16,14 +16,11 @@ card information. No feature of the application is gated behind a paid tier.
 
 ## Data Collection
 
-AgenticCoder is **local-first**. The application does not collect or transmit
-your personal data unless you choose to create an account.
+AgenticCoder is **local-first**. Application data stays on your device by default. Some data is collected server-side only when you choose to create an account, and third-party services are contacted only when you configure them.
 
 ### Without an account
 
-All application data, including settings and configuration, is saved **only on
-your device**. We do not have access to this information. The editor, filesystem
-tools, terminal, and local models (Ollama) work fully offline.
+Application data, including settings and configuration, is saved **only on your device**. The editor, filesystem tools, terminal, and local models (Ollama) work fully offline.
 
 ### With an account (opt-in)
 
@@ -55,11 +52,22 @@ AgenticCoder does not automatically upload or synchronize this information to an
 
 AgenticCoder includes an integrated code editor and agentic file tools that can read and write files on your device. This access is strictly scoped:
 
-* **You choose the scope.** The application only accesses the workspace folder you explicitly open, or the individual files you select through the file picker. It never scans or indexes arbitrary locations on your device.
+* **You choose the scope.** For the editor and agentic file tools, the application only accesses the workspace folder you explicitly open, or the individual files you select through the file picker. It does not scan or index arbitrary locations on your device.
+* **MCP config discovery is an explicit, separate action.** The "Import from other apps" feature in Settings looks for MCP server configuration files written by other applications (Claude Desktop, Cursor, VS Code, Windsurf, and project-level `.mcp.json`). This is the one feature that reads known configuration paths outside your workspace folder. It runs only when you click **Scan**, it reads only those specific well-known config files, it never writes to them, and it does not run automatically at startup. The server definitions you import are then stored locally and shown to you for review before use.
 * **All file operations are local.** Reading, writing, editing, renaming, searching, and deleting files is performed entirely on your device through the local native (Tauri/Rust) layer. No file contents are uploaded to any servers operated by us.
 * **AI modifications require approval.** When the AI requests a destructive operation (writing, editing, deleting, creating, or renaming files), AgenticCoder asks for your explicit approval before executing it. Every tool call is displayed in an activity feed with its status and result.
 * **Live editor sync.** Open editor tabs re-read their files from disk so changes made by the AI — or by any other process on your device — appear in real time. This polling reads only files you have opened in the editor.
-* **AI provider visibility.** If you ask the AI to read or modify a file, the relevant file contents are sent directly to the AI provider endpoint you configured so the model can work with them. How those providers handle that data is governed by their own privacy policies and terms.
+
+## Third-Party Services You Connect (MCP Servers, OAuth Integrations)
+
+AgenticCoder can connect to external services on your behalf. These connections are **opt-in, individually configured, and disabled by default**. Nothing below happens unless you set it up yourself.
+
+* **Model Context Protocol (MCP) servers.** MCP servers are third-party programs you configure. Depending on the server you add, running one may allow it to read files, execute commands, or access network services within the permissions you granted it. AgenticCoder displays every tool call in its activity feed and asks for your approval before running tools a server has not marked read-only. **We do not host, operate, or review third-party MCP servers**, and their handling of your data is governed by their own authors' terms.
+* **Google Workspace (Gmail and Calendar).** If you connect a Google account, AgenticCoder uses Google's OAuth flow to obtain access tokens limited to the scopes you approve. Email and calendar data is then read directly from Google and sent to the AI provider you configured, so the model can answer questions about it. Revoking access from your Google account settings immediately disables the connection. Google access tokens are stored locally on your device and are never sent to servers operated by us.
+
+### AI provider visibility
+
+If you ask the AI to read, modify, or look up information — a file, a web page, an email, or a calendar event — the relevant contents are sent directly to the AI provider endpoint you configured so the model can work with them. This can happen with or without a Lumorix Studios account, depending on which provider you have set up. How those providers handle that data is governed by their own privacy policies and terms.
 
 ## No Warranty
 

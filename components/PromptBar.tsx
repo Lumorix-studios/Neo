@@ -19,13 +19,11 @@ import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
 import {
   ArrowDown01Icon,
   Attachment01Icon,
-  Calendar03Icon,
   Cancel01Icon,
   // ChartLineData01Icon,
   File02Icon,
   Globe02Icon,
   HelpCircleIcon,
-  Mail01Icon,
   Mic01Icon,
   PlusSignIcon,
   SparklesIcon,
@@ -132,9 +130,6 @@ const DEFAULT_SOURCES: PromptBarSource[] = [
     attach: true
   },
   { key: 'web', name: 'Web search', description: 'Agent surfs the web', icon: Globe02Icon },
-
-  { key: 'mail', name: 'Mail', description: 'Agent handles email', icon: Mail01Icon },
-  { key: 'calendar', name: 'Calendar', description: 'Agent manages events and availability', icon: Calendar03Icon }
 ];
 const DEFAULT_COMMANDS: PromptBarCommand[] = [
   { key: 'summarize', name: '/summarize', description: 'Digest the thread so far' },
@@ -144,9 +139,9 @@ const DEFAULT_COMMANDS: PromptBarCommand[] = [
   { key: 'tasks', name: '/tasks', description: 'Turn this into a to-do list' }
 ];
 const DEFAULT_MODELS: PromptBarModel[] = [
-  { key: 'nova-3', name: 'Nova 3', tag: 'Flagship' },
-  { key: 'nova-mini', name: 'Nova Mini', tag: 'Fast' },
-  { key: 'nova-2', name: 'Nova 2', tag: 'Legacy' }
+  { key: 'M/A', name: 'N/A', tag: 'N/A' },
+  { key: 'N/A', name: 'N/A', tag: 'N/A' },
+  { key: 'N/A', name: 'N/A', tag: 'N/A' }
 ];
 const DEFAULT_EFFORTS = ['Low', 'Medium', 'High', 'Extra', 'Max'];
 

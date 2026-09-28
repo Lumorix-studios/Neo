@@ -964,16 +964,31 @@ export default function App() {
 
   const newChat = () => {
     streamControllerRef.current?.abort();
+    // Resolve any in-flight approval so the tool loop unwinds instead of
+    // hanging on a promise that will never be settled.
+    approvalRef.current?.resolve(false);
+    approvalRef.current = null;
+    setPendingApproval(null);
+    // The activity feed is per-conversation, not global — clear it with the
+    // messages or the previous run's tool rows linger in the new chat.
+    setActivities([]);
     setMessages([]);
     setError(null);
     setActiveSessionId(null);
+    setIsLoading(false);
   };
 
   const selectSession = (id: string) => {
     streamControllerRef.current?.abort();
+    approvalRef.current?.resolve(false);
+    approvalRef.current = null;
+    setPendingApproval(null);
     const session = sessions.find((s) => s.id === id);
     if (!session) return;
     setActiveSessionId(id);
+    // Activity rows are not persisted per session, so they must be dropped
+    // on switch too — otherwise the previous chat's tool feed shows up here.
+    setActivities([]);
     setMessages(sanitizeHistory(session.messages));
     // Restore the AI provider/model this tab was using (fall back to global).
     if (session.settings) {
@@ -989,6 +1004,8 @@ export default function App() {
     if (signedIn) void cloudSync.deleteChat(id);
     if (activeSessionId === id) {
       setActiveSessionId(null);
+      setActivities([]);
+      setPendingApproval(null);
       setMessages([]);
     }
   };
@@ -2324,6 +2341,7 @@ MCP call rules:
           accountProfile={accountProfile}
           accountLoading={accountLoading}
           onAccountRefresh={() => void refreshAccount()}
+          workspaceRoot={workspaceRoot}
         />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* */}

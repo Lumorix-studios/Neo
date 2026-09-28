@@ -1405,6 +1405,18 @@ const STDERR_TAIL_LINES: usize = 40;
 /// Maximum characters kept per captured stderr line.
 const STDERR_LINE_MAX: usize = 2000;
 
+/// Expand environment references in a string, exposed to the frontend.
+///
+/// Imported MCP configs routinely contain literal `${APPDATA}` / `%VAR%` in
+/// args, cwd and env values. The Rust spawn path expands command/args/cwd
+/// itself, but env *values* are passed to the child verbatim, so the import
+/// path must expand them before storing. Routing through this command keeps a
+/// single implementation instead of a second JS copy that could drift.
+#[tauri::command]
+fn expand_env_string(input: String) -> String {
+    expand_env_vars(&input)
+}
+
 /// Expand `%VAR%` (Windows) and `$VAR` / `${VAR}` (POSIX) references from the
 /// environment. Unknown variables are left as written.
 fn expand_env_vars(input: &str) -> String {
@@ -1539,6 +1551,106 @@ fn kill_proc(proc: &McpProc) {
     };
     let _ = io.child.kill();
     let _ = io.child.wait();
+}
+
+// ─── MCP config auto-discovery ────────────────────────────────────────────────
+
+/// One MCP config file that exists on this machine, found by scanning the
+/// well-known locations other MCP clients write to.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpConfigHit {
+    /// Human label for the owning app, e.g. "Claude Desktop".
+    pub app: String,
+    /// Absolute path of the config file.
+    pub path: String,
+}
+
+/// Every config path worth probing, across all supported platforms.
+///
+/// Deliberately platform-generous: we check every platform's path on every OS
+/// (a macOS config can be synced onto a Windows box, and the cost of a failed
+/// `is_file()` is nil), so discovery works the same wherever the file came from.
+fn mcp_config_candidates(workspace_root: Option<String>) -> Vec<(String, PathBuf)> {
+    let home = std::env::var("USERPROFILE")
+        .ok()
+        .or_else(|| std::env::var("HOME").ok())
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let appdata = std::env::var("APPDATA").ok().map(PathBuf::from).unwrap_or_default();
+    let has_home = !home.as_os_str().is_empty();
+    let has_appdata = !appdata.as_os_str().is_empty();
+
+    let mut v: Vec<(String, PathBuf)> = Vec::new();
+
+    // Claude Desktop — app-data location differs per OS.
+    if has_home {
+        v.push((
+            "Claude Desktop".to_string(),
+            home.join("Library/Application Support/Claude/claude_desktop_config.json"),
+        ));
+    }
+    if has_appdata {
+        v.push((
+            "Claude Desktop".to_string(),
+            appdata.join("Claude").join("claude_desktop_config.json"),
+        ));
+    }
+
+    if has_home {
+        v.push(("Cursor".to_string(), home.join(".cursor").join("mcp.json")));
+        v.push((
+            "Windsurf".to_string(),
+            home.join(".codeium").join("windsurf").join("mcp_config.json"),
+        ));
+        v.push(("Claude Code".to_string(), home.join(".claude").join("mcp.json")));
+        // VS Code keeps user-scoped servers here on macOS and Linux.
+        v.push((
+            "VS Code".to_string(),
+            home.join("Library/Application Support/Code/User/mcp.json"),
+        ));
+        v.push((
+            "VS Code".to_string(),
+            home.join(".config").join("Code").join("User").join("mcp.json"),
+        ));
+    }
+    if has_appdata {
+        v.push((
+            "VS Code".to_string(),
+            appdata.join("Code").join("User").join("mcp.json"),
+        ));
+        v.push((
+            "VS Code Insiders".to_string(),
+            appdata.join("Code - Insiders").join("User").join("mcp.json"),
+        ));
+    }
+
+    // Project-scoped convention: the portable, check-in-able one.
+    if let Some(root) = workspace_root.filter(|r| !r.is_empty()) {
+        v.push((
+            "This project".to_string(),
+            PathBuf::from(root).join(".mcp.json"),
+        ));
+    }
+
+    v
+}
+
+/// Find MCP config files already present on this machine.
+///
+/// Read-only: it only stats paths, never creates or edits a file. Parsing and
+/// importing is the frontend's job so the app can show the user what it found
+/// before anything is added to their config.
+#[tauri::command]
+fn mcp_discover_configs(workspace_root: Option<String>) -> Vec<McpConfigHit> {
+    mcp_config_candidates(workspace_root)
+        .into_iter()
+        .filter(|(_, p)| p.is_file())
+        .map(|(app, path)| McpConfigHit {
+            app,
+            path: path.to_string_lossy().into_owned(),
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -1871,6 +1983,8 @@ pub fn run() {
             terminal_write,
             terminal_resize,
             terminal_kill,
+            mcp_discover_configs,
+            expand_env_string,
             mcp_stdio_start,
             mcp_stdio_send,
             mcp_stdio_read,

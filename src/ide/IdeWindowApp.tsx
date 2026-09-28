@@ -867,6 +867,7 @@ export default function IdeWindowApp() {
         accountProfile={accountProfile}
         accountLoading={accountLoading}
         onAccountRefresh={() => void refreshAccount()}
+        workspaceRoot={workspaceRoot}
       />
 
       <CommandPalette

@@ -3,7 +3,7 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 import { useEffect, useState } from "react";
-import type { AgenticActivity as AgenticActivityType, FsEntry } from "../agentic";
+import type { AgenticActivity as AgenticActivityType, FsEntry, WebSearchResult } from "../agentic";
 import { TOOL_LABELS } from "../agentic";
 import { diffStats } from "../../src/diff";
 import { IoChevronForward } from "react-icons/io5";
@@ -77,6 +77,52 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+/** Render web_search hits as clickable links. Falls back to plain text when a
+ *  result has no usable http(s) URL (e.g. a bare hostname from an RSS feed). */
+function WebSearchResults({ results }: { results: WebSearchResult[] }) {
+  const isHttp = (u: string) => /^https?:\/\//i.test(u);
+  return (
+    <div className="mx-3 mb-2 overflow-hidden rounded border border-zinc-800 bg-zinc-900/30">
+      <ol className="divide-y divide-zinc-800/60">
+        {results.map((r, i) => (
+          <li key={i} className="px-2.5 py-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <span className="shrink-0 font-mono text-[10px] text-[var(--text-faint)]">
+                {i + 1}.
+              </span>
+              {isHttp(r.url) ? (
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="truncate text-[11.5px] font-medium text-[#7aa7ff] underline decoration-[#7aa7ff]/40 underline-offset-2 transition hover:text-[#9dbaff] hover:decoration-[#9dbaff]/60"
+                  title={r.url}
+                >
+                  {r.title || r.url}
+                </a>
+              ) : (
+                <span className="truncate text-[11.5px] font-medium text-[var(--text-primary)]">
+                  {r.title || r.url}
+                </span>
+              )}
+            </div>
+            {r.snippet && (
+              <p className="mt-0.5 pl-[18px] text-[10.5px] leading-4 text-[var(--text-muted)]">
+                {r.snippet}
+              </p>
+            )}
+            {isHttp(r.url) && (
+              <p className="mt-0.5 truncate pl-[18px] font-mono text-[9.5px] text-[var(--text-faint)]">
+                {r.url}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function StructuredOutput({ item }: { item: AgenticActivityType }) {
   if (item.tool === "list_dir" && Array.isArray(item.data)) {
     const entries = item.data as FsEntry[];
@@ -106,6 +152,10 @@ function StructuredOutput({ item }: { item: AgenticActivityType }) {
         </table>
       </div>
     );
+  }
+
+  if (item.tool === "web_search" && Array.isArray(item.data) && item.data.length > 0) {
+    return <WebSearchResults results={item.data as WebSearchResult[]} />;
   }
 
   if (!item.output) return null;
