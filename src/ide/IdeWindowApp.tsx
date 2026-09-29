@@ -5,7 +5,7 @@
 //might be obvious what this file functions as lol
 //Main ide window interface 
 
-import { lazy, useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -303,7 +303,7 @@ export default function IdeWindowApp() {
 
   // --- status bar state (git branch + caret position) ------------------------
   const [gitBranch, setGitBranch] = useState<string | null>(null);
-  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1, sel: 0 });
 
   // Reset per-workspace UI state when the workspace changes (render-time
   // adjustment — the sanctioned alternative to a setState-in-effect reset).
@@ -341,7 +341,11 @@ export default function IdeWindowApp() {
       }
     };
     void fetchBranch();
-    const id = window.setInterval(fetchBranch, 15000);
+    // Each tick spawns a real `git` process, so this stays infrequent and is
+    // suspended while the window is hidden.
+    const id = window.setInterval(() => {
+      if (!document.hidden) void fetchBranch();
+    }, 30000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -421,25 +425,10 @@ export default function IdeWindowApp() {
   const collapseExplorer = useCallback(() => setExplorerCollapsed(true), []);
   const closeGit = useCallback(() => setGitOpen(false), []);
 
-  const closeEditorTab = (path: string) => {
-    const idx = editorTabs.findIndex((t) => t.path === path);
-    if (idx === -1) return;
-    const next = editorTabs.filter((t) => t.path !== path);
-    setEditorTabs(next);
-    if (activeEditorPath === path) {
-      const fallback = next[Math.min(idx, next.length - 1)];
-      setActiveEditorPath(fallback ? fallback.path : null);
-    }
-  };
-
-  const updateEditorContent = (path: string, content: string) => {
-    setEditorTabs((prev) =>
-      prev.map((t) => (t.path === path ? { ...t, content, dirty: true } : t))
-    );
-  };
-
+  // Stable identities: these go straight into the memoized <CodeEditor>. A new
+  // function/object literal per render would defeat that memo on every keystroke.
   const saveEditorFile = async (path: string) => {
-    const tab = editorTabs.find((t) => t.path === path);
+    const tab = tabsRef.current.find((t) => t.path === path);
     if (!tab) return;
     try {
       await invoke("fs_write_file", { path, content: tab.content });
@@ -452,18 +441,83 @@ export default function IdeWindowApp() {
     }
   };
 
-  const closeAllEditorTabs = () => {
-    setEditorTabs([]);
-    setActiveEditorPath(null);
-  };
-
-  // Fresh mirrors so the global shortcut handler never goes stale.
+  // Fresh mirrors so callbacks and the global shortcut handler never go stale.
   const saveRef = useRef(saveEditorFile);
   const activePathRef = useRef(activeEditorPath);
   useLayoutEffect(() => {
     saveRef.current = saveEditorFile;
     activePathRef.current = activeEditorPath;
   });
+
+  const closeEditorTab = useCallback((path: string) => {
+    const next = tabsRef.current.filter((t) => t.path !== path);
+    const idx = tabsRef.current.findIndex((t) => t.path === path);
+    if (idx === -1) return;
+    tabsRef.current = next;
+    setEditorTabs(next);
+    if (activePathRef.current === path) {
+      setActiveEditorPath(next.length ? next[Math.min(idx, next.length - 1)].path : null);
+    }
+  }, []);
+
+  const updateEditorContent = useCallback((path: string, content: string) => {
+    setEditorTabs((prev) => {
+      const next = prev.map((t) => (t.path === path ? { ...t, content, dirty: true } : t));
+      tabsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const handleEditorSave = useCallback((p: string) => void saveRef.current(p), []);
+
+  const closeAllEditorTabs = useCallback(() => {
+    tabsRef.current = [];
+    setEditorTabs([]);
+    setActiveEditorPath(null);
+  }, []);
+
+  // Memoized so the memoized <CodeEditor> isn't re-rendered by a fresh object
+  // literal on every parent render (which happens on every keystroke).
+  const editorPrefs = useMemo(
+    () => ({
+      fontSize: uiSettings.editorFontSize,
+      lineHeight: uiSettings.editorLineHeight,
+      tabSize: uiSettings.tabSize,
+      wordWrap: uiSettings.wordWrap,
+      showLineNumbers: uiSettings.showLineNumbers,
+    }),
+    [
+      uiSettings.editorFontSize,
+      uiSettings.editorLineHeight,
+      uiSettings.tabSize,
+      uiSettings.wordWrap,
+      uiSettings.showLineNumbers,
+    ]
+  );
+
+  const emptyStateHandlers = useRef({
+    onOpenFolder: () => void pickWorkspaceFolder(),
+    onOpenFiles: () => void pickWorkspaceFiles(),
+    onCreateFile: (name: string) => void createFileInWorkspace(name),
+  });
+  useLayoutEffect(() => {
+    emptyStateHandlers.current = {
+      onOpenFolder: () => void pickWorkspaceFolder(),
+      onOpenFiles: () => void pickWorkspaceFiles(),
+      onCreateFile: (name: string) => void createFileInWorkspace(name),
+    };
+  });
+  const editorEmptyState = useMemo(
+    () => ({
+      hasWorkspace: !!workspaceRoot,
+      onOpenFolder: () => void emptyStateHandlers.current.onOpenFolder(),
+      onOpenFiles: () => void emptyStateHandlers.current.onOpenFiles(),
+      onCreateFile: (name: string) => void emptyStateHandlers.current.onCreateFile(name),
+      recentFiles,
+      onOpenRecent: (p: string) => void openFileInEditor(p),
+    }),
+    [workspaceRoot, recentFiles, openFileInEditor]
+  );
 
   // ── Global keyboard shortcuts ──────────────────────────────────────────────
   useEffect(() => {
@@ -499,26 +553,35 @@ export default function IdeWindowApp() {
   // __PART_C__
 
   // --- AUTO-SAVE: persist dirty tabs 800ms after the last keystroke --------
+  // Debounced on the SET of dirty paths rather than the tab array itself. It used
+  // to depend on `editorTabs`, so every keystroke tore down and re-armed one
+  // timer per dirty tab — churn on the typing hot path, and the 800ms window
+  // could never elapse while the user kept typing. One timer, and the buffer is
+  // read from tabsRef at fire time so it always saves the latest text.
+  const dirtyPathsKey = editorTabs
+    .filter((t) => t.dirty)
+    .map((t) => t.path)
+    .join("\n");
   useEffect(() => {
-    const dirty = editorTabs.filter((t) => t.dirty);
-    if (dirty.length === 0) return;
-    const timers = dirty.map((t) =>
-      setTimeout(() => {
-        const tab = tabsRef.current.find((x) => x.path === t.path);
-        if (!tab || !tab.dirty) return;
+    if (!dirtyPathsKey) return;
+    const paths = dirtyPathsKey.split("\n");
+    const timer = window.setTimeout(() => {
+      for (const path of paths) {
+        const tab = tabsRef.current.find((x) => x.path === path);
+        if (!tab || !tab.dirty) continue;
         void invoke("fs_write_file", { path: tab.path, content: tab.content })
           .then(() =>
             setEditorTabs((prev) =>
-              prev.map((x) => (x.path === tab.path ? { ...x, dirty: false } : x))
+              prev.map((x) => (x.path === path ? { ...x, dirty: false } : x))
             )
           )
           .catch((e) =>
-            setError(`Auto-save failed for ${tab.path}: ${e instanceof Error ? e.message : String(e)}`)
+            setError(`Auto-save failed for ${path}: ${e instanceof Error ? e.message : String(e)}`)
           );
-      }, 800)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [editorTabs]);
+      }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [dirtyPathsKey]);
 
   // --- Cross-window sync (chat window ⇄ IDE window) --------------------------
   // Refresh a tab from disk unless it has unsaved local edits.
@@ -541,16 +604,66 @@ export default function IdeWindowApp() {
     });
   }, []);
 
+  // Cheap change fingerprint (mtime + size) per open tab. The poll below stats
+  // each tab and only re-reads a file when its fingerprint actually moved.
+  // It used to re-read every open file IN FULL every 2.5s no matter what,
+  // pushing whole buffers across the IPC bridge on a timer — the main source
+  // of idle CPU, GC churn and memory growth.
+  const tabStampsRef = useRef(new Map<string, string>());
+
+  /** `mtime:size` for a path, or null when it is gone / unreadable. */
+  const statStamp = useCallback(async (path: string): Promise<string | null> => {
+    try {
+      const s = await invoke<{
+        isDir?: boolean;
+        modified?: number | null;
+        size?: number | null;
+      }>("fs_stat", { path });
+      if (s?.isDir) return null;
+      return `${s?.modified ?? 0}:${s?.size ?? 0}`;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /** Re-read a single tab, but only once its mtime/size actually moved. */
+  const pollTabForChange = useCallback(
+    async (path: string) => {
+      const stamp = await statStamp(path);
+      if (stamp === null) {
+        tabStampsRef.current.delete(path);
+        setEditorTabs((prev) => {
+          const tab = prev.find((t) => t.path === path);
+          if (!tab || tab.dirty) return prev;
+          return prev.filter((t) => t.path !== path);
+        });
+        return;
+      }
+      if (tabStampsRef.current.get(path) === stamp) return; // unchanged — common case
+      tabStampsRef.current.set(path, stamp);
+      await syncTabWithDisk(path);
+    },
+    [statStamp, syncTabWithDisk]
+  );
+
   // Poll the filesystem so edits made from the chat window (agent tools), git
-  // operations or other editors show up without reopening the file.
+  // operations or other editors show up without reopening the file. Suspended
+  // while the window is hidden so a backgrounded IDE burns nothing.
   useEffect(() => {
     const id = window.setInterval(() => {
-      for (const t of tabsRef.current) {
-        if (!t.dirty) void syncTabWithDisk(t.path);
+      if (document.hidden) return;
+      const tabs = tabsRef.current;
+      // Forget fingerprints of tabs that are no longer open.
+      const live = new Set(tabs.map((t) => t.path));
+      for (const p of tabStampsRef.current.keys()) {
+        if (!live.has(p)) tabStampsRef.current.delete(p);
+      }
+      for (const t of tabs) {
+        if (!t.dirty) void pollTabForChange(t.path);
       }
     }, 2500);
     return () => window.clearInterval(id);
-  }, [syncTabWithDisk]);
+  }, [pollTabForChange]);
 
   // The chat window forwards file opens (agent tools, problems-panel jumps)
   // and workspace changes to this window via Tauri events.
@@ -695,7 +808,7 @@ export default function IdeWindowApp() {
 
       {/* ── Body: activity rail | explorer | editor | git ──────────────── */}
       <div className="flex min-h-0 flex-1">
-        {/* Activity bar — VS Code-style icon rail */}
+        
         <nav className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-(--border) bg-[var(--bg-chrome)] py-1">
           <div className="flex w-full flex-col items-center gap-1">
             <RailButton
@@ -775,25 +888,12 @@ export default function IdeWindowApp() {
           onSelect={setActiveEditorPath}
           onClose={closeEditorTab}
           onChange={updateEditorContent}
-          onSave={(p) => void saveEditorFile(p)}
+          onSave={handleEditorSave}
           onCloseAll={closeAllEditorTabs}
           reveal={revealLine}
-          prefs={{
-            fontSize: uiSettings.editorFontSize,
-            lineHeight: uiSettings.editorLineHeight,
-            tabSize: uiSettings.tabSize,
-            wordWrap: uiSettings.wordWrap,
-            showLineNumbers: uiSettings.showLineNumbers,
-          }}
+          prefs={editorPrefs}
           onCursorChange={setCursorPos}
-          emptyState={{
-            hasWorkspace: !!workspaceRoot,
-            onOpenFolder: () => void pickWorkspaceFolder(),
-            onOpenFiles: () => void pickWorkspaceFiles(),
-            onCreateFile: (name) => void createFileInWorkspace(name),
-            recentFiles,
-            onOpenRecent: (p) => void openFileInEditor(p),
-          }}
+          emptyState={editorEmptyState}
         />
 
         {gitOpen && workspaceRoot && (
@@ -992,14 +1092,31 @@ export default function IdeWindowApp() {
               {gitBranch}
             </span>
           )}
+          {activeEditorPath && (
+            <span
+              className="flex shrink-0 items-center gap-1.5"
+              title={activeDirty ? "Unsaved changes" : "No unsaved changes"}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  activeDirty ? "bg-amber-400" : "bg-(--fill-3)"
+                }`}
+              />
+              {activeDirty ? "Unsaved" : "Saved"}
+            </span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {activeEditorPath && (
             <span className="tabular-nums">
               Ln {cursorPos.line}, Col {cursorPos.col}
+              {cursorPos.sel > 0 && (
+                <span className="ml-2">({cursorPos.sel} selected)</span>
+              )}
             </span>
           )}
           <span>Spaces: {uiSettings.tabSize}</span>
+          <span>{uiSettings.wordWrap ? "Wrap" : "No wrap"}</span>
           <span>UTF-8</span>
           <span>LF</span>
           {activeEditorPath && <span>{langLabel(activeEditorPath)}</span>}

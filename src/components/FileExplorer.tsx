@@ -232,7 +232,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
         onBlur={() => void createEntry()}
         placeholder={creating?.kind === "folder" ? "folder name…" : "file name.ts…"}
         spellCheck={false}
-        className="min-w-0 flex-1 rounded border border-(--accent) bg-black/40 px-1 py-px text-[12px] text-[var(--text-primary)] outline-none placeholder-[#555555]"
+        className="min-w-0 flex-1 rounded  bg-black/40 px-1 py-px text-[12px] text-[var(--text-primary)] outline-none placeholder-[#555555]"
       />
     </div>
   );
@@ -349,11 +349,11 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col border-(--border) bg-[var(--bg-chrome)]"
+      className="flex h-full shrink-0 flex-col bg-[var(--bg-chrome)]"
       style={{ width: width ?? 240 }}
     >
       {/* -- Header ------------------------------------------------------- */}
-      <div className="shrink-0 border-b border-(--border)">
+      <div className="shrink-0  border-(--border)">
         {/* VS Code shows the view name above the workspace section. */}
         <div className="flex h-[5px] items-center pl-4 pr-2 pt-1">
         </div>
@@ -387,7 +387,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
               {newMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNewMenu(false)} />
-                  <div className="absolute left-full top-0 z-50 ml-1 w-40 overflow-hidden rounded-lg border-white/[0.00] bg-[var(--bg-elevated)] py-1 shadow-xl">
+                  <div className="absolute left-full top-0 z-50 ml-1 w-40 overflow-hidden rounded-lg  bg-[var(--bg-elevated)] py-1 shadow-xl">
                     <button
                       type="button"
                       onClick={() => {
@@ -445,7 +445,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
             onChange={(ev) => setQuery(ev.target.value)}
             placeholder="Filter files…"
             spellCheck={false}
-            className="w-full rounded-md border border-(--border-strong) bg-[var(--bg-input)] py-[3px] pl-7 pr-2.5 text-[12px] text-[var(--text-primary)] placeholder-[#555555] outline-none transition focus:border-[#2b6fd4]"
+            className="w-full rounded-md   bg-[var(--bg-input)] py-[3px] pl-7 pr-2.5 text-[12px] text-[var(--text-primary)] placeholder-[#555555] outline-none transition focus:border-[#2b6fd4]"
           />
           {query && (
             <button
@@ -480,7 +480,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
       </div>
 
       {/* -- Footer */}
-      <div className="flex h-6 shrink-0 items-center justify-between border-t border-(--border) px-3 text-[10px] text-[var(--text-faint)]">
+      <div className="flex h-6 shrink-0 items-center justify-between  px-3 text-[10px] text-[var(--text-faint)]">
         <span>{itemCount} item{itemCount === 1 ? "" : "s"}</span>
         {query && <span className="truncate">filtered</span>}
       </div>
@@ -497,7 +497,7 @@ function FileExplorer({ root, activePath, refreshKey, onOpenFile, onCollapse, wi
             }}
           />
           <div
-            className="fixed z-50 w-44 overflow-hidden rounded-lg border border-(--border) bg-[var(--bg-elevated)] py-1 shadow-xl"
+            className="fixed z-50 w-44 overflow-hidden rounded-lg border-(--border) bg-[var(--bg-elevated)] py-1 shadow-xl"
             style={{
               left: Math.min(menu.x, window.innerWidth - 190),
               top: Math.min(menu.y, window.innerHeight - 220),

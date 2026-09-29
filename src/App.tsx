@@ -2223,7 +2223,7 @@ MCP call rules:
                   type="button"
                   onClick={() => setModelOpen((v) => !v)}
                   title="Switch AI provider"
-                  className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-(--border) bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
+                  className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md  bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
                 >
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${

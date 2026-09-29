@@ -3,7 +3,7 @@
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
 //main agent panel interface for the IDE window specifically
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import Markdown from "../components/Markdown";
@@ -142,7 +142,12 @@ interface AgentPanelProps {
   onFilesChanged: () => void;
 }
 
-export default function AgentPanel({
+// Memoized: the IDE parent re-renders on every keystroke because the tab array
+// is its state, and this panel is ~1.5k lines. It reads `editorTabs` only through
+// `tabsRef` inside async handlers, so a change to tab *contents* cannot change
+// its output — the comparator below ignores it (and the ref still sees the fresh
+// value, since the effect that syncs it runs on every parent render).
+export default memo(function AgentPanel({
   settings,
   workspaceRoot,
   editorTabs,
@@ -1569,4 +1574,9 @@ Rules:
       </div>
     </aside>
   );
-}
+},
+(prev, next) =>
+  prev.settings === next.settings &&
+  prev.workspaceRoot === next.workspaceRoot &&
+  prev.activeEditorPath === next.activeEditorPath &&
+  prev.onBusyChange === next.onBusyChange);

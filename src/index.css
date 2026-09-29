@@ -177,6 +177,19 @@ select:focus-visible {
 .hairline-l { border-left: 1px solid var(--border); }
 .hairline-r { border-right: 1px solid var(--border); }
 
+/* Hide a scrollbar completely while keeping the element scrollable.
+   `display: none` on ::-webkit-scrollbar alone is unreliable in WebView2, so
+   zero out the track/thumb dimensions too. */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Keyboard shortcut chip */
 .kbd {
   display: inline-flex;

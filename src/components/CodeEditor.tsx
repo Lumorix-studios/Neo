@@ -66,7 +66,7 @@ export interface CodeEditorProps {
   /** Empty-state content: actions and recents. */
   emptyState?: EmptyStateInfo;
   /** Report caret position for the status bar (1-based line/col). */
-  onCursorChange?: (pos: { line: number; col: number }) => void;
+  onCursorChange?: (pos: { line: number; col: number; sel: number }) => void;
 }
 
 /** Top padding shared by the gutter, highlight layer and textarea. */
@@ -162,7 +162,7 @@ const LineNumberGutter = memo(function LineNumberGutter({
 }: LineNumberGutterProps) {
   return (
     <div
-      className="relative shrink-0 select-none overflow-hidden bg-[var(--bg-editor)] text-right font-mono hairline-r"
+      className="relative shrink-0 select-none overflow-hidden bg-[var(--bg-editor)] text-right font-mono"
       style={{ width, fontSize }}
       aria-hidden
     >
@@ -171,7 +171,7 @@ const LineNumberGutter = memo(function LineNumberGutter({
           <div
             key={i}
             data-ln={i + 1}
-            className="text-zinc-700"
+            className="text-[var(--text-faint)]"
             style={{ height: lineHeight, lineHeight: `${lineHeight}px`, paddingRight: 12 }}
           >
             {i + 1}
@@ -182,7 +182,11 @@ const LineNumberGutter = memo(function LineNumberGutter({
   );
 });
 
-export default function CodeEditor({
+// Wrapped in memo: the IDE parent re-renders on every keystroke (the tab array
+// is its state), and without this the whole editor subtree — gutter, highlight
+// layer, tab strip — reconciles on each character. Props are compared shallowly;
+// the parent passes stable callbacks and memoized prefs/emptyState objects.
+export default memo(function CodeEditor({
   tabs,
   activePath,
   onSelect,
@@ -250,8 +254,8 @@ export default function CodeEditor({
 
   // Report the caret to the parent (status bar) whenever it moves.
   useEffect(() => {
-    onCursorChange?.({ line: cursor.line + 1, col: cursor.col + 1 });
-  }, [cursor.line, cursor.col, onCursorChange]);
+    onCursorChange?.({ line: cursor.line + 1, col: cursor.col + 1, sel: cursor.sel });
+  }, [cursor.line, cursor.col, cursor.sel, onCursorChange]);
 
   // Tokenize off the critical typing path: useDeferredValue lets the textarea
   // (and its caret) update immediately while re-highlighting large files
@@ -304,11 +308,22 @@ export default function CodeEditor({
   const syncCursor = () => {
     const el = taRef.current;
     if (!el) return;
-    const before = el.value.slice(0, el.selectionStart);
-    const lines = before.split("\n");
+    // Count newlines up to the caret instead of `slice().split()` — the old
+    // version copied the whole buffer into a new string and a new array on every
+    // keystroke, which is O(file) work per character typed.
+    const upto = el.selectionStart;
+    const head = el.value;
+    let line = 1;
+    let lastBreak = -1;
+    for (let i = 0; i < upto; i++) {
+      if (head.charCodeAt(i) === 10) {
+        line++;
+        lastBreak = i;
+      }
+    }
     setCursor({
-      line: lines.length,
-      col: lines[lines.length - 1].length + 1,
+      line,
+      col: upto - lastBreak,
       sel: el.selectionEnd - el.selectionStart,
     });
   };
@@ -697,7 +712,7 @@ export default function CodeEditor({
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-editor)]">
       {/* ── Tab strip (VS Code Dark Modern: flat tabs on chrome) */}
       <div className="flex h-[35px] shrink-0 items-stretch border-b border-(--border) bg-[var(--bg-chrome)]">
-        <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="scrollbar-none flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden">
           {tabs.length === 0 && (
             <div className="flex items-center px-3 text-[11.5px] text-[var(--text-faint)]">
               No files open
@@ -711,7 +726,7 @@ export default function CodeEditor({
                 onAuxClick={(ev) => {
                   if (ev.button === 1) onClose(t.path);
                 }}
-                className={`group relative flex shrink-0 items-stretch border-r border-(--border) transition-colors ${
+                className={`group relative flex shrink-0 items-stretch transition-colors ${
                   selected
                     ? "bg-[var(--bg-editor)] text-[var(--text-primary)]"
                     : "bg-transparent text-[var(--text-muted)] hover:bg-(--fill-1) hover:text-[var(--text-primary)]"
@@ -741,7 +756,7 @@ export default function CodeEditor({
                 >
                   {t.dirty ? (
                     <>
-                      <span className="h-[7px] w-[7px] rounded-full bg-zinc-400 group-hover:hidden" />
+                      <span className="h-[7px] w-[7px] rounded-full bg-[var(--text-secondary)] group-hover:hidden" />
                       <IoClose className="hidden h-3 w-3 group-hover:block" />
                     </>
                   ) : (
@@ -772,12 +787,12 @@ export default function CodeEditor({
       {active ? (
         <>
           {/* ── Breadcrumbs ─────────────────────────────────────── */}
-          <div className="flex h-7 shrink-0 items-center gap-1.5 overflow-hidden border-b border-(--border) px-3 text-[11px] text-[var(--text-faint)]">
+          <div className="flex h-7 shrink-0 items-center gap-1.5 overflow-hidden px-3 text-[11px] text-[var(--text-faint)]">
             <FileIcon name={active.path} />
             {visibleCrumbs.map((seg, i) => (
               <span key={`${seg}-${i}`} className="flex items-center gap-1.5 whitespace-nowrap">
                 {i > 0 && (
-                  <IoChevronForward className="h-2.5 w-2.5 text-zinc-700" />
+                  <IoChevronForward className="h-2.5 w-2.5 text-[var(--text-faint)]" />
                 )}
                 <span className={i === visibleCrumbs.length - 1 ? "font-medium text-(--accent)" : "text-[var(--text-muted)]"}>
                   {seg}
@@ -840,7 +855,7 @@ export default function CodeEditor({
                     pattern="[0-9]*"
                     inputMode="numeric"
                     spellCheck={false}
-                    className="w-20 rounded-md border border-(--border) bg-black/30 px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-(--accent)/50"
+                    className="w-20 rounded-md border border-(--border) bg-(--fill-1) px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none transition-colors focus:border-(--accent)"
                   />
                   <span className="text-[11px] text-[var(--text-muted)]">of {lineCount}</span>
                 </form>
@@ -884,7 +899,7 @@ export default function CodeEditor({
               >
                 <div
                   ref={activeBandRef}
-                  className="absolute inset-x-0 bg-white/[0.035]"
+                  className="absolute inset-x-0 bg-(--fill-1)"
                   style={{ top: PAD_TOP, height: LINE_HEIGHT }}
                 />
                 {findMarks.map((mk, i) => (
@@ -947,34 +962,6 @@ export default function CodeEditor({
               />
             </div>
           </div>
-
-          {/* ── Status bar  */}
-          <div className="flex h-6 shrink-0 items-center justify-between border-t border-(--border) bg-[var(--bg-elevated)] px-3 text-[10.5px] text-[var(--text-muted)]">
-            <div className="flex items-center gap-3">
-              <span>
-                Ln {cursor.line}, Col {cursor.col}
-              </span>
-              {cursor.sel > 0 && <span className="text-[var(--text-secondary)]">{cursor.sel} selected</span>}
-              <span>{lineCount} lines</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span
-                className={`flex items-center gap-1 ${
-                  active.dirty ? "text-amber-400" : "text-emerald-500"
-                }`}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                {active.dirty ? "Unsaved" : "Saved"}
-              </span>
-              <span>Spaces: {TAB_SIZE}</span>
-              <span>{WORD_WRAP ? "Wrap" : "No wrap"}</span>
-              <span>UTF-8</span>
-              <span className="flex items-center gap-1 capitalize">
-                <FileIcon name={active.path} />
-                {activeLang}
-              </span>
-            </div>
-          </div>
         </>
       ) : (
         /*Empty state */
@@ -1016,7 +1003,7 @@ export default function CodeEditor({
               <button
                 type="button"
                 onClick={() => setCreatingFile(true)}
-                className="mt-2 text-[11px] text-[var(--text-muted)] underline decoration-zinc-700 underline-offset-2 transition hover:text-[var(--text-primary)]"
+                className="mt-2 text-[11px] text-[var(--text-muted)] underline decoration-(--border-strong) underline-offset-2 transition hover:text-[var(--text-primary)]"
               >
                 New file
               </button>
@@ -1042,7 +1029,7 @@ export default function CodeEditor({
                   onKeyDown={(e) => e.key === "Escape" && setCreatingFile(false)}
                   placeholder="src/main.ts"
                   spellCheck={false}
-                  className="w-full rounded-md border border-(--accent)/40 bg-(--fill-1) px-2.5 py-1.5 text-center font-mono text-[11.5px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
+                  className="w-full rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-center font-mono text-[11.5px] text-[var(--text-primary)] outline-none transition-colors focus:border-(--accent) placeholder:text-[var(--text-faint)]"
                 />
               </form>
             )}
@@ -1129,4 +1116,4 @@ export default function CodeEditor({
       )}
     </section>
   );
-}
+});

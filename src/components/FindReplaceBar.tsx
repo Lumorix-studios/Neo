@@ -24,7 +24,7 @@ interface FindReplaceBarProps {
 }
 
 const inputCls =
-  "w-full rounded-md border border-(--border) bg-black/30 px-2 py-1 text-[11.5px] text-[var(--text-primary)] outline-none transition focus:border-(--accent)/50 placeholder:text-[var(--text-faint)]";
+  "w-full rounded-md border border-(--border) bg-(--fill-1) px-2 py-1 text-[11.5px] text-[var(--text-primary)] outline-none transition-colors focus:border-(--accent) placeholder:text-[var(--text-faint)]";
 
 /** Compact find/replace bar shown above the editor when Ctrl+F is pressed. */
 export default function FindReplaceBar({

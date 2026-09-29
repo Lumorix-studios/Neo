@@ -192,11 +192,43 @@ const COLORS = {
   tag: "tok-tag",
 };
 
+/* Tokenizing is pure CPU over the whole buffer, and the editor re-highlights on
+   every render (tab switch, resize, caret move, deferred flush). Cache the most
+   recent results keyed by `lang + content` so a repeat render is a string
+   lookup instead of a full re-scan. Bounded so a long session that opens many
+   big files cannot grow without limit. */
+const HL_CACHE_LIMIT = 8;
+const hlCache = new Map<string, string>();
+
 /**
  * Hand-rolled tokenizer: comments, strings, numbers, keywords and function
  * calls. Batched plain-text runs keep it fast even for large files.
  */
 export function highlightCode(code: string, lang: string): string {
+  // Very large buffers bypass the cache: the key would pin the whole source
+  // string in memory, and the highlight is the dominant cost regardless.
+  if (code.length > 2_000_000) return tokenize(code, lang);
+
+  const key = `${lang} ${code}`;
+  const hit = hlCache.get(key);
+  if (hit !== undefined) {
+    hlCache.delete(key); // re-insert to refresh LRU recency
+    hlCache.set(key, hit);
+    return hit;
+  }
+
+  const out = tokenize(code, lang);
+  hlCache.set(key, out);
+  // Map iteration order is insertion order — evict the oldest past the limit.
+  while (hlCache.size > HL_CACHE_LIMIT) {
+    const oldest = hlCache.keys().next();
+    if (oldest.done) break;
+    hlCache.delete(oldest.value);
+  }
+  return out;
+}
+
+function tokenize(code: string, lang: string): string {
   const kw = KEYWORDS[lang];
   const hashCom = HASH_COMMENTS.has(lang);
   const isMarkup = lang === "html" || lang === "xml";
