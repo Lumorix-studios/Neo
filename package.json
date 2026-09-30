@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:desktop": "tauri build",
-    "build:desktop:signed": "tauri build",
+    "build:desktop": "node scripts/desktop-build.mjs",
+    "build:desktop:signed": "node scripts/desktop-build.mjs",
+    "build:desktop:bundle": "node scripts/desktop-build.mjs --bundle-only",
+    "build:desktop:unsigned": "node scripts/desktop-build.mjs --unsigned",
     "release:notes": "node scripts/generate-release-notes.mjs",
     "version": "node scripts/generate-release-notes.mjs",
     "lint": "eslint .",

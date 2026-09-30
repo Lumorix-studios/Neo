@@ -77,6 +77,7 @@ export interface PromptBarProps {
   menuBackground?: string;
   sparkColor?: string;
   sparkBoost?: number;
+  /** Cap in `px`. Omit it and the bar tracks its container as it resizes. */
   width?: number;
   radius?: number;
   maxRows?: number;
@@ -234,7 +235,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   menuBackground = '#323236',
   sparkColor = '#b39dff',
   sparkBoost = 1,
-  width = 400,
+  width,
   radius = 16,
   maxRows = 5,
   morphDuration = 240,
@@ -572,15 +573,20 @@ const PromptBar: React.FC<PromptBarProps> = ({
   return (
     <div
       ref={rootRef}
-      className={`group relative text-[14px] leading-[22px] [width:min(var(--pb-w),100%)] [color:var(--pb-ink)]${className ? ` ${className}` : ''}`}
+      className={`group relative text-[14px] leading-[22px] [color:var(--pb-ink)]${className ? ` ${className}` : ''}`}
       data-busy={busy ? '' : undefined}
       data-max={maxed ? '' : undefined}
       style={
         {
+          // Inline width: a `w-*` utility here would tie with the caller's own
+          // width utility (equal specificity, so Tailwind's emit order picked
+          // the winner — the bar used to lose that tie and stay 400px wide no
+          // matter how the agent panel was resized). Inline always wins, so the
+          // bar follows its container and `width` only ever caps it.
+          width: width === undefined ? '100%' : `min(${width}px, 100%)`,
           '--pb-bg': background,
           '--pb-ink': color,
           '--pb-menu': menuBackground,
-          '--pb-w': `${width}px`,
           '--pb-radius': `${radius}px`,
           '--pb-spark': sparkColor,
           '--pb-press': pressScale
@@ -762,7 +768,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
           onKeyDown={onKeyDown}
         />
 
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <button
             type="button"
             className="inline-grid h-7 w-7 flex-none cursor-pointer touch-manipulation place-items-center rounded-lg border-0 bg-transparent p-0 outline-none select-none [color:color-mix(in_srgb,var(--pb-ink)_60%,transparent)] [font:inherit] [-webkit-tap-highlight-color:transparent] [transition:background-color_150ms_ease,color_150ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] active:[transform:scale(0.94)] data-[on]:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] data-[on]:[color:var(--pb-ink)] motion-reduce:active:[transform:none] [@media(hover:hover)_and_(pointer:fine)]:hover:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:[color:var(--pb-ink)]"
@@ -783,8 +789,9 @@ const PromptBar: React.FC<PromptBarProps> = ({
           {models.length > 0 ? (
             <button
               type="button"
-              className="inline-flex h-7 flex-none cursor-pointer touch-manipulation items-center gap-1 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium outline-none select-none [color:color-mix(in_srgb,var(--pb-ink)_70%,transparent)] [font:inherit] [-webkit-tap-highlight-color:transparent] [transition:background-color_150ms_ease,color_150ms_ease] data-[on]:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] data-[on]:[color:var(--pb-ink)] [@media(hover:hover)_and_(pointer:fine)]:hover:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:[color:var(--pb-ink)] data-[max]:[color:var(--pb-spark)]! "
+              className="inline-flex h-7 min-w-0 cursor-pointer touch-manipulation items-center gap-1 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium outline-none select-none [color:color-mix(in_srgb,var(--pb-ink)_70%,transparent)] [font:inherit] [-webkit-tap-highlight-color:transparent] [transition:background-color_150ms_ease,color_150ms_ease] data-[on]:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] data-[on]:[color:var(--pb-ink)] [@media(hover:hover)_and_(pointer:fine)]:hover:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:[color:var(--pb-ink)] data-[max]:[color:var(--pb-spark)]! "
               aria-label="Choose model"
+              title={model.name}
               aria-expanded={modelOpen}
               data-on={modelOpen ? '' : undefined}
               onMouseDown={e => e.preventDefault()}
@@ -796,15 +803,18 @@ const PromptBar: React.FC<PromptBarProps> = ({
                 focusInput();
               }}
             >
-              <span>{model.name}</span>
-              <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={2.4} />
+              <span className="min-w-0 truncate">{model.name}</span>
+              <span className="inline-flex flex-none">
+                <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={2.4} />
+              </span>
             </button>
           ) : null}
           {efforts.length > 0 ? (
             <button
               type="button"
-              className="inline-flex h-7 flex-none cursor-pointer touch-manipulation items-center gap-1 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium outline-none select-none [color:color-mix(in_srgb,var(--pb-ink)_70%,transparent)] [font:inherit] [-webkit-tap-highlight-color:transparent] [transition:background-color_150ms_ease,color_150ms_ease] data-[on]:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] data-[on]:[color:var(--pb-ink)] [@media(hover:hover)_and_(pointer:fine)]:hover:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:[color:var(--pb-ink)] data-[max]:[color:var(--pb-spark)]! "
+              className="inline-flex h-7 min-w-0 cursor-pointer touch-manipulation items-center gap-1 rounded-lg border-0 bg-transparent px-2 text-[12px] font-medium outline-none select-none [color:color-mix(in_srgb,var(--pb-ink)_70%,transparent)] [font:inherit] [-webkit-tap-highlight-color:transparent] [transition:background-color_150ms_ease,color_150ms_ease] data-[on]:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] data-[on]:[color:var(--pb-ink)] [@media(hover:hover)_and_(pointer:fine)]:hover:[background:color-mix(in_srgb,var(--pb-ink)_8%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:hover:[color:var(--pb-ink)] data-[max]:[color:var(--pb-spark)]! "
               aria-label="Choose effort"
+              title={level}
               aria-expanded={effortOpen}
               data-on={effortOpen ? '' : undefined}
               data-max={maxed ? '' : undefined}
@@ -816,8 +826,10 @@ const PromptBar: React.FC<PromptBarProps> = ({
                 focusInput();
               }}
             >
-              <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} />
-              <span>{level}</span>
+              <span className="inline-flex flex-none">
+                <HugeiconsIcon icon={SparklesIcon} size={13} strokeWidth={2} />
+              </span>
+              <span className="min-w-0 truncate">{level}</span>
             </button>
           ) : null}
           <span className="flex-auto" />

@@ -71,6 +71,20 @@ const changedFiles = git("diff", "--name-only", diffBase)
   .split(/\r?\n/)
   .filter(Boolean)
   .filter((file) => file !== output);
+const workingFiles = git("status", "--porcelain")
+  .split(/\r?\n/)
+  .filter(Boolean)
+  .map((line) => {
+    // git() trims its output, which eats the leading space of the first " M" line,
+    // so the status code is matched instead of sliced at a fixed offset.
+    const [, status = "??", file = line] = line.match(/^(.{1,2})\s+(.*)$/) ?? [];
+    return { status: status.trim() || "??", file: file.replace(/^"(.*)"$/, "$1") };
+  })
+  .filter(({ file }) => file !== output);
+const workingStats = git("diff", "--stat", "HEAD")
+  .split(/\r?\n/)
+  .filter(Boolean)
+  .filter((line) => !line.includes(output));
 const categories = ["Added", "Improvements", "Fixes", "Documentation & maintenance", "Other changes"];
 const lines = [
   `# Neo v${version} — Release Notes`,
@@ -102,6 +116,21 @@ if (changedFiles.length === 0) {
 lines.push("## Diff summary", "");
 if (stats.length === 0) lines.push("- No diff statistics available.", "");
 else lines.push("```text", ...stats, "```", "");
+
+if (workingFiles.length > 0) {
+  lines.push("## Uncommitted changes in this build", "");
+  lines.push(
+    "These files are edited in the working tree, so they are part of the bundled",
+    "binaries even though they are outside the commit range above. Commit them",
+    "before tagging the release so the tag matches the shipped build:",
+    "",
+  );
+  for (const item of workingFiles) lines.push(`- \`${item.status}\` \`${item.file}\``);
+  lines.push("");
+  if (workingStats.length > 0) {
+    lines.push("Tracked working-tree diff:", "", "```text", ...workingStats, "```", "");
+  }
+}
 
 writeFileSync(join(root, output), `${lines.join("\n")}\n`, "utf8");
 console.log(`Wrote ${output} from ${range}.`);

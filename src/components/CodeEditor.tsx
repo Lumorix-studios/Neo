@@ -5,14 +5,15 @@
 import {
   memo,
   useCallback,
-  useDeferredValue,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
 } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
-import { langOf, highlightCode, commentToken } from "./highlight";
+import { countLines, highlightWindow, langOf, commentToken } from "./highlight";
 import { FileIcon } from "./FileIcon";
 import FindReplaceBar from "./FindReplaceBar";
 import TextType from '../../components/TextType';
@@ -149,8 +150,60 @@ interface LineNumberGutterProps {
   lineHeight: number;
   padTop: number;
   innerRef: RefObject<HTMLDivElement | null>;
+  /** First visible line (0-based). */
+  scrollTop: number;
+  /** Viewport height in px, used to size the render window. */
+  viewportH: number;
+  /** 1-based caret line, or -1 when line numbers are hidden. */
+  activeLine: number;
 }
 
+/* Only the lines inside the viewport (plus a small overscan) are mounted. The
+   committed version rendered a row per line and slid the whole stack with
+   `translateY(-scrollTop)`, so a 9k-line file created 9k DOM nodes up front and
+   reconciled all of them on every tab switch. This caps the mounted rows at
+   roughly `viewportH / lineHeight` + overscan whatever the file size. */
+const GUTTER_OVERSCAN = 20;
+
+/**
+ * The window of line numbers the gutter should mount, and where to place it.
+ *
+ * `first`/`last` are the half-open range of line indices to mount. Its length
+ * never exceeds `ceil(viewportH / lineHeight) + 2 * overscan`, however long the
+ * file is, and the range always covers the rows on screen.
+ *
+ * `offsetY` is where that window box goes, expressed in the gutter's own
+ * coordinate space. The gutter is a viewport-height box that is clipped and
+ * NEVER scrolls, so rows are placed at their document offset MINUS the scroll
+ * offset (`padTop + i * lineHeight - scrollTop`) — the same convention the
+ * active-line overlay uses. Without the `- scrollTop` term the window sits at a
+ * document offset inside a box that never scrolls: it slides further out of the
+ * clip on every scroll and disappears completely once `first * lineHeight`
+ * exceeds the viewport height.
+ */
+export function gutterWindow(
+  lineCount: number,
+  scrollTop: number,
+  viewportH: number,
+  lineHeight: number,
+  padTop: number,
+  overscan: number = GUTTER_OVERSCAN
+): { first: number; last: number; offsetY: number } {
+  const rows = Math.max(1, Math.ceil(viewportH / lineHeight) + overscan * 2);
+  const firstVisible = Math.max(0, Math.floor((scrollTop - padTop) / lineHeight));
+  // Clamp `first` so the window always lands inside the file. Without the second
+  // clamp, a scrollTop past EOF (or a short file in a tall viewport) could produce
+  // a window beyond the end of the file and the numbers would vanish entirely.
+  const first = Math.min(
+    Math.max(0, firstVisible - overscan),
+    Math.max(0, lineCount - rows)
+  );
+  return {
+    first,
+    last: Math.min(lineCount, first + rows),
+    offsetY: padTop + first * lineHeight - scrollTop,
+  };
+}
 
 const LineNumberGutter = memo(function LineNumberGutter({
   lineCount,
@@ -159,19 +212,45 @@ const LineNumberGutter = memo(function LineNumberGutter({
   lineHeight,
   padTop,
   innerRef,
+  scrollTop,
+  viewportH,
+  activeLine,
 }: LineNumberGutterProps) {
+  const { first, last, offsetY } = gutterWindow(
+    lineCount,
+    scrollTop,
+    viewportH,
+    lineHeight,
+    padTop
+  );
+  const rows: number[] = [];
+  for (let i = first; i < last; i++) rows.push(i);
+
   return (
     <div
       className="relative shrink-0 select-none overflow-hidden bg-[var(--bg-editor)] text-right font-mono"
       style={{ width, fontSize }}
       aria-hidden
     >
-      <div ref={innerRef} style={{ transform: "translateY(0px)", paddingTop: padTop }}>
-        {Array.from({ length: lineCount }, (_, i) => (
+      {/* `offsetY` already accounts for the scroll, so row `i` lands at
+          `padTop + i * lineHeight - scrollTop` — the same screen position the
+          textarea gives that line. Overscan rows fall outside this clipped box;
+          they are what stops a fast scroll exposing a blank strip while the
+          published viewport is one frame behind. */}
+      <div
+        ref={innerRef}
+        className="absolute inset-x-0 top-0"
+        style={{ transform: `translateY(${offsetY}px)` }}
+      >
+        {rows.map((i) => (
           <div
             key={i}
             data-ln={i + 1}
-            className="text-[var(--text-faint)]"
+            className={
+              i + 1 === activeLine
+                ? "gutter-active font-medium text-[var(--text-secondary)]"
+                : "text-[var(--text-faint)]"
+            }
             style={{ height: lineHeight, lineHeight: `${lineHeight}px`, paddingRight: 12 }}
           >
             {i + 1}
@@ -230,9 +309,53 @@ export default memo(function CodeEditor({
   const activeBandRef = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState({ line: 1, col: 1, sel: 0 });
 
+  /* Viewport state for the virtualized gutter. Scroll position has to be real
+     state (not just a ref) because the window of mounted line numbers depends on
+     it. It is written at most once per animation frame, so a fast scroll still
+     costs a single React commit per frame rather than one per event. */
+  const [viewport, setViewport] = useState({ scrollTop: 0, h: 600 });
+  const scrollRafRef = useRef(0);
+  const publishViewport = useCallback(() => {
+    scrollRafRef.current = 0;
+    const el = taRef.current;
+    if (!el) return;
+    setViewport((prev) =>
+      prev.scrollTop === el.scrollTop && prev.h === el.clientHeight
+        ? prev
+        : { scrollTop: el.scrollTop, h: el.clientHeight }
+    );
+  }, []);
+  const scheduleViewport = useCallback(() => {
+    if (scrollRafRef.current) return;
+    scrollRafRef.current = requestAnimationFrame(publishViewport);
+  }, [publishViewport]);
+  /* Indirection so `applyScrollTransforms` (declared below) can request a
+     viewport publish without depending on declaration order. It points at the
+     rAF-coalesced scheduler, NOT the publisher: writing state synchronously
+     inside a scroll event re-rendered mid-scroll, and — because typing near the
+     bottom of the viewport makes the browser scroll the caret into view, which
+     fires `scroll` — mid-keystroke as well. */
+  const scheduleViewportRef = useRef(scheduleViewport);
+  useLayoutEffect(() => {
+    scheduleViewportRef.current = scheduleViewport;
+  });
+  // Track viewport height so the window stays correct on window resize / panel
+  // collapse, where no scroll event fires.
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => scheduleViewport());
+    ro.observe(el);
+    publishViewport();
+    return () => ro.disconnect();
+  }, [publishViewport, scheduleViewport]);
+  useEffect(() => () => cancelAnimationFrame(scrollRafRef.current), []);
+
   const activeContent = active?.content ?? "";
   const activeLang = active ? langOf(active.path) : "text";
-  const lineCount = activeContent.split("\n").length;
+  // Memoized: this ran on every render, and there are several renders per
+  // keystroke (caret sync, viewport publish), each re-scanning the whole buffer.
+  const lineCount = useMemo(() => countLines(activeContent), [activeContent]);
 
   /** Align every visual layer with the textarea's scroll position using
    *  direct DOM writes — no React re-render per scroll tick. Declared before
@@ -244,12 +367,18 @@ export default memo(function CodeEditor({
       preRef.current.scrollTop = st;
       preRef.current.scrollLeft = el?.scrollLeft ?? 0;
     }
-    if (gutterInnerRef.current) {
-      gutterInnerRef.current.style.transform = `translateY(${-st}px)`;
-    }
     if (overlayRef.current) {
       overlayRef.current.style.transform = `translateY(${-st}px)`;
     }
+    // The gutter is deliberately NOT translated here: it is virtualized, and its
+    // offset is owned by the render (`gutterWindow` returns the window's
+    // scroll-adjusted `offsetY`). Translating it as well would double-count the
+    // scroll and slide that window straight out of the clipped box.
+    // Every programmatic scroll (go-to-line, reveal, find-jump) funnels through
+    // here, so requesting the viewport publish from this one place keeps the
+    // virtualized gutter in sync no matter how the scroll was initiated. It is
+    // rAF-coalesced, so a burst of scroll events costs one commit per frame.
+    scheduleViewportRef.current();
   }, []);
 
   // Report the caret to the parent (status bar) whenever it moves.
@@ -257,11 +386,32 @@ export default memo(function CodeEditor({
     onCursorChange?.({ line: cursor.line + 1, col: cursor.col + 1, sel: cursor.sel });
   }, [cursor.line, cursor.col, cursor.sel, onCursorChange]);
 
-  // Tokenize off the critical typing path: useDeferredValue lets the textarea
-  // (and its caret) update immediately while re-highlighting large files
-  // catches up in a low-priority render instead of blocking the keystroke.
-  const deferredContent = useDeferredValue(activeContent);
-  const highlighted = highlightCode(deferredContent, activeLang);
+  /* ── Highlight-layer cost control ──────────────────────────────────────
+     The <pre> mirror is written with dangerouslySetInnerHTML, so every update
+     makes the browser re-parse the markup as HTML.
+
+     Measured: tokenizing a 6k-line / 323 KB buffer costs ~19 ms and emits ~21k
+     <span> elements (~0.92 MB). Typing invalidates the highlight cache on every
+     keystroke (each key yields a new string, so every cache key is unique), so
+     that entire cost — tokenize plus DOM rebuild — used to land on the critical
+     path of every single key press. That is a full 60 fps frame in JS alone.
+
+     Fixing it means never tokenizing the whole buffer. Only the tile of lines
+     containing the viewport is tokenized; the rest is emitted as escaped plain
+     text, so the cost is O(viewport) instead of O(file). The tile is quantised,
+     which also means scrolling inside a tile produces an IDENTICAL markup string
+     and React skips the DOM write entirely.
+
+     The text is never altered by this — only the colouring — so the mirror stays
+     pixel-aligned with the textarea. */
+  const firstVisibleLine = Math.max(
+    0,
+    Math.floor((viewport.scrollTop - PAD_TOP) / LINE_HEIGHT)
+  );
+  const highlightHtml = useMemo(
+    () => highlightWindow(activeContent, activeLang, firstVisibleLine),
+    [activeContent, activeLang, firstVisibleLine]
+  );
   const gutterDigits = Math.max(2, String(lineCount).length);
 
   // Reset scroll + cursor bookkeeping whenever the user switches tabs. The
@@ -337,14 +487,17 @@ export default memo(function CodeEditor({
       activeBandRef.current.style.top = `${PAD_TOP + (cursor.line - 1) * LINE_HEIGHT}px`;
       activeBandRef.current.style.display = WORD_WRAP ? "none" : "";
     }
-    const g = gutterInnerRef.current;
-    if (g) {
-      const prev = g.querySelector<HTMLElement>(".gutter-active");
-      if (prev) prev.classList.remove("gutter-active", "font-medium", "text-[var(--text-secondary)]");
-      const cur = g.querySelector<HTMLElement>(`[data-ln="${cursor.line}"]`);
-      if (cur) cur.classList.add("gutter-active", "font-medium", "text-[var(--text-secondary)]");
-    }
   }, [cursor.line, LINE_HEIGHT, lineCount, activePath, WORD_WRAP]);
+
+  // The gutter's active-line highlight is now rendered declaratively via
+  // `activeLineForRender` (it has to be, since virtualization remounts rows and
+  // would otherwise drop an imperatively-added class).
+
+  // The gutter is virtualized, so scrolling remounts rows and any imperatively
+  // added `gutter-active` class is lost with the old nodes. Re-apply it whenever
+  // the rendered window moves. Uses the declarative `activeLine` prop instead of
+  // DOM surgery so the highlight is correct on the very first paint of a row.
+  const activeLineForRender = SHOW_LINE_NUMBERS && !WORD_WRAP ? cursor.line : -1;
 
   
   const replaceRange = (text: string, from: number, to: number) => {
@@ -526,6 +679,7 @@ export default memo(function CodeEditor({
   const handleScroll = (e: ReactUIEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget;
     scrollTopRef.current = el.scrollTop;
+    // Also publishes the viewport, which is what drives the virtualized gutter.
     applyScrollTransforms();
   };
 
@@ -884,6 +1038,9 @@ export default memo(function CodeEditor({
                 lineHeight={LINE_HEIGHT}
                 padTop={PAD_TOP}
                 innerRef={gutterInnerRef}
+                scrollTop={viewport.scrollTop}
+                viewportH={viewport.h}
+                activeLine={activeLineForRender}
               />
             )}
 
@@ -927,7 +1084,7 @@ export default memo(function CodeEditor({
                   overflowWrap: "anywhere",
                   scrollbarGutter: "stable",
                 }}
-                dangerouslySetInnerHTML={{ __html: highlighted }}
+                dangerouslySetInnerHTML={{ __html: highlightHtml }}
               />
               <textarea
                 ref={taRef}

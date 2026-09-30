@@ -556,6 +556,86 @@ the version bump.
 
 ---
 
+## Build Desktop Release
+
+The desktop release is bundled with the Tauri CLI, which signs the updater
+artifacts with the private key matching `plugins.updater.pubkey` in
+`src-tauri/tauri.conf.json`. Without that key, bundling stops with:
+
+```text
+A public key has been found, but no private key.
+Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.
+```
+
+`npm run build:desktop` passes the key from `~/.tauri/neo.key` and the password
+from `~/.tauri/neo.key.password` to the Tauri CLI for you, so no environment
+variables are needed:
+
+```bash
+npm run build:desktop
+```
+
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` and `NEO_SIGNING_KEY_PASSWORD_FILE`
+override the stored password, which is what CI uses. When neither is set and no
+password file exists, the Tauri CLI prompts for the password itself.
+
+Available desktop build scripts:
+
+* `npm run build:desktop` — signed release build (`tauri build`) with updater artifacts and `.sig` files.
+* `npm run build:desktop:signed` — same as `build:desktop`, kept as an explicit alias.
+* `npm run build:desktop:bundle` — re-bundles and re-signs `target/release/app.exe` with `tauri bundle`, without recompiling Rust.
+* `npm run build:desktop:unsigned` — bundles without updater artifacts; needs no key, for local testing only.
+
+Arguments after `--` are forwarded to the Tauri CLI, and `-- --dry-run` prints
+the command and the signing environment without running anything:
+
+```bash
+npm run build:desktop -- --verbose --bundles nsis
+npm run build:desktop -- --dry-run
+```
+
+Updater signing keys are generated with the Tauri CLI:
+
+```bash
+# Writes ~/.tauri/neo.key and ~/.tauri/neo.key.pub — never commit the .key file
+npx tauri signer generate -w ~/.tauri/neo.key
+```
+
+* `NEO_SIGNING_KEY` points the build at a key stored elsewhere.
+* `NEO_SIGNING_KEY_PASSWORD_FILE` points at the password file (default
+  `~/.tauri/neo.key.password`).
+* `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` are
+  respected when already set, which is what CI uses.
+* The wrapper compares the key's `.pub` file against
+  `src-tauri/tauri.conf.json` and warns when they differ, because installed
+  apps would then reject their own updates.
+
+### Lost the key password
+
+The private key is encrypted with `scrypt`, so a forgotten password cannot be
+recovered or brute-forced — the only way back to signed releases is a new pair:
+
+```bash
+node scripts/rotate-updater-key.mjs
+```
+
+The script backs up the current pair, the old pubkey and an explanatory note to
+`~/.tauri/backup-<timestamp>`, generates a replacement pair, stores a random
+password in `~/.tauri/neo.key.password` (readable only by your account), swaps
+`plugins.updater.pubkey` in `src-tauri/tauri.conf.json` and signs a scratch file
+to prove the new pair works. `--password "..."` chooses the password yourself,
+`--dry-run` prints the plan without writing anything.
+
+Every published build carries the pubkey it was compiled with, so apps installed
+before the rotation reject artifacts signed with the new key. Those users have
+to install the first release after the rotation manually; every release after
+that updates normally again. Ship that release from a **full**
+`npm run build:desktop` rather than `build:desktop:bundle`, so the app embeds
+the new pubkey.
+
+
+---
+
 # Project Status
 
 NEO is currently in **beta** and under active development.
