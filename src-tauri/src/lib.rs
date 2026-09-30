@@ -479,11 +479,7 @@ fn do_start_ollama(
                 adopted: false,
             });
         }
-        // No live server of ours, yet the port answers. It may be an orphan
-        // left behind by a previous session of this app (the exe can die
-        // without a clean exit). The PID record written when we spawned
-        // tells us — adopt it so "Stop" works again instead of telling the
-        // user to close a server they have no window or tray icon for.
+        
         if let Some(pid) = recorded_pid(app) {
             if pid_is_ollama(pid) {
                 if let Ok(mut guard) = state.0.lock() {
@@ -1932,16 +1928,34 @@ async fn launch_downloaded(path: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // A second launch (e.g. the browser bouncing `agenticcoder://…` back
-            // from an OAuth sign-in) must hand the URL to the running window
-            // instead of opening a duplicate app — that is what makes the
-            // sign-in flow land in the app the user is already looking at.
-            if let Some(url) = argv.iter().find(|a| a.starts_with("agenticcoder://")) {
-                let _ = app.emit("neo:deep-link", url.clone());
-            }
-        }))
+    let builder = tauri::Builder::default();
+
+    // Single-instance guard (release builds only).
+    //
+    // A second launch (e.g. the browser bouncing `agenticcoder://…` back from
+    // an OAuth sign-in) must hand the URL to the running window instead of
+    // opening a duplicate app — that is what makes the sign-in flow land in
+    // the app the user is already looking at.
+    //
+    // Why debug builds opt out: the guard works via a named mutex built from
+    // the bundle identifier (`{identifier}-sim`). An *installed* Neo holds that
+    // mutex for as long as it runs, and a `tauri dev` build shares the same
+    // identifier — so with the guard enabled the dev app would find the mutex,
+    // hand its argv to the installed instance, and exit(0) before its own
+    // window ever exists. `tauri dev` then looks like it starts and instantly
+    // quits with no window. Letting debug builds skip the guard means dev can
+    // run side by side with an installed app. Trade-off: in dev a deep link
+    // opens a fresh dev window instead of focusing the existing one — the URL
+    // still arrives there through `getCurrent()`, so the OAuth exchange
+    // completes either way.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        if let Some(url) = argv.iter().find(|a| a.starts_with("agenticcoder://")) {
+            let _ = app.emit("neo:deep-link", url.clone());
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
