@@ -121,4 +121,6 @@ CMakeLists.txt.user*
 !.env.example
 
 # Supabase CLI scratch files — regenerated locally by `supabase link`.
-supabase/.temp/
+supabase/.temp/ 
+# LSP verification harness scratch dir 
+scripts/.lsp-tmp

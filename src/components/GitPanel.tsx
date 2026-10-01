@@ -12,11 +12,7 @@ import {
   IoChevronUp,
   IoGitBranch,
   IoGitCommit,
-  IoGitNetwork,
-  IoClose,
-  IoRefresh,
   IoAdd,
-  IoReloadOutline,
   IoRemove,
   IoSync,
   IoArrowUndo,
@@ -229,7 +225,7 @@ function ChangeRow({
  * The panel component. Keeps a live view of the repo: branch + sync state,
  * staged vs unstaged changes, commit box and an output console.
  */
-function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
+function GitPanel({ root, onOpenFile }: GitPanelProps) {
   const [branch, setBranch] = useState<BranchInfo>({ name: null, ahead: 0, behind: 0 });
   const [changes, setChanges] = useState<Change[]>([]);
   const [notRepo, setNotRepo] = useState(false);

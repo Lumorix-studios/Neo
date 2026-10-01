@@ -14,6 +14,14 @@ import {
 } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
 import { countLines, highlightWindow, langOf, commentToken } from "./highlight";
+import { useFileDiagnostics, type DiagnosticSeverity } from "../diagnostics";
+import {
+  diagnosticTooltip,
+  indexFileDiagnostics,
+  layoutDiagnosticMarks,
+  MARK_LEFT_PAD,
+  visibleLineTexts,
+} from "./editorDiagnostics";
 import { FileIcon } from "./FileIcon";
 import FindReplaceBar from "./FindReplaceBar";
 import TextType from '../../components/TextType';
@@ -72,6 +80,14 @@ export interface CodeEditorProps {
 
 /** Top padding shared by the gutter, highlight layer and textarea. */
 const PAD_TOP = 10;
+
+/** Diagnostic colours: VS Code-ish red / amber / blue, one source of truth for
+ *  the gutter marker, the squiggle and the line-number tint. */
+const DIAG_COLOR: Record<DiagnosticSeverity, string> = {
+  error: "#e5534b",
+  warning: "#e2b93d",
+  info: "#4a9eff",
+};
 
 function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -145,6 +161,8 @@ function collectFindMarks(
 
 interface LineNumberGutterProps {
   lineCount: number;
+  /** Worst severity per 1-based line → error/warning marker in the gutter. */
+  worstByLine?: Map<number, DiagnosticSeverity>;
   width: number;
   fontSize: number;
   lineHeight: number;
@@ -207,6 +225,7 @@ export function gutterWindow(
 
 const LineNumberGutter = memo(function LineNumberGutter({
   lineCount,
+  worstByLine,
   width,
   fontSize,
   lineHeight,
@@ -242,20 +261,42 @@ const LineNumberGutter = memo(function LineNumberGutter({
         className="absolute inset-x-0 top-0"
         style={{ transform: `translateY(${offsetY}px)` }}
       >
-        {rows.map((i) => (
-          <div
-            key={i}
-            data-ln={i + 1}
-            className={
-              i + 1 === activeLine
-                ? "gutter-active font-medium text-[var(--text-secondary)]"
-                : "text-[var(--text-faint)]"
-            }
-            style={{ height: lineHeight, lineHeight: `${lineHeight}px`, paddingRight: 12 }}
-          >
-            {i + 1}
-          </div>
-        ))}
+        {rows.map((i) => {
+          const sev = worstByLine?.get(i + 1);
+          return (
+            <div
+              key={i}
+              data-ln={i + 1}
+              className={
+                i + 1 === activeLine
+                  ? "gutter-active font-medium text-[var(--text-secondary)]"
+                  : sev
+                    ? "font-medium"
+                    : "text-[var(--text-faint)]"
+              }
+              style={{
+                height: lineHeight,
+                lineHeight: `${lineHeight}px`,
+                paddingRight: 12,
+                color: sev && i + 1 !== activeLine ? DIAG_COLOR[sev] : undefined,
+              }}
+            >
+              {/* Error/warning dot: the line-level cue that survives small text
+                  and is the same colour as the squiggle. Rows without a finding
+                  render exactly as before (no extra space, no shift). */}
+              {sev ? (
+                <>
+                  <span
+                    className="inline-block h-[5px] w-[5px] rounded-full align-middle"
+                    style={{ background: DIAG_COLOR[sev] }}
+                  />
+                  {" "}
+                </>
+              ) : null}
+              {i + 1}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -413,6 +454,40 @@ export default memo(function CodeEditor({
     [activeContent, activeLang, firstVisibleLine]
   );
   const gutterDigits = Math.max(2, String(lineCount).length);
+
+  /* ── Inline diagnostics ───────────────────────────────────────────────────
+     Findings for the active file come from the shared diagnostics store (tsc +
+     structural scan + every language server). They are painted as overlay marks
+     on the visible window only — the same layer and arithmetic the find-marks
+     use — so nothing here scales with buffer size. */
+  const fileDiagnostics = useFileDiagnostics(activePath);
+  const diagIndex = useMemo(
+    () => indexFileDiagnostics(fileDiagnostics, lineCount),
+    [fileDiagnostics, lineCount]
+  );
+  const lastVisibleLine =
+    firstVisibleLine + Math.ceil(viewport.h / LINE_HEIGHT) + 2;
+  const diagMarks = useMemo(() => {
+    // Squiggles are positioned per logical line, which is only true when each
+    // line is a single visual row — with soft wrap the mapping diverges, so the
+    // gutter marker and the Problems panel carry the signal instead.
+    if (WORD_WRAP) return [];
+    const texts = visibleLineTexts(activeContent, firstVisibleLine, lastVisibleLine);
+    return layoutDiagnosticMarks(diagIndex.byLine, texts, firstVisibleLine, {
+      padTop: PAD_TOP,
+      leftPad: MARK_LEFT_PAD,
+      charW: FONT_SIZE * 0.6,
+      lineHeight: LINE_HEIGHT,
+    });
+  }, [
+    diagIndex,
+    activeContent,
+    firstVisibleLine,
+    lastVisibleLine,
+    WORD_WRAP,
+    FONT_SIZE,
+    LINE_HEIGHT,
+  ]);
 
   // Reset scroll + cursor bookkeeping whenever the user switches tabs. The
   // state half of the reset happens during render (the sanctioned alternative
@@ -1033,6 +1108,7 @@ export default memo(function CodeEditor({
             {SHOW_LINE_NUMBERS && !WORD_WRAP && (
               <LineNumberGutter
                 lineCount={lineCount}
+                worstByLine={diagIndex.worst}
                 width={gutterDigits * FONT_SIZE * 0.62 + 28}
                 fontSize={FONT_SIZE}
                 lineHeight={LINE_HEIGHT}
@@ -1064,6 +1140,24 @@ export default memo(function CodeEditor({
                     key={mk.key}
                     className={`absolute rounded-[2px] ${i === matchIndex ? "bg-(--accent)/40" : "bg-(--accent)/20"}`}
                     style={{ top: mk.top, left: mk.left, width: mk.width, height: LINE_HEIGHT }}
+                  />
+                ))}
+                {/* Diagnostic squiggles — a wavy bar under the flagged span.
+                    pointer-events re-enabled so hovering the underline shows the
+                    message (the layer itself is pointer-events-none). */}
+                {diagMarks.map((m) => (
+                  <span
+                    key={m.key}
+                    title={diagnosticTooltip(m)}
+                    className="pointer-events-auto absolute"
+                    style={{
+                      top: m.top + m.height - 3,
+                      left: m.left,
+                      width: m.width,
+                      height: 2,
+                      backgroundImage: `repeating-linear-gradient(90deg, ${DIAG_COLOR[m.severity]} 0 4px, transparent 4px 8px)`,
+                      opacity: 0.9,
+                    }}
                   />
                 ))}
               </div>

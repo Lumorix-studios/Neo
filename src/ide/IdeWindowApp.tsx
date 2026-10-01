@@ -40,6 +40,16 @@ import GitPanel from "../components/GitPanel";
 import AgentPanel from "./AgentPanel";
 import CommandPalette from "../../components/CommandPalette";
 import { ensureOllamaReady } from "../localModels";
+import { clearDiagnostics, normalizePath, publishDiagnostics, quickScan } from "../diagnostics";
+import { langOf } from "../components/highlight";
+import {
+  lspDocChange,
+  lspDocClose,
+  lspDocOpen,
+  lspDocSave,
+  lspManages,
+  lspSetWorkspace,
+} from "../lsp";
 
 const SettingsPanel = lazy(() => import("../components/SettingsPanel"));
 
@@ -113,11 +123,30 @@ function langLabel(path: string): string {
   return "Plain Text";
 }
 
+/** Keep diagnostics in sync while typing: forward the edit to the file's
+ *  language server when one manages it, otherwise run the instant structural
+ *  scan — so even a language with no server installed gets line-accurate
+ *  bracket/string/comment errors as you type. */
+function syncDiagnostics(path: string, content: string): void {
+  lspDocChange(path, content);
+  if (lspManages(path)) {
+    publishDiagnostics(path, [], "neo"); // server findings supersede the scan
+  } else {
+    publishDiagnostics(path, quickScan(content, langOf(path)), "neo");
+  }
+}
+
 export default function IdeWindowApp() {
   const appWindow = getCurrentWindow();
 
   // --- workspace -----------------------------------------------------------
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(loadRoot);
+  // Language servers follow the workspace: switching folders stops every
+  // server (and clears their findings); stale structural findings go too.
+  useEffect(() => {
+    lspSetWorkspace(workspaceRoot);
+    clearDiagnostics("neo");
+  }, [workspaceRoot]);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
@@ -406,12 +435,25 @@ export default function IdeWindowApp() {
   /** Open a file in an editor tab (fetching content from disk). */
   const openFileInEditor = useCallback(
     async (path: string, line?: number) => {
-      setActiveEditorPath(path);
+      // Tabs may be keyed with a different separator/drive case than a jump
+      // source (LSP diagnostics publish URI-derived paths) — match on the
+      // normalized key and reuse the tab's own path.
+      const key = normalizePath(path);
+      const existing = tabsRef.current.find((t) => normalizePath(t.path) === key);
+      if (existing) {
+        setActiveEditorPath(existing.path);
+        if (line != null) setRevealLine({ path: existing.path, line });
+        return;
+      }
       if (line != null) setRevealLine({ path, line });
-      if (tabsRef.current.some((t) => t.path === path)) return;
+      setActiveEditorPath(path);
       try {
         const content = await invoke<string>("fs_read_file", { path });
         pushRecent(path);
+        // Instant structural feedback while the language server warms up;
+        // didOpen retires it once the server takes the file over.
+        publishDiagnostics(path, quickScan(content, langOf(path)), "neo");
+        void lspDocOpen(path, content);
         setEditorTabs((prev) =>
           prev.some((t) => t.path === path) ? prev : [...prev, { path, content, dirty: false }]
         );
@@ -432,6 +474,7 @@ export default function IdeWindowApp() {
     if (!tab) return;
     try {
       await invoke("fs_write_file", { path, content: tab.content });
+      lspDocSave(path);
       setEditorTabs((prev) =>
         prev.map((t) => (t.path === path ? { ...t, dirty: false } : t))
       );
@@ -455,6 +498,7 @@ export default function IdeWindowApp() {
     if (idx === -1) return;
     tabsRef.current = next;
     setEditorTabs(next);
+    lspDocClose(path);
     if (activePathRef.current === path) {
       setActiveEditorPath(next.length ? next[Math.min(idx, next.length - 1)].path : null);
     }
@@ -466,11 +510,13 @@ export default function IdeWindowApp() {
       tabsRef.current = next;
       return next;
     });
+    syncDiagnostics(path, content);
   }, []);
 
   const handleEditorSave = useCallback((p: string) => void saveRef.current(p), []);
 
   const closeAllEditorTabs = useCallback(() => {
+    for (const t of tabsRef.current) lspDocClose(t.path);
     tabsRef.current = [];
     setEditorTabs([]);
     setActiveEditorPath(null);

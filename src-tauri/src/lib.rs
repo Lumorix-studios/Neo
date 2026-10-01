@@ -1861,6 +1861,311 @@ fn mcp_stdio_stop(state: tauri::State<'_, McpState>, id: String) -> Result<(), S
     Ok(())
 }
 
+// ─── LSP stdio transport ─────────────────────────────────────────────────────
+//
+// Transport for Language Server Protocol servers (clangd, rust-analyzer,
+// pyright, typescript-language-server, …). The protocol framing (Content-Length
+// headers) and JSON-RPC state machine live in the frontend (`src/lsp.ts`); the
+// backend only spawns the child process, forwards raw stdout bytes as events
+// and writes exact bytes to stdin. That split keeps the protocol logic in TS —
+// where it is testable against a fake server — while process management stays
+// where child processes can actually be created.
+//
+// Events emitted to every window:
+//   • `neo:lsp-bytes` { id, data: number[] } — raw stdout chunk (may hold any
+//     part of a frame; never assume line boundaries).
+//   • `neo:lsp-exit`  { id, detail }         — stdout closed (server exited or
+//     crashed); `detail` explains why when the exit status/stderr is known.
+
+/// stdin/stdout child plumbing — same shape as the MCP transport above so the
+/// spawn/describe helpers can be shared.
+struct LspProc {
+    io: Mutex<McpProcIo>,
+    /// Last N stderr lines, kept for crash diagnostics.
+    stderr_tail: Arc<Mutex<VecDeque<String>>>,
+    /// Set by the stderr reader thread once its stream hits EOF, so the stdout
+    /// thread can wait briefly before composing the exit detail.
+    stderr_done: Arc<AtomicBool>,
+}
+
+/// Language server processes keyed by registry id (one per language).
+struct LspState(Mutex<HashMap<String, Arc<LspProc>>>);
+
+
+
+/// Spawn an LSP server and stream its stdout to the webview as byte chunks.
+/// Any previous server registered under the same id is stopped first.
+#[tauri::command]
+fn lsp_start(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, LspState>,
+    id: String,
+    command: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+) -> Result<(), String> {
+    // Tear down any previous process registered under this id (restart case).
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .map_err(|e| format!("State lock error: {e}"))?;
+        if let Some(old) = guard.remove(&id) {
+            kill_lsp(&old);
+        }
+    }
+
+    // Same Windows shell compatibility as MCP: env expansion, extension-less
+    // PATH lookup, `.bat`/`.cmd` shims routed through cmd.exe.
+    let (program, front_args) = resolve_command(&command);
+    let args: Vec<String> = args.iter().map(|a| expand_env_vars(a)).collect();
+
+    let mut cmd = Command::new(&program);
+    cmd.args(front_args.iter().chain(args.iter()))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(dir) = &cwd {
+        let expanded = expand_env_vars(dir);
+        let p = PathBuf::from(&expanded);
+        if p.is_dir() {
+            cmd.current_dir(&p);
+        } else {
+            return Err(format!("LSP server cwd does not exist: {expanded}"));
+        }
+    }
+    suppress_window(&mut cmd);
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start LSP server \"{command}\": {e}"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Failed to open LSP server stdin".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to open LSP server stdout".to_string())?;
+    let stderr = child.stderr.take();
+
+    // stderr: a ring buffer of the last lines so a crash reports *why* it
+    // died instead of a bare "pipe is being closed" (os error 232 on Windows).
+    let stderr_tail: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+    let stderr_done = Arc::new(AtomicBool::new(false));
+    if let Some(stderr) = stderr {
+        let tail = Arc::clone(&stderr_tail);
+        let done = Arc::clone(&stderr_done);
+        thread::spawn(move || {
+            let mut reader = std::io::BufReader::new(stderr);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        let trimmed = line.trim_end_matches(['\r', '\n']);
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+                        if let Ok(mut g) = tail.lock() {
+                            if g.len() >= STDERR_TAIL_LINES {
+                                g.pop_front();
+                            }
+                            g.push_back(trimmed.chars().take(STDERR_LINE_MAX).collect());
+                        }
+                    }
+                }
+            }
+            done.store(true, Ordering::Relaxed);
+        });
+    } else {
+        stderr_done.store(true, Ordering::Relaxed);
+    }
+
+    let proc = Arc::new(LspProc {
+        io: Mutex::new(McpProcIo { child, stdin }),
+        stderr_tail: Arc::clone(&stderr_tail),
+        stderr_done,
+    });
+
+    // Register before the reader starts so lsp_write/lsp_stop can't race a
+    // server nobody can reach yet.
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .map_err(|e| format!("State lock error: {e}"))?;
+        guard.insert(id.clone(), Arc::clone(&proc));
+    }
+
+
+    // stdout reader thread: forward raw byte chunks; LSP framing is the
+    // frontend's job. On EOF (server exited/crashed) emit the exit event with
+    // an explanation gathered from the exit status + stderr tail.
+    let app_reader = app.clone();
+    let id_reader = id.clone();
+    thread::spawn(move || {
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut buf = [0u8; 16 * 1024];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let payload =
+                        serde_json::json!({ "id": id_reader.as_str(), "data": &buf[..n] });
+                    if app_reader.emit("neo:lsp-bytes", payload).is_err() {
+                        break; // no listeners (window gone) — stop reading
+                    }
+                }
+            }
+        }
+        // stdout closed: let stderr drain briefly so the exit detail can say
+        // why the server died instead of just "exited".
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(400);
+        while !proc.stderr_done.load(Ordering::Relaxed) && std::time::Instant::now() < deadline {
+            thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let status = match proc.io.lock() {
+            Ok(mut io) => io.child.try_wait().ok().flatten().map(|s| s.to_string()),
+            Err(_) => None,
+        };
+        let err_text = match proc.stderr_tail.lock() {
+            Ok(g) => g.iter().map(String::as_str).collect::<Vec<_>>().join("\n"),
+            Err(_) => String::new(),
+        };
+        let detail = match (status, err_text.is_empty()) {
+            (Some(status), true) => format!("The server exited ({status})."),
+            (Some(status), false) => format!("The server exited ({status}). stderr:\n{err_text}"),
+            (None, false) => format!("The server closed its stdout. stderr:\n{err_text}"),
+            (None, true) => "The server closed its stdout.".to_string(),
+        };
+        let _ = app_reader.emit(
+            "neo:lsp-exit",
+            serde_json::json!({ "id": id_reader, "detail": detail }),
+        );
+    });
+
+    Ok(())
+}
+
+/// Write one exact byte string (an LSP frame: `Content-Length` header block +
+/// JSON body) to the server's stdin. The payload is always valid UTF-8 —
+/// that is what LSP frames are — so a `String` beats a `Vec<u8>` over IPC.
+#[tauri::command]
+fn lsp_write(state: tauri::State<'_, LspState>, id: String, text: String) -> Result<(), String> {
+    // Clone the Arc out of the map, then release the lock — the write below
+    // never blocks starts/stops of other servers.
+    let proc = {
+        let guard = state
+            .0
+            .lock()
+            .map_err(|e| format!("State lock error: {e}"))?;
+        guard
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| format!("LSP server {id} is not running"))?
+    };
+    let write_result = {
+        let mut io = match proc.io.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        io.stdin.write_all(text.as_bytes()).and_then(|_| io.stdin.flush())
+    };
+    if let Err(e) = write_result {
+        // Classic "pipe is being closed" — the server died. Explain why while
+        // we still hold the child handle, then drop the dead session so the
+        // next start begins clean.
+        let detail = match proc.io.lock() {
+            Ok(mut io) => describe_exit(&mut io.child, &proc.stderr_tail),
+            Err(_) => String::new(),
+        };
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(old) = guard.remove(&id) {
+                kill_lsp(&old);
+            }
+        }
+        return Err(format!("Failed to write to LSP server: {e}. {detail}"));
+    }
+    Ok(())
+}
+
+/// Stop and forget a language server process.
+#[tauri::command]
+fn lsp_stop(state: tauri::State<'_, LspState>, id: String) -> Result<(), String> {
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|e| format!("State lock error: {e}"))?;
+    if let Some(proc) = guard.remove(&id) {
+        kill_lsp(&proc);
+    }
+    Ok(())
+}
+
+/// Locate an LSP server executable. Checks, in order: an explicit path,
+/// the workspace's `node_modules/.bin` (npm local installs), `%APPDATA%\npm`
+/// (npm global on Windows), `%USERPROFILE%\.cargo\bin` (rust-analyzer), then
+/// every PATH entry. Returns the resolved path, or `None` when the server is
+/// not installed — the frontend then surfaces an install hint instead of
+/// failing silently.
+#[tauri::command]
+fn lsp_probe(command: String, root: Option<String>) -> Option<String> {
+    let cmd = command.trim();
+    if cmd.is_empty() {
+        return None;
+    }
+    // Explicit path: existence is the whole check.
+    if cmd.contains('/') || cmd.contains('\\') {
+        let p = PathBuf::from(expand_env_vars(cmd));
+        return if p.is_file() {
+            Some(p.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+    }
+
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(root) = &root {
+        let root = PathBuf::from(expand_env_vars(root));
+        dirs.push(root.join("node_modules").join(".bin"));
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        dirs.push(PathBuf::from(appdata).join("npm"));
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        dirs.push(PathBuf::from(profile).join(".cargo").join("bin"));
+    }
+    if let Ok(path_var) = std::env::var("PATH") {
+        dirs.extend(std::env::split_paths(&path_var).filter(|d| !d.as_os_str().is_empty()));
+    }
+
+    // Bare name on disk: exact file (Unix) plus the Windows PATHEXT set.
+    // `.exe` spawns directly; `.cmd`/`.bat` shims are routed through
+    // `cmd.exe` again at spawn time by `resolve_command`.
+    let exts = ["", ".exe", ".cmd", ".bat", ".com"];
+    for dir in &dirs {
+        for ext in exts {
+            let candidate = dir.join(format!("{cmd}{ext}"));
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
+
+/// Kill and reap an LSP server process.
+fn kill_lsp(proc: &LspProc) {
+    let mut io = match proc.io.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let _ = io.child.kill();
+    let _ = io.child.wait();
+}
+
 #[tauri::command]
 fn get_app_version() -> Result<String, String> {
     // `env!` (not `tauri::env!`) reads the version from this crate's Cargo.toml
@@ -1964,6 +2269,7 @@ pub fn run() {
         .manage(ServerState(Mutex::new(None)))
         .manage(TerminalState::default())
         .manage(McpState(Mutex::new(HashMap::new())))
+        .manage(LspState(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             save_state,
             load_state,
@@ -2002,7 +2308,11 @@ pub fn run() {
             mcp_stdio_start,
             mcp_stdio_send,
             mcp_stdio_read,
-            mcp_stdio_stop
+            mcp_stdio_stop,
+            lsp_start,
+            lsp_write,
+            lsp_stop,
+            lsp_probe
         ])
         .setup(|app| {
             // Desktop: make `agenticcoder://` resolve to *this* executable so
@@ -2045,6 +2355,15 @@ pub fn run() {
                     }
                 }
                 clear_pid_record(app_handle);
+
+                // Language servers are long-lived children too — stop them so
+                // no orphan keeps holding indexes/ports after the app closes.
+                let lsp_state = app_handle.state::<LspState>();
+                if let Ok(mut guard) = lsp_state.0.lock() {
+                    for (_, proc) in guard.drain() {
+                        kill_lsp(&proc);
+                    }
+                };
             }
         });
 }

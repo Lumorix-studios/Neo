@@ -10,13 +10,20 @@ import { logToBus } from "./components/logBus";
 import { isWordChar, lineCommentToken, startsExpression } from "./components/highlight";
 
 export type DiagnosticSeverity = "error" | "warning" | "info";
-export type DiagnosticSource = "tsc" | "neo";
+export type DiagnosticSource = "tsc" | "neo" | "lsp";
 
 export interface FileDiagnostic {
   /** 1-based line. */
   line: number;
   /** 1-based column. */
   col: number;
+  /**
+   * Optional inclusive 1-based end position. Producers that know the exact span
+   * (LSP ranges, the bracket a structural scan flagged) set it so the editor
+   * can underline precisely instead of to the end of the line.
+   */
+  endLine?: number;
+  endCol?: number;
   severity: DiagnosticSeverity;
   /** Compiler code (`TS1005`) or a `neo-*` id for local findings. */
   code: string;
@@ -48,9 +55,12 @@ let tscFiles = new Set<string>();
 let version = 0;
 let groupsCache: { v: number; groups: DiagnosticGroup[] } | null = null;
 
-/** Store key for a path: forward slashes, no trailing slash. */
+/** Store key for a path: forward slashes, no trailing slash, lower-cased
+ *  drive letter — `file://` URIs always carry `file:///c:/…`, while the editor
+ *  opens `C:\…`; without this the two would never match in the store. */
 export function normalizePath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const s = p.replace(/\\/g, "/").replace(/\/+$/, "");
+  return s.replace(/^([A-Za-z]:)/, (_m, d: string) => d.toLowerCase());
 }
 
 function emit(): void {
@@ -67,6 +77,8 @@ function sameItems(a: FileDiagnostic[], b: FileDiagnostic[]): boolean {
     if (
       x.line !== y.line ||
       x.col !== y.col ||
+      x.endLine !== y.endLine ||
+      x.endCol !== y.endCol ||
       x.severity !== y.severity ||
       x.code !== y.code ||
       x.message !== y.message ||
@@ -122,6 +134,19 @@ export function publishTscResults(groups: DiagnosticGroup[]): void {
     changed = true;
   }
   tscFiles = seen;
+  if (changed) emit();
+}
+
+/** Drop every finding produced by `source`, wherever it lives in the store. */
+export function clearDiagnostics(source: DiagnosticSource): void {
+  let changed = false;
+  for (const [key, entry] of [...byFile]) {
+    const rest = entry.items.filter((d) => d.source !== source);
+    if (rest.length === entry.items.length) continue;
+    changed = true;
+    if (rest.length === 0) byFile.delete(key);
+    else byFile.set(key, { file: entry.file, items: rest });
+  }
   if (changed) emit();
 }
 
@@ -280,6 +305,7 @@ export function useWorkspaceDiagnostics(
   const runningRef = useRef(false);
   const pendingRef = useRef(false);
   const rootRef = useRef(root);
+  const lastRootRef = useRef<string | null>(null);
   const scanRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -328,6 +354,13 @@ export function useWorkspaceDiagnostics(
   useEffect(() => {
     if (!root) {
       setState({ scanning: false, note: null });
+      return;
+    }
+    // Opening a workspace scans immediately (the panel should not sit empty
+    // for a debounce window); token bumps after saves stay debounced.
+    if (root !== lastRootRef.current) {
+      lastRootRef.current = root;
+      scanRef.current();
       return;
     }
     const timer = window.setTimeout(() => scanRef.current(), SCAN_DEBOUNCE_MS);
@@ -443,7 +476,17 @@ export function quickScan(content: string, lang: string): FileDiagnostic[] {
     l: number,
     c: number
   ) => {
-    out.push({ line: l, col: c, severity, code, message, source: "neo" });
+    out.push({
+      line: l,
+      col: c,
+      // The offending character itself (bracket/quote) — underlines precisely
+      // instead of trailing to the end of the line.
+      endCol: c + 1,
+      severity,
+      code,
+      message,
+      source: "neo",
+    });
   };
   const openLiteral = (l: number, c: number) => {
     quoteLine = l;

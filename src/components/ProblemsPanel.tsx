@@ -2,117 +2,55 @@
  * Author: madhusudhan
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
-
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { IoAlertCircle, IoRefresh, IoReloadOutline } from "react-icons/io5";
-import { logToBus } from "./logBus";
+import { useAllDiagnostics, useWorkspaceDiagnostics } from "../diagnostics";
+import { getLspStatuses, subscribeLspStatus } from "../lsp";
 
 interface ProblemsPanelProps {
-  /** Workspace folder scanned by the TypeScript compiler. */
+  /** Workspace folder (tsc scan root and language-server root). */
   root: string | null;
   onOpenFile: (path: string, line: number) => void;
   /** Report the error/warning counts up to the tab badge. */
   onCount?: (errors: number, warnings: number) => void;
 }
 
-interface Problem {
-  file: string; // absolute path
-  line: number;
-  col: number;
-  severity: "error" | "warning";
-  code: string;
-  message: string;
-}
-
-interface RunResult {
-  exitCode: number | null;
-  timedOut: boolean;
-  stdout: string;
-  stderr: string;
-}
-
-/** Matches "src/App.tsx(12,5): error TS2304: Cannot find name 'x'." */
-const TSC_LINE =
-  /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+(TS\d+):\s+(.+?)\s*$/;
+/** Chip colours per language-server state. */
+const SERVER_STATE_CLASS: Record<string, string> = {
+  ready: "text-[#3fb950]",
+  starting: "text-[#e2b93d]",
+  failed: "text-[#e5534b]",
+  missing: "text-[var(--text-muted)]",
+  stopped: "text-[var(--text-muted)]",
+};
 
 export default function ProblemsPanel({
   root,
   onOpenFile,
   onCount,
 }: ProblemsPanelProps) {
-  const [problems, setProblems] = useState<Problem[]>([]);
-  const [scanning, setScanning] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  // Findings come from the shared store, so the workspace tsc scan, the
+  // instant structural scan and every language server (pyright, clangd,
+  // rust-analyzer, …) all land side by side, each keeping its source tag.
+  const { scanning, note, rescan } = useWorkspaceDiagnostics(root);
+  const groups = useAllDiagnostics();
+  const servers = useSyncExternalStore(subscribeLspStatus, getLspStatuses);
 
-  const scan = useCallback(async () => {
-    if (!root || scanning) return;
-    setScanning(true);
-    setNote(null);
-    try {
-      const res = await invoke<RunResult>("run_command", {
-        command: "npx tsc --noEmit --pretty false",
-        cwd: root,
-        timeout_secs: 120,
-      });
-      const combined = `${res.stdout}\n${res.stderr}`;
-      const found: Problem[] = [];
-      for (const raw of combined.split(/\r?\n/)) {
-        const m = TSC_LINE.exec(raw.trim());
-        if (!m) continue;
-        const relPath = m[1].replace(/\\/g, "/");
-        found.push({
-          file: `${root.replace(/[\\/]+$/, "")}/${relPath}`,
-          line: parseInt(m[2], 10),
-          col: parseInt(m[3], 10),
-          severity: m[4] === "error" ? "error" : "warning",
-          code: m[5],
-          message: m[6],
-        });
+  const counts = useMemo(() => {
+    let errors = 0;
+    let warnings = 0;
+    for (const g of groups) {
+      for (const d of g.items) {
+        if (d.severity === "error") errors++;
+        else if (d.severity === "warning") warnings++;
       }
-      setProblems(found);
-      const errs = found.filter((p) => p.severity === "error").length;
-      const warns = found.length - errs;
-      onCount?.(errs, warns);
-      logToBus(
-        "Problems",
-        `tsc --noEmit → ${errs} error(s), ${warns} warning(s)` +
-          (res.timedOut ? " (scan timed out)" : "")
-      );
-      if (found.length === 0 && res.exitCode !== 0 && !/error TS/i.test(combined)) {
-        setNote(
-          res.timedOut
-            ? "Scan timed out after 120 s."
-            : combined.trim().slice(0, 200) ||
-                "TypeScript scan produced no report (is this a TS project?)."
-        );
-      }
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e));
     }
-    setScanning(false);
-  }, [root, scanning, onCount]);
-
-  /** Run a scan on demand. An effect event so the workspace-change effect
-   *  below can depend on `root` alone instead of `scan`'s changing identity. */
-  const runScan = useEffectEvent(() => {
-    void Promise.resolve().then(() => scan());
-  });
+    return { errors, warnings };
+  }, [groups]);
 
   useEffect(() => {
-    runScan();
-  }, [root]);
-
-  const errors = problems.filter((p) => p.severity === "error");
-  const warnings = problems.filter((p) => p.severity === "warning");
-
-  // Group findings by file, preserving first-seen order.
-  const byFile = new Map<string, Problem[]>();
-  for (const p of problems) {
-    const list = byFile.get(p.file) ?? [];
-    list.push(p);
-    byFile.set(p.file, list);
-  }
+    onCount?.(counts.errors, counts.warnings);
+  }, [counts, onCount]);
 
   return (
     <div className="flex h-full flex-col">
@@ -127,18 +65,36 @@ export default function ProblemsPanel({
           ) : (
             <>
               <span className="flex items-center gap-1 text-[#e5534b]">
-                <IoAlertCircle size={12} /> {errors.length} errors
+                <IoAlertCircle size={12} /> {counts.errors} errors
               </span>
-              <span className="text-[#e2b93d]">{warnings.length} warnings</span>
-              {!root && <span className="text-[var(--text-muted)]">No workspace open</span>}
+              <span className="text-[#e2b93d]">{counts.warnings} warnings</span>
+              {!root && (
+                <span className="text-[var(--text-muted)]">No workspace open</span>
+              )}
             </>
           )}
+          {/* Language-server chips: which servers are live for this workspace.
+              Hover for the install hint (missing) or the crash reason (failed). */}
+          {servers.map((s) => (
+            <span
+              key={s.id}
+              title={
+                s.detail ??
+                `${s.label} language server (${s.state})`
+              }
+              className={`flex items-center gap-1 rounded-full border border-(--border) px-1.5 py-px text-[10px] ${SERVER_STATE_CLASS[s.state] ?? ""}`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+              {s.label}
+              {s.state === "missing" ? " (install)" : ""}
+            </span>
+          ))}
         </div>
         <button
           type="button"
-          onClick={() => void scan()}
+          onClick={() => rescan()}
           disabled={scanning || !root}
-          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)] disabled:pointer-events-none disabled:opacity-40"
+          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-(--text-primary) disabled:pointer-events-none disabled:opacity-40"
         >
           <IoRefresh size={12} />
           Re-scan
@@ -152,47 +108,60 @@ export default function ProblemsPanel({
             {note}
           </p>
         )}
-        {problems.length === 0 && !scanning && !note && (
+        {groups.length === 0 && !scanning && !note && (
           <p className="px-2 py-2 text-[11.5px] text-[var(--text-muted)]">
             No problems detected — nice and clean.
           </p>
         )}
-        {[...byFile.entries()].map(([file, list]) => (
-          <div key={file} className="mb-1">
+        {groups.map((g) => (
+          <div key={g.file} className="mb-1">
             <div className="flex items-center gap-1.5 px-1.5 py-1 text-[var(--text-secondary)]">
               <IoAlertCircle
                 size={11}
                 className={
-                  list.some((p) => p.severity === "error")
+                  g.items.some((d) => d.severity === "error")
                     ? "text-[#e5534b]"
                     : "text-[#e2b93d]"
                 }
               />
-              <span className="truncate">{file.split(/[\\/]/).pop()}</span>
+              <span className="truncate">{g.file.split(/[\\/]/).pop()}</span>
               <span className="shrink-0 truncate text-[10px] text-[var(--text-muted)]">
-                {file}
+                {g.file}
               </span>
             </div>
-            {list.map((p, i) => (
+            {g.items.map((d, i) => (
               <button
-                key={`${p.line}-${i}`}
+                key={`${d.line}-${d.col}-${d.code}-${i}`}
                 type="button"
-                onClick={() => onOpenFile(p.file, p.line)}
+                onClick={() => onOpenFile(g.file, d.line)}
                 className="group flex w-full items-start gap-2 rounded-md py-1 pl-6 pr-3 text-left transition hover:bg-(--fill-2)"
-                title={`Go to ${p.file}:${p.line}`}
+                title={`Go to ${g.file}:${d.line} — via ${
+                  d.source === "lsp"
+                    ? "language server"
+                    : d.source === "tsc"
+                      ? "tsc"
+                      : "built-in scan"
+                }`}
               >
                 <span
                   className={`mt-px shrink-0 ${
-                    p.severity === "error" ? "text-[#e5534b]" : "text-[#e2b93d]"
+                    d.severity === "error"
+                      ? "text-[#e5534b]"
+                      : d.severity === "warning"
+                        ? "text-[#e2b93d]"
+                        : "text-[var(--text-muted)]"
                   }`}
                 >
-                  {p.severity === "error" ? "✕" : "⚠"}
+                  {d.severity === "error" ? "✕" : d.severity === "warning" ? "⚠" : "ℹ"}
                 </span>
                 <span className="min-w-0 flex-1 text-[var(--text-primary)]">
-                  {p.message} <span className="text-[var(--text-muted)]">({p.code})</span>
+                  {d.message}{" "}
+                  {d.code && (
+                    <span className="text-[var(--text-muted)]">({d.code})</span>
+                  )}
                 </span>
                 <span className="shrink-0 text-[10px] text-[var(--text-muted)] group-hover:text-(--accent)">
-                  [Ln {p.line}, Col {p.col}]
+                  {d.source === "lsp" ? "LSP" : d.source} · [Ln {d.line}, Col {d.col}]
                 </span>
               </button>
             ))}
@@ -202,5 +171,4 @@ export default function ProblemsPanel({
     </div>
   );
 }
-
 

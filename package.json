@@ -13,6 +13,8 @@
     "release:notes": "node scripts/generate-release-notes.mjs",
     "version": "node scripts/generate-release-notes.mjs",
     "lint": "eslint .",
+    "test:lsp": "node scripts/verify-lsp.mjs",
+    "test:editor-diag": "node scripts/verify-editor-diag.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },
