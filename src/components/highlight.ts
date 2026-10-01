@@ -7,8 +7,8 @@
 const EXT_LANG: Record<string, string> = {
   ts: "typescript", tsx: "typescript", mts: "typescript",
   js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
-  json: "json", jsonc: "json",
-  css: "css", scss: "css", less: "css",
+  json: "json", jsonc: "jsonc",
+  css: "css", scss: "scss", less: "less",
   html: "html", htm: "html", xml: "html", svg: "html",
   py: "python", pyw: "python",
   rs: "rust",
@@ -102,14 +102,62 @@ const KEYWORDS: Record<string, Set<string>> = {
 };
 
 const HASH_COMMENTS = new Set(["python", "shell", "yaml", "toml", "ruby"]);
+/** `//` line comments (json/jsonc included: tooling configs carry them and
+ *  the editor toggles them there too). */
+const SLASH_COMMENTS = new Set([
+  "typescript", "javascript", "rust", "go", "java", "c", "cpp", "csharp",
+  "php", "swift", "kotlin", "scss", "less", "jsonc", "json",
+]);
+/** `--` line comments. */
+const DASH_COMMENTS = new Set(["sql"]);
+/** Languages with slash-star block comments (CSS, SCSS, LESS, JSON family). */
+const SLASH_BLOCK = new Set([...SLASH_COMMENTS, "css", "scss", "less"]);
+/** Markup languages whose block comments are the angle-bracket pair. */
+const MARKUP_LANGS = new Set(["html", "xml", "markdown"]);
+/** Languages whose `/` can open a regex literal — so a `//` inside a
+ *  pattern is never mistaken for a comment. */
+const REGEX_LANGS = new Set([
+  "typescript", "javascript", "rust", "go", "java", "c", "cpp", "csharp",
+  "php", "swift", "kotlin", "scss", "less",
+]);
+/** Keywords after which `/` starts a regex or a value (e.g. `return /x/`). */
+const EXPRESSION_KEYWORDS = new Set([
+  "return", "typeof", "instanceof", "in", "of", "new", "delete", "void",
+  "do", "else", "yield", "await", "case", "throw",
+]);
+
+/** Characters after which an expression (regex literal, string, template)
+ *  may start. Empty string = start of input; "(" doubles as the marker for
+ *  "an expression keyword came before". `}` is deliberately absent: after a
+ *  brace a `/` is division or a JSX `/>`, never a regex. */
+const EXPRESSION_PREV = "(,=:[!&|?;+-*%<>^~{";
+
+/** Whether a `/` (or a quote) following `prev` starts an expression. */
+export function startsExpression(prev: string): boolean {
+  return prev === "" || EXPRESSION_PREV.includes(prev);
+}
 
 /** Line-comment token for a language, or null when unsupported. */
-export function commentToken(lang: string): string | null {
+export function lineCommentToken(lang: string): string | null {
   if (HASH_COMMENTS.has(lang)) return "#";
-  if (["typescript", "javascript", "rust", "go", "java", "c", "cpp", "csharp",
-    "php", "swift", "kotlin"].includes(lang)) return "//";
-  if (lang === "sql") return "--";
+  if (SLASH_COMMENTS.has(lang)) return "//";
+  if (DASH_COMMENTS.has(lang)) return "--";
   return null;
+}
+
+/** Block-comment pair for languages that have no line comment (CSS, HTML/
+ *  XML, Markdown). Drives the editor's Ctrl+/ toggle. */
+export function blockCommentTokens(
+  lang: string
+): { open: string; close: string } | null {
+  if (MARKUP_LANGS.has(lang)) return { open: "<!--", close: "-->" };
+  if (SLASH_BLOCK.has(lang)) return { open: "/*", close: "*/" };
+  return null;
+}
+
+/** Original single-token API — kept for callers written against it. */
+export function commentToken(lang: string): string | null {
+  return lineCommentToken(lang);
 }
 
 /** Accent colour for a path's language — used for tab underlines etc. */
@@ -198,7 +246,7 @@ function isWordStart(c: string): boolean {
   );
 }
 
-function isWordChar(c: string): boolean {
+export function isWordChar(c: string): boolean {
   return isWordStart(c) || (c >= "0" && c <= "9");
 }
 
@@ -345,14 +393,20 @@ export function highlightWindow(
 
 function tokenize(code: string, lang: string): string {
   const kw = KEYWORDS[lang];
-  const hashCom = HASH_COMMENTS.has(lang);
+  const lineTok = lineCommentToken(lang);
+  const regexLang = REGEX_LANGS.has(lang);
   const isMarkup = lang === "html" || lang === "xml";
+  const markupBlock = MARKUP_LANGS.has(lang);
   const isMd = lang === "markdown";
 
   let out = "";
   let buf = "";
   let i = 0;
   const n = code.length;
+  /** Last significant character ("" = start, "(" after an expression
+   *  keyword). Comments and whitespace never move it — this is what tells a
+   *  `/` that opens a regex literal from one that divides. */
+  let prev = "";
 
   const flush = () => {
     if (buf) {
@@ -378,8 +432,48 @@ function tokenize(code: string, lang: string): string {
       continue;
     }
 
+    // Regex literals: /.../flags. Checked before the comment rules so a
+    // `//` inside a pattern (e.g. /https?:\/\//) is not read as a line
+    // comment that swallows the rest of the line.
+    if (
+      regexLang &&
+      c === "/" &&
+      i + 1 < n &&
+      code[i + 1] !== "/" &&
+      code[i + 1] !== "*" &&
+      startsExpression(prev)
+    ) {
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < n) {
+        const d = code[j];
+        if (d === BS_CH && j + 1 < n) {
+          j += 2;
+          continue;
+        }
+        if (d === LF) break;
+        if (d === "[") inClass = true;
+        else if (d === "]") inClass = false;
+        else if (d === "/" && !inClass) {
+          j++;
+          closed = true;
+          break;
+        }
+        j++;
+      }
+      if (closed) {
+        while (j < n && isWordChar(code[j])) j++; // flags
+        push(COLORS.str, code.slice(i, j));
+        prev = "x";
+        i = j;
+        continue;
+      }
+      // Unterminated on this line: fall through — the `/` is an operator.
+    }
+
     // Block comments: /* */ and <!-- -->.
-    if (two === "/*" || (isMarkup && code.slice(i, i + 4) === "<!--")) {
+    if (two === "/*" || (markupBlock && code.slice(i, i + 4) === "<!--")) {
       const end = two === "/*" ? "*/" : "-->";
       let j = code.indexOf(end, i + 2);
       j = j === -1 ? n : j + end.length;
@@ -388,8 +482,12 @@ function tokenize(code: string, lang: string): string {
       continue;
     }
 
-    // Line comments: // or # (language-dependent).
-    if (two === "//" || (hashCom && c === "#")) {
+    // Line comments: //, # or -- (language-dependent).
+    if (
+      (lineTok === "//" && two === "//") ||
+      (lineTok === "#" && c === "#") ||
+      (lineTok === "--" && two === "--")
+    ) {
       let j = code.indexOf(LF, i);
       if (j === -1) j = n;
       push(COLORS.com, code.slice(i, j), true);
@@ -412,6 +510,7 @@ function tokenize(code: string, lang: string): string {
         j++;
       }
       push(COLORS.str, code.slice(i, j));
+      prev = "x";
       i = j;
       continue;
     }
@@ -421,6 +520,7 @@ function tokenize(code: string, lang: string): string {
       let j = i + 1;
       while (j < n && isWordChar(code[j])) j++;
       push(COLORS.tag, code.slice(i, j));
+      prev = "x";
       i = j;
       continue;
     }
@@ -430,6 +530,7 @@ function tokenize(code: string, lang: string): string {
       let j = i;
       while (j < n && ((code[j] >= "0" && code[j] <= "9") || code[j] === ".")) j++;
       push(COLORS.num, code.slice(i, j));
+      prev = "x";
       i = j;
       continue;
     }
@@ -444,11 +545,13 @@ function tokenize(code: string, lang: string): string {
       if (kw?.has(word)) push(COLORS.kw, word);
       else if (code[k] === "(") push(COLORS.fn, word);
       else buf += word;
+      prev = EXPRESSION_KEYWORDS.has(word) ? "(" : "x";
       i = j;
       continue;
     }
 
     buf += c;
+    if (c !== " " && c !== TAB && c !== LF && c !== "\r") prev = c;
     i++;
   }
   flush();

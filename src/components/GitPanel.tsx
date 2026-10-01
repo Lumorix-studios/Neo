@@ -411,15 +411,15 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
   const hasRemote = remotes.length > 0;
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-(--border) bg-[var(--bg-chrome)]">
+    <aside className="flex h-full w-64 shrink-0 flex-col bg-[var(--bg-chrome)]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-(--border) px-3">
+      {/* <div className="flex h-10 shrink-0 items-center justify-between border-(--border) px-3">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
-          <IoGitNetwork size={13} />
-          Source Control
+          
+          
         </div>
-        <div className="flex items-center gap-0.5">
-          {busy && (
+        {/* <div className="flex items-center gap-0.5">
+          {/* {busy && (
             <IoReloadOutline className="mr-1 h-3 w-3 animate-spin text-[var(--text-muted)]" />
           )}
           <IconButton title="Refresh status" onClick={() => void refresh()} disabled={busy}>
@@ -427,9 +427,9 @@ function GitPanel({ root, onClose, onOpenFile }: GitPanelProps) {
           </IconButton>
           <IconButton title="Close source control" onClick={onClose}>
             <IoClose size={14} />
-          </IconButton>
-        </div>
-      </div>
+          </IconButton> 
+            </div> 
+      </div> */}
 
       {fatal ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
