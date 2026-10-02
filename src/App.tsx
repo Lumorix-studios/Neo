@@ -7,7 +7,7 @@
 //cant guarantee that this codebase is free of bugs or security vulnerabilities. Use at your own risk. The author is not responsible for any damage or loss caused by the use of this codebase.
 //also cant assure you this will always stay opensource
 //       last modified : 9/24/26
-import { lazy, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useCallback } from "react";
+import { lazy, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -120,7 +120,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
-import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoChevronDown, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSettings, /*IoInformation*/ IoPersonCircleOutline } from "react-icons/io5";
+import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSettings, /*IoInformation*/ IoPersonCircleOutline } from "react-icons/io5";
 import { shortPath } from "./utils";
 // import IdeMenuBar from "./components/IdeMenuBar.tsx";
 
@@ -138,6 +138,10 @@ const NL = String.fromCharCode(10);
 interface StreamRoundResult {
   text: string;
   nativeCalls: ToolCall[];
+  /** Exact prompt (input) tokens the provider reported for this round — i.e. the
+   *  true size of the context that was sent (system prompt + full history +
+   *  tool schemas). `0` when the provider returned no usage counters. */
+  usageIn?: number;
 }
 
 function truncateToolOutput(output: string): string {
@@ -233,9 +237,16 @@ function deriveTitle(messages: Message[]): string {
 const SHARED_WS_KEY = "neo.ide.workspaceRoot";
 
 /** Parse a PromptBar model key of the form `providerId:modelName`
- *  (e.g. `"openai:gpt-4o"`) back into its provider + model.
- *  Falls back to the provider's default model and the current settings'
- *  provider when the key is missing or malformed. */
+ *  (e.g. `"openai:gpt-4o"`) back into its provider + model. Returns `null` when
+ *  the key is malformed or names a provider we don't know, so callers can no-op
+ *  instead of switching the app to a bogus provider. */
+function parseProviderKey(key: string): { provider: ProviderId; model: string } | null {
+  const idx = key.indexOf(":");
+  if (idx <= 0) return null;
+  const provider = key.slice(0, idx) as ProviderId;
+  if (!PROVIDER_OPTIONS.some((p) => p.id === provider)) return null;
+  return { provider, model: key.slice(idx + 1).trim() };
+}
 /** Resolved once per process — the Rust side reports the version this binary
  *  was built as, so it cannot change while the app is running. */
 const APP_VERSION = invoke<string>("get_app_version");
@@ -280,12 +291,13 @@ const CONTEXT_LIMITS: Array<[string, number]> = [
   ["claude", 200000],
   ["gemini-2.5-pro", 1048576],
   ["gemini-2.5-flash", 1048576],
+  ["gemini-1.5", 1048576],
   ["gemini", 32768],
   ["deepseek", 65536],
   ["qwen", 32768],
   ["mistral", 32768],
   ["grok", 131072],
-  ["llama", 8192],
+  ["llama", 131072], // Llama 3.x is 128k — 8k made modern models look ~16× too full
 ];
 
 /** Small icon used on the welcome-screen action cards. */
@@ -354,7 +366,6 @@ function MessageAction({
 }
 
 export default function App() {
-  const [modelOpen, setModelOpen] = useState(false);
   // const [onOpenTerminal, setOpenTerminal] = useState(false);
   // Which tab of the bottom dock is visible (terminal/problems/debug/…).
   // const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
@@ -415,6 +426,10 @@ export default function App() {
   const [message, setMessage] = useState("");
   const effortTokensRef = useRef(outputTokensForEffort("Medium"));
   const [messages, setMessages] = useState<Message[]>([]);
+  // Exact prompt-token count the provider reported for the most recent round of
+  // THIS conversation (0 = not measured yet → fall back to the char estimate).
+  // Kept in component state, so it survives switching provider/model mid-chat.
+  const [ctxReported, setCtxReported] = useState(0);
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [restored, setRestored] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -516,14 +531,68 @@ export default function App() {
 
   const spec: ProviderSpec = getProviderSpec(settings);
 
-  // --- Model overview: estimated token usage vs. the model's context window ---
+  // --- Context-window usage -------------------------------------------------
+  // `ctxReported` is the exact prompt-token count the provider gave us for the
+  // last completed round — the real size of the context that was sent (system
+  // prompt + full history + tool schemas). Because the conversation lives in
+  // `messages`, this number follows it when you switch AI models mid-chat; each
+  // new turn just refreshes the reading. Until the first reading lands we fall
+  // back to a char/4 estimate (shown with a leading `~`).
   const ctxLimit = contextLimitFor(settings.model);
   const estTokens = (() => {
     let chars = settings.systemPrompt.length + 800; // headroom for agent prompt
     for (const m of messages) chars += m.content.length;
     return Math.ceil(chars / 4);
   })();
-  const ctxPct = Math.min(100, Math.round((estTokens / ctxLimit) * 100));
+  const ctxIsReal = ctxReported > 0;
+  const ctxTokens = ctxIsReal ? ctxReported : estTokens;
+  const ctxPct = Math.min(100, Math.round((ctxTokens / ctxLimit) * 100));
+
+  // --- PromptBar model menu: switch providers straight from the composer ---
+  /** Rows for the PromptBar model menu — the active model first, then every
+   *  other provider's default model. Picking one switches provider + model
+   *  (this used to live in a pill in the top menu). */
+  const promptModels = useMemo(() => {
+    const rows: { key: string; name: string; tag?: string }[] = [
+      {
+        key: `${settings.provider}:${settings.model}`,
+        name: settings.model || spec.label,
+        tag: spec.label,
+      },
+    ];
+    for (const option of PROVIDER_OPTIONS) {
+      if (option.id === settings.provider) continue;
+      const provider = providerById(option.id);
+      rows.push({
+        key: `${option.id}:${provider.defaultModel}`,
+        name: provider.defaultModel || provider.label,
+        tag: provider.label,
+      });
+    }
+    return rows;
+  }, [settings.provider, settings.model, spec.label]);
+
+  /** Switch provider/model from the PromptBar. Mirrors the Settings panel:
+   *  adopt the new provider's default endpoint, then persist to disk and to the
+   *  active session so its tab remembers the model. */
+  const handlePromptModelChange = (key: string) => {
+    const parsed = parseProviderKey(key);
+    if (!parsed || parsed.provider === settings.provider) return;
+    const next = providerById(parsed.provider);
+    const updated: AISettings = {
+      ...settings,
+      provider: parsed.provider,
+      baseUrl: next.defaultBaseUrl,
+      model: parsed.model || next.defaultModel,
+    };
+    setSettings(updated);
+    void saveSettings(updated);
+    if (activeSessionId) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === activeSessionId ? { ...s, settings: updated } : s))
+      );
+    }
+  };
 
   /** Global shortcut body. Declared as an effect event so it always sees the
    *  latest refs/state while the listener itself is registered only once. */
@@ -972,6 +1041,7 @@ export default function App() {
     // messages or the previous run's tool rows linger in the new chat.
     setActivities([]);
     setMessages([]);
+    setCtxReported(0);
     setError(null);
     setActiveSessionId(null);
     setIsLoading(false);
@@ -989,6 +1059,7 @@ export default function App() {
     // on switch too — otherwise the previous chat's tool feed shows up here.
     setActivities([]);
     setMessages(sanitizeHistory(session.messages));
+    setCtxReported(0);
     // Restore the AI provider/model this tab was using (fall back to global).
     if (session.settings) {
       setSettings(session.settings);
@@ -1006,6 +1077,7 @@ export default function App() {
       setActivities([]);
       setPendingApproval(null);
       setMessages([]);
+      setCtxReported(0);
     }
   };
 
@@ -1348,7 +1420,11 @@ ${promptSuffix}` : ""}`,
           sawUsage && usageIn > 0 ? usageIn : estimateTokens(JSON.stringify(body)),
           sawUsage && usageOut > 0 ? usageOut : estimateTokens(s.extractContent(data))
         );
-        return { text: s.extractContent(data), nativeCalls: nativeAccToCalls(acc0) };
+        return {
+          text: s.extractContent(data),
+          nativeCalls: nativeAccToCalls(acc0),
+          usageIn: sawUsage && usageIn > 0 ? usageIn : 0,
+        };
       }
       return { text: "", nativeCalls: [] };
     }
@@ -1389,8 +1465,12 @@ ${promptSuffix}` : ""}`,
             ingestNativeChunk(json, nativeAcc);
             const u = s.extractUsage?.(json);
             if (u && (u.input != null || u.output != null)) {
-              usageIn += u.input ?? 0;
-              usageOut += u.output ?? 0;
+              // Counters are cumulative (Anthropic `message_start`/`message_delta`,
+              // Google's per-chunk `usageMetadata`, OpenAI's final `include_usage`
+              // chunk), so keep the latest reading instead of summing — summing
+              // would multiply the total by every chunk that carried it.
+              if (u.input != null) usageIn = u.input;
+              if (u.output != null) usageOut = u.output;
               sawUsage = true;
             }
             const delta = s.extractDelta(json);
@@ -1477,7 +1557,11 @@ ${promptSuffix}` : ""}`,
         sawUsage && usageOut > 0 ? usageOut : estimateTokens(round)
       );
     }
-    return { text: round, nativeCalls: nativeAccToCalls(nativeAcc) };
+    return {
+      text: round,
+      nativeCalls: nativeAccToCalls(nativeAcc),
+      usageIn: sawUsage && usageIn > 0 ? usageIn : 0,
+    };
   };
   const handleAnimationComplete = () => {
     console.log('Animation completed!');
@@ -1730,6 +1814,10 @@ MCP call rules:
           mcpTools
         );
         if (abortCtrl.signal.aborted) break;
+        // Adopt the provider's exact context size for the pill/readout. The
+        // conversation itself lives in `messages`, so this value follows it
+        // across model switches; each new round just refreshes the number.
+        if (round.usageIn && round.usageIn > 0) setCtxReported(round.usageIn);
         const raw = round.text;
         if (raw.trim().length > 0 || round.nativeCalls.length > 0) sawRawOutput = true;
 
@@ -2216,94 +2304,8 @@ MCP call rules:
           onCheckForUpdates={() => void runUpdateCheck(true)}
           right={
             <>
-              {/* Provider / model pill */}
-              <div className="relative min-w-0 max-w-full">
-                <button
-                  type="button"
-                  onClick={() => setModelOpen((v) => !v)}
-                  title="Switch AI provider"
-                  className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md  bg-(--fill-1) px-2 py-[3px] text-[11px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
-                >
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      settings.apiKey || !spec.needsAuth ? "bg-emerald-500" : "bg-zinc-600"
-                    }`}
-                  />
-                  <span className="min-w-0 max-w-[min(22vw,150px)] flex-1 truncate">
-                    {settings.model || spec.label}
-                  </span>
-                  {!settings.apiKey && spec.needsAuth && (
-                    <span className="hidden shrink-0 whitespace-nowrap text-[var(--text-muted)] sm:inline">
-                      (not configured)
-                    </span>
-                  )}
-                  <IoChevronDown size={10} className="shrink-0" />
-                </button>
-                {modelOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1.5 w-72 rounded-lg border border-(--border-strong) bg-[var(--bg-elevated)] p-1 shadow-[0_10px_32px_rgba(0,0,0,0.5)]">
-                    <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-                      AI Provider
-                    </div>
-                    {PROVIDER_OPTIONS.map((p) => (
-                      <button
-                        key={p.id}
-                        className={`flex w-full items-center justify-between rounded-md px-2.5 py-[6px] text-left text-[12px] transition-colors hover:bg-(--fill-2) ${
-                          settings.provider === p.id ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
-                        }`}
-                        onClick={() => {
-                          const next = providerById(p.id);
-                          const updated = {
-                            ...settings,
-                            provider: p.id,
-                            baseUrl: next.defaultBaseUrl,
-                            model: next.defaultModel,
-                          };
-                          setSettings(updated);
-                          void saveSettings(updated);
-                          // Persist to the active session too.
-                          if (activeSessionId) {
-                            setSessions((prev) =>
-                              prev.map((s) =>
-                                s.id === activeSessionId ? { ...s, settings: updated } : s
-                              )
-                            );
-                          }
-                          setModelOpen(false);
-                        }}
-                      >
-                        <span>{p.label}</span>
-                        {settings.provider === p.id && (
-                          <span className="text-[10px] text-emerald-400">●</span>
-                        )}
-                      </button>
-                    ))}
-
-                    {/* Model overview */}
-                    <div className="mt-1 border-t border-(--border) px-2 pb-1 pt-2">
-                      <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-                        <span>Context window</span>
-                        <span className="tabular-nums">
-                          ~{formatTokens(estTokens)} / {formatTokens(ctxLimit)} tok
-                        </span>
-                      </div>
-                      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-(--fill-2)">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            ctxPct > 85 ? "bg-red-400" : ctxPct > 60 ? "bg-amber-400" : "bg-(--accent)"
-                          }`}
-                          style={{ width: `${Math.max(2, ctxPct)}%` }}
-                        />
-                      </div>
-                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--text-faint)]">
-                        <span>
-                          {messages.length} message{messages.length === 1 ? "" : "s"}
-                        </span>
-                        <span>{spec.label}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Provider/model switching moved to the PromptBar (composer); the
+                  context-window readout now renders in the chat's context strip. */}
               {/* New chat */}
               <button
                 type="button"
@@ -2400,6 +2402,34 @@ MCP call rules:
               {!workspaceRoot && !activeEditorPath && (
                 <span className="text-[var(--text-secondary)] text-[10px] italic">No active workspace</span>
               )}
+              {/* Context-window usage — lives with the chat (it used to be a
+                  dropdown inside the top-menu provider pill) and ticks up live
+                  while a reply streams. */}
+              <div className="ml-auto flex shrink-0 items-center gap-2 pl-4">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                  Tokens:
+                </span>
+                <span
+                  className="tabular-nums text-[10px] text-[var(--text-secondary)]"
+                  title={
+                    ctxIsReal
+                      ? "Exact prompt tokens the provider reported for this conversation, vs. the model's context window"
+                      : "Estimated from message length — the exact count appears here once the provider reports usage for this chat"
+                  }
+                >
+                  {ctxIsReal ? "" : "~"}
+                  {formatTokens(ctxTokens)} / {formatTokens(ctxLimit)}
+                </span>
+                <div className="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-(--fill-2)">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      ctxPct > 85 ? "bg-red-400" : ctxPct > 60 ? "bg-amber-400" : "bg-(--accent)"
+                    }`}
+                    style={{ width: `${Math.max(3, ctxPct)}%` }}
+                  />
+                </div>
+                <span className="tabular-nums text-[10px] text-[var(--text-faint)]">{ctxPct}%</span>
+              </div>
             </div>
 
             <div
@@ -2656,8 +2686,9 @@ MCP call rules:
                       ? "Ask the agent to fix, refactor, or build..."
                       : "Configure your API key in Settings to start chatting"
                   }
-                  models={[{ key: `${settings.provider}:${settings.model}`, name: settings.model }]}
+                  models={promptModels}
                   defaultModel={`${settings.provider}:${settings.model}`}
+                  onModelChange={handlePromptModelChange}
                   defaultEffort="Medium"
                   className="w-full"
                 />

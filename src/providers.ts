@@ -452,6 +452,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       temperature: s.temperature,
       max_tokens: opts?.maxOutputTokens,
       stream: true,
+      // Ask for the exact token counts on the final SSE chunk.
+      stream_options: { include_usage: true },
       ...(opts?.enableTools && !nativeToolsUnsupported(s)
         ? { tools: openAiTools(opts), tool_choice: "auto" }
         : {}),
@@ -491,6 +493,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       temperature: s.temperature,
       max_tokens: opts?.maxOutputTokens,
       stream: true,
+      // Ask for the exact token counts on the final SSE chunk.
+      stream_options: { include_usage: true },
       ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {
@@ -524,6 +528,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
       temperature: s.temperature,
       max_tokens: opts?.maxOutputTokens,
       stream: true,
+      // Ask for the exact token counts on the final SSE chunk.
+      stream_options: { include_usage: true },
       ...(opts?.enableTools ? { tools: openAiTools(opts), tool_choice: "auto" } : {}),
     }),
     extractDelta: (j) => {

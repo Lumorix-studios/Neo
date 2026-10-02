@@ -428,8 +428,10 @@ export default memo(function AgentPanel({
         ingestNativeChunk(json, nativeAcc);
         const u = s.extractUsage?.(json);
         if (u && (u.input != null || u.output != null)) {
-          usageIn += u.input ?? 0;
-          usageOut += u.output ?? 0;
+          // Counters are cumulative across chunks — keep the latest reading
+          // rather than summing (summing multiplies the true total).
+          if (u.input != null) usageIn = u.input;
+          if (u.output != null) usageOut = u.output;
           sawUsage = true;
         }
         const delta = s.extractDelta(json);

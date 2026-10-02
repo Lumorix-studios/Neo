@@ -66,6 +66,10 @@ export interface PromptBarProps {
   efforts?: string[];
   defaultEffort?: string;
   onEffortChange?: (effort: string) => void;
+  /** Fires when the user picks a different row in the model menu. The key is
+   *  whatever the host supplied in `models[].key` (App uses `providerId:model`),
+   *  so the host can switch provider + model right from the composer. */
+  onModelChange?: (key: string) => void;
   disabled?: boolean;
   busy?: boolean;
   onSend?: (text: string, detail: PromptBarSendDetail) => void;
@@ -97,7 +101,10 @@ type Row = {
   attach?: boolean;
 };
 type Token = { kind: 'at' | 'slash'; query: string; start: number };
-type Latest = Pick<PromptBarProps, 'onSend' | 'onStop' | 'onAttach' | 'onDictate' | 'onEffortChange'>;
+type Latest = Pick<
+  PromptBarProps,
+  'onSend' | 'onStop' | 'onAttach' | 'onDictate' | 'onEffortChange' | 'onModelChange'
+>;
 type Spark = {
   x: number;
   y: number;
@@ -224,6 +231,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   efforts = DEFAULT_EFFORTS,
   defaultEffort = '',
   onEffortChange,
+  onModelChange,
   disabled = false,
   busy = false,
   onSend,
@@ -256,7 +264,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const lastOpen = useRef<string | null>(null);
   const dictation = useRef(0);
   const latest = useRef<Latest>({});
-  latest.current = { onSend, onStop, onAttach, onDictate, onEffortChange };
+  latest.current = { onSend, onStop, onAttach, onDictate, onEffortChange, onModelChange };
 
   const [internalDraft, setInternalDraft] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -485,6 +493,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const pick = (row: Row) => {
     if (open === 'model') {
       setModelKey(row.key);
+      latest.current.onModelChange?.(row.key);
       setModelOpen(false);
       focusInput();
       return;
@@ -596,7 +605,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
       <style>{STYLE}</style>
       {open ? (
         <div
-          className="absolute inset-x-0 bottom-[calc(100%+8px)] z-[2] origin-bottom rounded-xl p-1 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.08)] [animation:prompt-bar-pop_180ms_cubic-bezier(0.23,1,0.32,1)_both] [background:var(--pb-menu)] data-[kind=model]:right-auto data-[kind=model]:w-[200px] data-[kind=model]:origin-bottom-left data-[kind=effort]:right-auto data-[kind=effort]:w-[248px] data-[kind=effort]:origin-bottom-left data-[kind=effort]:px-3.5 data-[kind=effort]:pt-3 data-[kind=effort]:pb-3.5 motion-reduce:[animation:none]"
+          className="absolute inset-x-0 bottom-[calc(100%+8px)] z-[2] origin-bottom rounded-xl p-1 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.08)] [animation:prompt-bar-pop_180ms_cubic-bezier(0.23,1,0.32,1)_both] [background:var(--pb-menu)] data-[kind=model]:right-auto data-[kind=model]:w-[min(256px,100%)] data-[kind=model]:origin-bottom-left data-[kind=model]:max-h-[min(300px,55vh)] data-[kind=model]:overflow-y-auto data-[kind=effort]:right-auto data-[kind=effort]:w-[248px] data-[kind=effort]:origin-bottom-left data-[kind=effort]:px-3.5 data-[kind=effort]:pt-3 data-[kind=effort]:pb-3.5 motion-reduce:[animation:none]"
           role={open === 'effort' ? 'dialog' : 'listbox'}
           aria-label={
             open === 'at' ? 'Sources' : open === 'slash' ? 'Commands' : open === 'model' ? 'Models' : 'Effort'
@@ -681,7 +690,18 @@ const PromptBar: React.FC<PromptBarProps> = ({
                       {renderIcon(row.icon, 15)}
                     </span>
                   ) : null}
-                  <span className="flex-none text-[13px] font-medium">{row.name}</span>
+                  {/* Model rows pair a (long) model name with its provider tag,
+                      so the name must be the flexible one and ellipsize — a
+                      fixed-width name overflowed the old 200px menu panel. */}
+                  <span
+                    className={
+                      open === 'model'
+                        ? 'min-w-0 flex-1 truncate text-[13px] font-medium'
+                        : 'flex-none text-[13px] font-medium'
+                    }
+                  >
+                    {row.name}
+                  </span>
                   {row.description ? (
                     <span className="min-w-0 flex-auto truncate text-[12px] [color:color-mix(in_srgb,var(--pb-ink)_55%,transparent)]">
                       {row.description}
