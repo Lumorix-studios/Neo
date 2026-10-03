@@ -2330,6 +2330,33 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Linux only: wry leaves WebKitGTK on its *browser* cache defaults.
+            // WebKit documents WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER as the correct
+            // choice for non-browser applications, and the browser default has
+            // been implicated in flaky NetworkProcess loads — the WebKitGTK
+            // "WebKit encountered an internal error …
+            // internallyFailedLoadTimerFired" spam (WebKit bug 276312).
+            //
+            // Tauri passes no `data_directory`, so every window shares the one
+            // default WebKitWebContext: setting the model once covers all of
+            // them, including windows created later (e.g. the IDE window).
+            #[cfg(target_os = "linux")]
+            {
+                use webkit2gtk::{CacheModel, WebContextExt, WebViewExt};
+
+                for (label, window) in app.webview_windows() {
+                    let applied = window.with_webview(|webview| {
+                        if let Some(context) = webview.inner().context() {
+                            context.set_cache_model(CacheModel::DocumentViewer);
+                        }
+                    });
+                    if let Err(err) = applied {
+                        log::warn!("could not apply the WebKit cache model to '{label}': {err}");
+                    }
+                }
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())

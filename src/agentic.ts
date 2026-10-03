@@ -5,7 +5,6 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { debugLog } from "./debugLog";
 
 export type ToolName =
   | "read_file"
@@ -1539,14 +1538,9 @@ export function parseToolCalls(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
   const re = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
   let m: RegExpExecArray | null;
-  let xmlBlocks = 0;
-  let jsonOk = 0;
-  let jsonFail = 0;
   while ((m = re.exec(text)) !== null) {
-    xmlBlocks++;
     const inner = m[1].trim();
     if (tryParseJsonBlob(inner, calls)) {
-      jsonOk++;
       continue;
     }
     const fn = inner.match(/<function=([^>\s]+)>[\s\S]*?<\/function>/i) ?? inner.match(/^([a-zA-Z0-9_]+)\s*\n/);
@@ -1561,9 +1555,6 @@ export function parseToolCalls(text: string): ToolCall[] {
       } else {
         pushNamedCall(calls, name, argObj);
       }
-      jsonOk++;
-    } else {
-      jsonFail++;
     }
   }
 
@@ -1640,16 +1631,6 @@ export function parseToolCalls(text: string): ToolCall[] {
   // Bare JSON objects printed as plain text (no tags/fences at all).
   calls.push(...extractBareJsonCalls(text));
 
-  // #region agent log
-  debugLog("B", "agentic.ts:parseToolCalls", "parseToolCalls result", {
-    xmlBlocks,
-    jsonOk,
-    jsonFail,
-    callsFound: calls.length,
-    callNames: calls.map((c) => c.name),
-    textLen: text.length,
-  });
-  // #endregion
   return calls;
 }
 

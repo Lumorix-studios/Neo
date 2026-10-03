@@ -16,7 +16,6 @@ import {
   supabaseUrl,
   supabaseAnonKey,
 } from "./supabase";
-import { debugLog } from "../debugLog";
 
 export type AuthProvider = "github" | "google";
 
@@ -205,28 +204,12 @@ export async function getCurrentUser(): Promise<NeoUser | null> {
   const sb = supabase();
   if (!sb) return null;
   const { data, error } = await sb.auth.getSession();
-  // #region agent log
-  debugLog("C", "auth.ts:getCurrentUser", "session", {
-    configured: isSupabaseConfigured,
-    hasSession: !!data.session?.user,
-    userId: data.session?.user?.id ?? null,
-    sessionError: error?.message ?? null,
-  });
-  // #endregion
   if (error || !data.session?.user) return null;
-  const { data: profile, error: profileError } = await sb
+  const { data: profile } = await sb
     .from("profiles")
     .select("display_name, avatar_url")
     .eq("id", data.session.user.id)
     .maybeSingle();
-  // #region agent log
-  debugLog("A", "auth.ts:getCurrentUser", "profile select", {
-    userId: data.session.user.id,
-    hasProfile: !!profile,
-    profileError: profileError?.message ?? null,
-    profileCode: profileError?.code ?? null,
-  });
-  // #endregion
   return toNeoUser(data.session.user, profile ?? undefined);
 }
 
@@ -244,19 +227,6 @@ export async function getProfile(): Promise<Profile | null> {
     .maybeSingle();
   const resolvedPlan = rowError ? "unavailable" : (row?.plan ?? "free");
   const resolvedByok = resolveByokEnabled();
-  // #region agent log
-  debugLog("A", "auth.ts:getProfile", "profile entitlements", {
-    runId: "post-fix",
-    userId: data.session.user.id,
-    hasRow: !!row,
-    rowError: rowError?.message ?? null,
-    rowCode: rowError?.code ?? null,
-    rawPlan: row?.plan ?? null,
-    rawByok: row?.byok_enabled ?? null,
-    resolvedPlan,
-    resolvedByok,
-  });
-  // #endregion
   const base = toNeoUser(data.session.user, row ?? undefined);
   return {
     ...base,
@@ -276,19 +246,12 @@ export async function ensureProfile(): Promise<void> {
   const user = data.session?.user;
   if (!user) return;
   const { data: existing } = await sb.from("profiles").select("id").eq("id", user.id).maybeSingle();
-  if (existing) {
-    // #region agent log
-    debugLog("B", "auth.ts:ensureProfile", "row already exists", {
-      userId: user.id,
-    });
-    // #endregion
-    return;
-  }
+  if (existing) return;
   const meta = user.user_metadata ?? {};
   // `ignoreDuplicates` turns this into INSERT … ON CONFLICT DO NOTHING, so it
   // only needs INSERT privileges — the client has no UPDATE grant on `id` or on
   // the entitlement columns (see supabase/migrations/0002_harden_profiles.sql).
-  const { error: upsertError } = await sb.from("profiles").upsert(
+  await sb.from("profiles").upsert(
     {
       id: user.id,
       email: user.email ?? "",
@@ -304,14 +267,6 @@ export async function ensureProfile(): Promise<void> {
     },
     { onConflict: "id", ignoreDuplicates: true }
   );
-  // #region agent log
-  debugLog("B", "auth.ts:ensureProfile", "ensure result", {
-    userId: user.id,
-    existing: !!existing,
-    upsertError: upsertError?.message ?? null,
-    upsertCode: upsertError?.code ?? null,
-  });
-  // #endregion
 }
 
 /** Update display name / avatar in the profiles table. */
@@ -359,13 +314,6 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const sb = supabase();
   if (!sb) throw new Error("Supabase is not configured.");
   const { error } = await sb.auth.signInWithPassword({ email, password });
-  // #region agent log
-  debugLog("C", "auth.ts:signInWithEmail", "sign-in result", {
-    ok: !error,
-    error: error?.message ?? null,
-    status: error?.status ?? null,
-  });
-  // #endregion
   if (error) throw new Error(authErrorMessage(error));
   await ensureProfile().catch(() => undefined);
   void broadcastAuthChange();

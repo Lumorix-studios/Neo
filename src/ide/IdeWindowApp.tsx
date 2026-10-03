@@ -26,7 +26,6 @@ import {
   type Profile as AccountProfile,
 } from "../lib/auth";
 import * as byok from "../lib/byok";
-import { debugLog } from "../debugLog";
 import {
   applyUiSettings,
   DEFAULT_UI_SETTINGS,
@@ -293,13 +292,7 @@ export default function IdeWindowApp() {
             : prev
         );
       })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        debugLog("E", "IdeWindowApp.tsx:resolveApiKey", "Could not load the provider API key", {
-          provider: aiSettings.provider,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };

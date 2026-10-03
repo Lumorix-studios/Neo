@@ -16,7 +16,6 @@
  */
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { debugLog } from "../debugLog";
 import { invoke } from "@tauri-apps/api/core";
 
 const LOCAL_BYOK_KEY = "neo.byok.keys.v1";
@@ -139,14 +138,6 @@ async function fetchRemoteKeyOnce(provider: string): Promise<string | null> {
     headers: { "x-neo-provider": provider },
   });
   const payload = data as { apiKey?: string; error?: string } | null;
-  // #region agent log
-  debugLog("D", "byok.ts:fetchRemoteKey", "api-keys GET", {
-    provider,
-    hasKey: !!payload?.apiKey,
-    invokeError: error?.message ?? null,
-    bodyError: payload?.error ?? null,
-  });
-  // #endregion
   if (error) {
     throw new Error(await invokeErrorMessage(error, "Could not load the key from your account."));
   }

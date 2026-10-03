@@ -63,7 +63,6 @@ import {
 } from "./lib/attachments";
 import { useDeepLinkAuth } from "./lib/deepLink";
 import * as byok from "./lib/byok";
-import { debugLog } from "./debugLog";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { isTauri } from "@tauri-apps/api/core";
 import {
@@ -399,10 +398,8 @@ export default function App() {
       const dismissed = force ? null : dismissedUntil();
       if (dismissed && dismissed === result.latestVersion) return;
       setUpdateNotification({ result, dismissedAt: Date.now() });
-    } catch (err) {
-      debugLog("E", "App.tsx:runUpdateCheck", "update check failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+    } catch {
+      // Best-effort: a failed check leaves the previous state untouched.
     }
   }, []);
 
@@ -800,13 +797,7 @@ export default function App() {
         if (cancelled) return;
         setSettings((prev) => (prev.apiKey === key ? prev : { ...prev, apiKey: key }));
       })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        debugLog("E", "App.tsx:resolveApiKey", "Could not load the provider API key", {
-          provider: settings.provider,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };

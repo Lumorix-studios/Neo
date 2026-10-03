@@ -32,3 +32,10 @@ tauri-plugin-http = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+# Linux only: wry leaves the WebKitGTK webview on its *browser* cache defaults.
+# Tuned once at startup in `run()`'s setup hook. Pinned
+# to the same 2.0.x line wry/tauri already build against so Cargo keeps a single
+# copy of the crate.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
