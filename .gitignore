@@ -124,3 +124,24 @@ CMakeLists.txt.user*
 supabase/.temp/ 
 # LSP verification harness scratch dir 
 scripts/.lsp-tmp
+# ── scratch / generated debris ──────────────────────────────────────────────
+# One-off tool output that used to be committed at the repo root. Regenerate
+# by re-running the matching tool; never worth versioning.
+tsc*.txt
+cs-out.txt
+b2.txt
+t_oauth.txt
+eslint.json
+audit-all.txt
+# scratch scripts (the `_`-prefixed helpers under scripts/ follow the same idea)
+hl-tmp.mjs
+scratch-*.tsx
+# accidental shell-redirect debris, e.g. `git log > 0` or `cargo check 2`
+/0
+/1
+/c
+/{
+src-tauri/cargo*.txt
+src-tauri/chk.txt
+# Browser "Save Page As" dumps accidentally saved into the asset tree.
+src/assets/images/*_files/
