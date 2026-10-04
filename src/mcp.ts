@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 
 /**
@@ -399,7 +399,7 @@ async function ensureStdio(server: McpServerConfig): Promise<void> {
     params: {
       protocolVersion: "2025-03-26",
       capabilities: {},
-      clientInfo: { name: "Neo", version: "1.0.4" },
+      clientInfo: { name: "Struct", version: "1.12.0" },
     },
   }, 10_000);
   if (init.error) {
@@ -506,7 +506,7 @@ export function formatMcpToolSchema(schema?: Record<string, unknown>): string {
   return `Parameters: ${parts.join("; ")}`;
 }
 
-const CLIENT_INFO = { name: "Neo", version: "1.0.4" };
+const CLIENT_INFO = { name: "Struct", version: "1.12.0" };
 const MCP_DISCOVERY_TTL_MS = 30_000;
 
 interface HttpSession {

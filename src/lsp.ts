@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 /**
  * Language Server Protocol client.
@@ -805,7 +805,7 @@ function ensureServer(s: ServerSpec): Promise<ServerConn | null> {
 
     const initParams = {
       processId: null,
-      clientInfo: { name: "Neo", version: "1.11.0" },
+      clientInfo: { name: "Struct", version: "1.12.0" },
       locale: "en",
       rootPath: root,
       rootUri: conn.rootUri,

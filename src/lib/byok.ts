@@ -1,9 +1,9 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 /**
- * BYOK (Bring Your Own Key) — provider API keys for Neo.
+ * BYOK (Bring Your Own Key) — provider API keys for Struct.
  *
  * A key only exists inside a signed-in account: it is encrypted server-side
  * (AES-GCM inside the `api-keys` Supabase Edge Function) and stored in the

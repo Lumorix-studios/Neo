@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useErrorHandler } from "../src/errorContext";
 import WindowControls from "./WindowControls";
 import { IoChevronForward, IoSearch } from "react-icons/io5";
+import appIcon from "../src/assets/images/icon.jpg";
 
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
@@ -176,10 +177,11 @@ const openPrivacyPolicy = async () => {
           data-tauri-drag-region="deep"
         >
           <span className="relative flex h-6 w-6 items-center justify-center">
-            {/* <span
-              aria-hidden
-              className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--accent)"
-            /> */}
+            <img
+              src={appIcon}
+              alt="Struct"
+              className="h-5 w-5 rounded-md"
+            />
           </span>
           <span className="text-[12.5px] font-semibold tracking-tight text-[var(--text-primary)]">
             Struct

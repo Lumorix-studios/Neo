@@ -1,9 +1,9 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 /**
- * Authentication for Neo — email/password + GitHub & Google OAuth.
+ * Authentication for Struct — email/password + GitHub & Google OAuth.
  *
  * All functions degrade gracefully when Supabase env vars are missing
  * (isSupabaseConfigured === false): they resolve to a signed-out state with a

@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 //author of this entire codebase is Madhusudhan thapa (madhusudhant207@gmail.com) and coding agents
 // See LICENSE file in the project root for full license information.
@@ -194,7 +194,7 @@ async function platformFetch(url: string, init: RequestInit): Promise<Response> 
   return fetch(url, init);
 }
 const sendFeedback = (feedback: "good" | "bad" | "report") => {
-  const subject = encodeURIComponent("AgenticCoder Feedback");
+  const subject = encodeURIComponent("Struct Feedback");
   const body = encodeURIComponent(`Feedback: ${feedback}`);
 
   window.location.href =
@@ -1886,7 +1886,7 @@ MCP call rules:
             continue;
           }
           setError(
-            "Neo used all of its tool turns for this request and paused. Send a follow-up message to continue where it left off."
+            "Struct used all of its tool turns for this request and paused. Send a follow-up message to continue where it left off."
           );
           break;
         }

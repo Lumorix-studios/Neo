@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
@@ -267,7 +267,7 @@ export default function IdeMenuBar({
   return (
     <div ref={barRef} className="flex items-center gap-0.5">
       {/* Brand glyph to ground the bar */}
-      <img src="/app-icon.png" alt="Agentic Coder logo" className="h-5 w-5 shrink-0" />
+      <img src="/app-icon.png" alt="Struct logo" className="h-5 w-5 shrink-0" />
       {renderMenu("file", "File", fileItems)}
       {renderMenu("edit", "Edit", editItems)}
       {renderMenu("view", "View", viewItems)}

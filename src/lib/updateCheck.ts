@@ -2,7 +2,7 @@
  * Shared update-check logic behind the in-app update notification banner and
  * the "Help → Check for Updates…" menu item.
  *
- * Talks to the GitHub Releases API for `Lumorix-studios/Neo` and compares the
+ * Talks to the GitHub Releases API for `Lumorix-studios/Struct` and compares the
  * locally running version against the latest published tag.
  */
 
@@ -49,9 +49,9 @@ export interface AssetEntry {
 
 /** GitHub Releases API endpoint used by both the top bar and the updater. */
 export const RELEASE_URL =
-  "https://api.github.com/repos/Lumorix-studios/Neo/releases/latest";
-export const RELEASES_PAGE = "https://github.com/Lumorix-studios/Neo/releases";
-export const REPO_PAGE = "https://github.com/Lumorix-studios/Neo";
+  "https://api.github.com/repos/Lumorix-studios/Struct/releases/latest";
+export const RELEASES_PAGE = "https://github.com/Lumorix-studios/Struct/releases";
+export const REPO_PAGE = "https://github.com/Lumorix-studios/Struct";
 
 // ---------------------------------------------------------------------------
 // Version helpers

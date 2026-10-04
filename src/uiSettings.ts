@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 import { invoke } from "@tauri-apps/api/core";
 export interface UiSettings {
@@ -35,7 +35,7 @@ export interface ThemePreset {
 }
 
 export const THEMES: ThemePreset[] = [
-  { id: "neo", label: "Neo Dark", base: "#0e0e0e", panel: "#131313", elevated: "#1a1a1a", active: "#232323" },
+  { id: "neo", label: "Struct Dark", base: "#0e0e0e", panel: "#131313", elevated: "#1a1a1a", active: "#232323" },
   { id: "midnight", label: "Midnight", base: "#0b1220", panel: "#0f1726", elevated: "#162032", active: "#1e2a40" },
   { id: "graphite", label: "Graphite", base: "#111214", panel: "#16181b", elevated: "#1d2024", active: "#26292e" },
   { id: "charcoal", label: "Charcoal", base: "#131110", panel: "#191614", elevated: "#211d1a", active: "#2b2622" },

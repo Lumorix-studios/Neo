@@ -48,13 +48,13 @@ export default function InfoPanel({ isOpen, onClose }: InfoPanelProps) {
                 }
                 onClick={async () => {
                   try {
-                    await openUrl("https://github.com/Lumorix-studios/Neo.git");
+                    await openUrl("https://github.com/Lumorix-studios/Struct.git");
                   } catch (error) {
                     reportError(error);
                   }
                 }}
                 label="View on GitHub"
-                sublabel="Lumorix-studios/AgenticCoder"
+                sublabel="Lumorix-studios/Struct"
               />
             </Section>
 

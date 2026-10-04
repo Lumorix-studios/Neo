@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 //might be obvious what this file functions as lol
 //Main ide window interface 
@@ -831,7 +831,7 @@ export default function IdeWindowApp() {
               {[
                 activeEditorPath ? (activeEditorPath.split(/[\\/]/).pop() ?? null) : null,
                 workspaceRoot.split(/[\\/]/).filter(Boolean).pop() ?? null,
-                "Neo",
+                "Struct",
               ]
                 .filter(Boolean)
                 .join(" — ")}

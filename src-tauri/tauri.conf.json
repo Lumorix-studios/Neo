@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Neo",
+        "title": "Struct",
         "width": 1000,
         "height": 800,
         "minWidth": 660,
@@ -53,7 +53,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg5OTY1NzlDNzNBNjQxRDQKUldUVVFhWnpuRmVXaVJSMndMSkhlQVB6TkdMKzFab2N5Z0ZzaTFhemp6QitWUHZzTy9hd2tOc08K",
       "endpoints": [
-        "https://github.com/Lumorix-studios/Neo/releases/latest/download/latest.json"
+        "https://github.com/Lumorix-studios/Struct/releases/latest/download/latest.json"
       ]
     }
   }

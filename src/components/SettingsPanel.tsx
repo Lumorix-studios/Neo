@@ -39,6 +39,7 @@ import AccountSection from "./AccountSection";
 import type { NeoUser, Profile as AccountProfile } from "../lib/auth";
 import { byokAllowed, saveRemoteKey, removeRemoteKey } from "../lib/byok";
 import * as cloudSync from "../lib/cloudSync";
+import appIcon from "../assets/images/icon.jpg";
 
 import { IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoLockClosedOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
 import {
@@ -1853,7 +1854,7 @@ export default function SettingsPanel({
               <div>
                 <div className="flex items-center gap-3 py-2">
                   <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-(--accent-soft)">
-                    {/*<img src="/app-icon.png" alt="Neo logo" className="h-full w-full object-contain" />*/}
+                    <img src={appIcon} alt="Struct logo" className="h-full w-full object-contain" />
                   </div>
                   <div>
                     <p className="text-[14px] font-semibold text-[var(--text-primary)]">Struct</p>
@@ -1875,8 +1876,8 @@ export default function SettingsPanel({
                 <SectionTitle>Links</SectionTitle>
                 <div className="flex flex-col gap-1">
                   {[
-                    ["GitHub repository", "https://github.com/madhusudhan-rgb/Struct"],
-                    ["Report an issue", "https://github.com/madhusudhan-rgb/Struct/issues"],
+                    ["GitHub repository", "https://github.com/Lumorix-Studios/Struct"],
+                    ["Report an issue", "https://github.com/Lumorix-Studios/Struct/issues"],
                   ].map(([label, href]) => (
                     <a
                       key={href}
