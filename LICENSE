@@ -1,4 +1,4 @@
-# NEO Source-Available License 1.0
+# Struct Source-Available License 1.0
 
 Copyright © 2026 Lumorix Studios
 
@@ -6,7 +6,7 @@ Copyright © 2026 Lumorix Studios
 
 For purposes of this License:
 
-**"Software"** means the NEO software, including its source code, object code, binaries, documentation, configuration files, and other materials distributed by Lumorix Studios under this License.
+**"Software"** means the Struct software, including its source code, object code, binaries, documentation, configuration files, and other materials distributed by Lumorix Studios under this License.
 
 **"Modified Version"** means any version of the Software that has been modified, adapted, translated, extended, or otherwise changed from the version distributed by Lumorix Studios.
 
@@ -87,10 +87,10 @@ When redistributing the Software or a Modified Version in a manner permitted by 
 
 1. Retain the original copyright notices.
 2. Include a copy of this License.
-3. Clearly state that the redistributed software is based on NEO.
+3. Clearly state that the redistributed software is based on Struct.
 4. Clearly identify substantial modifications from the version distributed by Lumorix Studios.
 
-## 7. NEO Name and Branding
+## 7. Struct Name and Branding
 
 This License does not grant permission to use the names, logos, trademarks, service marks, product names, or branding of Lumorix Studios or NEO except as reasonably necessary to identify the original Software.
 
@@ -110,13 +110,13 @@ You may not circumvent the commercial restrictions of this License by:
 
 ## 9. Contributions
 
-Unless otherwise agreed in writing, contributions submitted to the NEO project may be incorporated into the Software and distributed by Lumorix Studios under this License or under a different license selected by Lumorix Studios for future versions.
+Unless otherwise agreed in writing, contributions submitted to the Struct project may be incorporated into the Software and distributed by Lumorix Studios under this License or under a different license selected by Lumorix Studios for future versions.
 
-By intentionally submitting a contribution to the NEO project for inclusion in the Software, you represent that you have the necessary rights to submit the contribution.
+By intentionally submitting a contribution to the Struct project for inclusion in the Software, you represent that you have the necessary rights to submit the contribution.
 
 ## 10. Third-Party Software
 
-This License applies only to code owned or controlled by Lumorix Studios and distributed as part of NEO.
+This License applies only to code owned or controlled by Lumorix Studios and distributed as part of Struct.
 
 Third-party libraries, dependencies, frameworks, and other components remain subject to their respective licenses.
 
