@@ -1,4 +1,4 @@
-# NEO
+# Struct
 
 ### Lightweight Agentic Coding Environment
 
@@ -6,13 +6,12 @@
   <img src="https://skillicons.dev/icons?i=react,ts,tauri,rust,kotlin,vite,tailwind,css,toml" alt="React, TypeScript, Tauri, Rust, Kotlin, Vite, Tailwind CSS, CSS, TOML" />
 </p>
 
-> **NEO is currently in beta and under active development.**
+> **Struct is currently in beta and under active development.**
 
-NEO is a lightweight agentic coding environment built with **React, TypeScript, Tauri, and Rust**.
+Struct is a lightweight agentic coding environment built with **React, TypeScript, Tauri, and Rust**.
 
 It brings an AI agent, code editor, filesystem tools, Git integration, terminals, debugging infrastructure, MCP support, configurable AI providers, local models, and project management into a single desktop environment.
 
-NEO is designed to give AI models access to real development tools while keeping the developer in control of their workspace and changes.
 
 <p align="center">
   <img src="src/assets/images/preview sss.png" alt="NEO coding environment" width="900" />
@@ -24,7 +23,7 @@ NEO is designed to give AI models access to real development tools while keeping
 
 Traditional AI coding assistants are often centered around a chat interface.
 
-NEO takes a different approach.
+Struct takes a different approach.
 
 Instead of only generating code in a conversation, the agent can interact with a development workspace through controlled tools.
 
@@ -48,7 +47,7 @@ The goal is to provide an environment where AI-assisted development happens alon
 
 ## Agentic Coding
 
-NEO provides filesystem tools that allow the agent to interact with development projects.
+Struct provides filesystem tools that allow the agent to interact with development projects.
 
 Available operations include:
 
@@ -80,7 +79,7 @@ Agent activity is displayed through an activity timeline showing tool calls, sta
 
 ## Context Management
 
-NEO does not automatically expose an entire repository to an AI model.
+Struct does not automatically expose an entire repository to an AI model.
 
 The agent can access project information through controlled context sources such as:
 
@@ -95,7 +94,7 @@ This allows developers to control what information is provided to the model whil
 
 # Integrated Code Editor
 
-NEO includes a built-in code editor designed to work alongside the agent.
+Struct includes a built-in code editor designed to work alongside the agent.
 
 Features include:
 
@@ -132,7 +131,7 @@ Ctrl + Shift + E
 
 # Change Review
 
-NEO provides visibility into modifications made during an agent session.
+Struct provides visibility into modifications made during an agent session.
 
 Before changes are applied, users can review proposed modifications through the application's change and diff interfaces.
 
@@ -156,7 +155,7 @@ This gives developers an opportunity to inspect changes before they become part 
 
 # Git Integration
 
-NEO integrates Git into the development workflow.
+Struct integrates Git into the development workflow.
 
 Git functionality provides repository awareness and change visibility while working with the agent.
 
@@ -168,7 +167,7 @@ Git can also be used independently through the integrated terminal.
 
 # Integrated PowerShell Terminal
 
-NEO includes an integrated PowerShell terminal backed by a native PTY implementation.
+Struct includes an integrated PowerShell terminal backed by a native PTY implementation.
 
 The terminal can run development tools installed on the user's machine, including:
 
@@ -182,7 +181,7 @@ Rust
 Cargo
 ```
 
-NEO supports multiple PowerShell sessions, allowing developers to maintain separate environments for:
+Struct supports multiple PowerShell sessions, allowing developers to maintain separate environments for:
 
 * Development servers
 * Build commands
@@ -191,13 +190,13 @@ NEO supports multiple PowerShell sessions, allowing developers to maintain separ
 * Scripts
 * Other development processes
 
-NEO does not bundle complete compiler toolchains into the application. It works with the development environments already installed on the user's machine.
+Struct does not bundle complete compiler toolchains into the application. It works with the development environments already installed on the user's machine.
 
 ---
 
 # Development Infrastructure
 
-NEO includes development-oriented infrastructure for working with local projects.
+Struct includes development-oriented infrastructure for working with local projects.
 
 This includes:
 
@@ -214,7 +213,7 @@ The application is designed to work with the tools and runtimes available on the
 
 # AI Providers
 
-NEO is designed to be provider-independent.
+Struct is designed to be provider-independent.
 
 Users can configure compatible AI endpoints using their own credentials and configuration.
 
@@ -232,7 +231,7 @@ This allows developers to choose the AI infrastructure that fits their workflow.
 
 # Local AI Models
 
-NEO supports locally hosted AI models through **Ollama**.
+Struct supports locally hosted AI models through **Ollama**.
 
 Users can run an Ollama server on their own machine, install models locally, and configure NEO to communicate with the local endpoint.
 
@@ -242,7 +241,7 @@ When using a local model, inference can remain entirely on the user's device.
 
 # MCP Support
 
-NEO supports the **Model Context Protocol (MCP)**.
+Struct supports the **Model Context Protocol (MCP)**.
 
 MCP allows additional tools and services to be connected to the agent without requiring every integration to be implemented directly inside NEO.
 
@@ -259,7 +258,7 @@ Local stdio commands
 
 # Command Palette
 
-NEO includes a keyboard-driven command palette for accessing application functionality.
+Struct includes a keyboard-driven command palette for accessing application functionality.
 
 Open it with:
 
@@ -283,11 +282,11 @@ Ctrl + Shift + P
 
 # Accounts and Cloud Services
 
-NEO uses a combination of local desktop functionality and hosted services.
+Struct uses a combination of local desktop functionality and hosted services.
 
 The desktop application handles development operations locally through Tauri and Rust, while cloud services are used for account-related and application functionality.
 
-NEO uses **Supabase** for backend services such as:
+Struct uses **Supabase** for backend services such as:
 
 * Authentication
 * User accounts
@@ -303,7 +302,7 @@ Opening a project in NEO does not mean that the entire workspace is automaticall
 
 # Privacy and Data
 
-NEO is designed to keep development operations local while allowing users to use cloud-based application services and AI providers.
+Struct is designed to keep development operations local while allowing users to use cloud-based application services and AI providers.
 
 ## Workspace Data
 
@@ -311,7 +310,7 @@ Project files are accessed locally through the NEO desktop application.
 
 Filesystem operations are performed through the Tauri/Rust application layer.
 
-NEO does not require uploading an entire project simply to use the editor or local development tools.
+Struct does not require uploading an entire project simply to use the editor or local development tools.
 
 However, files or project information may be sent to an AI provider when required to fulfill an AI request.
 
@@ -339,13 +338,12 @@ When using Ollama locally, inference can remain on the user's device.
 
 When using a third-party AI provider, information sent to that provider is subject to that provider's privacy policy, infrastructure, and terms.
 
-NEO does not control how third-party AI providers process information sent to their endpoints.
+Struct does not control how third-party AI providers process information sent to their endpoints.
 
 ---
 
 # Authentication and Application Data
-
-NEO uses Supabase for account and application backend functionality.
+Struct uses Supabase for account and application backend functionality.
 
 Depending on the feature, information stored through the backend may include:
 
@@ -362,7 +360,7 @@ The exact data stored may change as NEO develops.
 
 # Licensing and Cost
 
-NEO is **free to use**. There is no subscription, no paid tier, and no paywall.
+Struct is **free to use**. There is no subscription, no paid tier, and no paywall.
 All features — including cloud sync and encrypted provider-key storage (BYOK) —
 are available to every signed-in account at no charge.
 
@@ -377,7 +375,7 @@ collect payment information.
 
 # Architecture
 
-NEO uses a hybrid web, native, and cloud architecture.
+
 
 ```text
 +------------------------------------------------------+
@@ -427,7 +425,7 @@ NEO uses a hybrid web, native, and cloud architecture.
   <img src="https://skillicons.dev/icons?i=react,ts,tsx,vite,tailwind,css" alt="React, TypeScript, TSX, Vite, Tailwind CSS, CSS" />
 </p>
 
-The NEO interface is primarily built with:
+The interface is primarily built with:
 
 * React
 * TypeScript
@@ -471,7 +469,7 @@ Kotlin is used for Android-specific functionality within the broader NEO project
 
 # Backend
 
-NEO uses **Supabase** for backend infrastructure.
+Struct uses **Supabase** for backend infrastructure.
 
 Supabase provides functionality such as:
 
@@ -484,7 +482,7 @@ Supabase provides functionality such as:
 
 # Pricing
 
-NEO is free. There are no paid plans, no subscriptions, and no paywalls —
+There are no paid plans, no subscriptions, and no paywalls —
 every feature is available to all users. Lumorix Studios does not process
 payments.
 
@@ -522,7 +520,7 @@ Additional project-specific runtimes and toolchains can be installed independent
 ## Clone
 
 ```bash
-git clone https://github.com/Lumorix-studios/Neo.git
+git clone https://github.com/Lumorix-studios/Struct.git
 cd Neo
 ```
 
@@ -567,15 +565,15 @@ A public key has been found, but no private key.
 Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.
 ```
 
-`npm run build:desktop` passes the key from `~/.tauri/neo.key` and the password
-from `~/.tauri/neo.key.password` to the Tauri CLI for you, so no environment
+`npm run build:desktop` passes the key from `~/.tauri/struct.key` and the password
+from `~/.tauri/struct.key.password` to the Tauri CLI for you, so no environment
 variables are needed:
 
 ```bash
 npm run build:desktop
 ```
 
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` and `NEO_SIGNING_KEY_PASSWORD_FILE`
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` and `STRUCT_SIGNING_KEY_PASSWORD_FILE`
 override the stored password, which is what CI uses. When neither is set and no
 password file exists, the Tauri CLI prompts for the password itself.
 
@@ -597,13 +595,13 @@ npm run build:desktop -- --dry-run
 Updater signing keys are generated with the Tauri CLI:
 
 ```bash
-# Writes ~/.tauri/neo.key and ~/.tauri/neo.key.pub — never commit the .key file
-npx tauri signer generate -w ~/.tauri/neo.key
+# Writes ~/.tauri/struct.key and ~/.tauri/struct.key.pub — never commit the .key file
+npx tauri signer generate -w ~/.tauri/struct.key
 ```
 
-* `NEO_SIGNING_KEY` points the build at a key stored elsewhere.
-* `NEO_SIGNING_KEY_PASSWORD_FILE` points at the password file (default
-  `~/.tauri/neo.key.password`).
+* `STRUCT_SIGNING_KEY` points the build at a key stored elsewhere.
+* `STRUCT_SIGNING_KEY_PASSWORD_FILE` points at the password file (default
+  `~/.tauri/struct.key.password`).
 * `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` are
   respected when already set, which is what CI uses.
 * The wrapper compares the key's `.pub` file against
@@ -621,7 +619,7 @@ node scripts/rotate-updater-key.mjs
 
 The script backs up the current pair, the old pubkey and an explanatory note to
 `~/.tauri/backup-<timestamp>`, generates a replacement pair, stores a random
-password in `~/.tauri/neo.key.password` (readable only by your account), swaps
+password in `~/.tauri/struct.key.password` (readable only by your account), swaps
 `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` and signs a scratch file
 to prove the new pair works. `--password "..."` chooses the password yourself,
 `--dry-run` prints the plan without writing anything.
@@ -638,7 +636,7 @@ the new pubkey.
 
 # Project Status
 
-NEO is currently in **beta** and under active development.
+currently in **beta** and under active development.
 
 Development began in **May 2026**.
 
@@ -664,8 +662,7 @@ As a beta project, functionality may be incomplete or subject to change.
 ---
 
 # Roadmap
-
-NEO is continuously developed with a focus on improving the agentic development workflow.
+Continuously developed with a focus on improving the agentic development workflow.
 
 Planned and ongoing areas include:
 
@@ -689,7 +686,7 @@ Planned and ongoing areas include:
 
 Source code:
 
-https://github.com/Lumorix-studios/Neo
+https://github.com/Lumorix-studios/Struct
 
 ---
 
@@ -700,10 +697,10 @@ https://github.com/Lumorix-studios/Neo
 
 # License
 
-NEO is licensed under the **NEO Source-Available License 1.0** — see the
+licensed under the **STRUCT Source-Available License 1.0** — see the
 [`LICENSE`](LICENSE) file for the complete terms.
 
-In short: you may use, study, and modify NEO for personal and other
+In short: you may use, study, and modify Struct for personal and other
 non-commercial purposes, and share it with others non-commercially. Commercial
 redistribution requires prior written permission from Lumorix Studios.
 
