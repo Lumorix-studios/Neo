@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Struct) for more information on permissions to use this code.
  */
 
 
@@ -285,7 +285,7 @@ const AccountSection = memo(function AccountSection({
           <Card>
             <Row
               title="Account"
-              description="Your profile, cloud data and provider keys are tied to a Neo account — sign in or create one to open them."
+              description="Your profile, cloud data and provider keys are tied to a Struct account — sign in or create one to open them."
             />
           </Card>
         </section>
@@ -459,7 +459,7 @@ function SignInUp() {
             Google and GitHub OAuth may be down for maintenance — email and password sign-in always
             works. For enquiries, open an issue on the{" "}
             <a
-              href="https://github.com/Lumorix-studios/Neo"
+              href="https://github.com/Lumorix-studios/Struct"
               target="_blank"
               rel="noopener noreferrer"
               className="underline underline-offset-2 hover:text-[var(--text-secondary)]"

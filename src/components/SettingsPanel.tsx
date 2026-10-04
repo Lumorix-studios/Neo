@@ -1,6 +1,6 @@
 /*
  * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Struct) for more information on permissions to use this code.
  */
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
@@ -184,7 +184,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 /** Export a JSON snapshot of all settings via a browser download. */
 function exportSettingsSnapshot(ui: UiSettings, ai: AISettings): void {
   const snapshot = {
-    app: "Neo",
+    app: "STRUCT",
     exportedAt: new Date().toISOString(),
     uiSettings: ui,
     aiSettings: ai,
@@ -193,7 +193,7 @@ function exportSettingsSnapshot(ui: UiSettings, ai: AISettings): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `neo-settings-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `Struct-settings-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -615,7 +615,7 @@ export default function SettingsPanel({
       setMcpImported([]);
       if (found.length === 0) {
         setMcpError(
-          "No MCP config files found. Neo looks for Claude Desktop, Cursor, VS Code, Windsurf and .mcp.json — add a server manually if you keep your config elsewhere."
+          "No MCP config files found. Struct looks for Claude Desktop, Cursor, VS Code, Windsurf and .mcp.json — add a server manually if you keep your config elsewhere."
         );
       }
     } finally {
@@ -761,10 +761,10 @@ export default function SettingsPanel({
           </nav>
           <div className="hidden px-3 py-2.5 text-[10px] text-[var(--text-faint)] sm:block">
             <div ref={buildsInfoRef} className="relative flex items-center justify-between gap-2">
-              <span>Neo 1.10 · Beta</span>
+              <span>Struct 1.12 · Beta</span>
               <button
                 type="button"
-                aria-label="About Neo builds"
+                aria-label="About builds"
                 aria-expanded={buildsInfoOpen}
                 className="inline-flex items-center text-[var(--text-faint)] transition hover:text-[var(--text-secondary)]"
                 onClick={() => setBuildsInfoOpen((v) => !v)}
@@ -779,11 +779,11 @@ export default function SettingsPanel({
                   </p>
 
                   <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
-                    Neo is a free and open-source project. The official builds are
+                    Struct is a free and open-source project. The official builds are
                     published by Lumorix Studios and are signed with a verified
                     certificate. The official GitHub repository is{" "}
                     <a
-                      href="https://github.com/Lumorix-studios/Neo"
+                      href="https://github.com/Lumorix-studios/Struct"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[var(--text-primary)] hover:underline"
@@ -1172,7 +1172,7 @@ export default function SettingsPanel({
                   <div className="flex flex-col gap-1.5 pb-3">
                     <p className="text-[10.5px] leading-4 text-[var(--text-muted)]">
                       Your key is encrypted before it is stored in your account. It is only
-                      decrypted in memory when Neo needs it.
+                      decrypted in memory when Struct needs it.
                     </p>
                     <div className="flex gap-1.5">
                       <div className="relative flex-1">
@@ -1853,11 +1853,11 @@ export default function SettingsPanel({
               <div>
                 <div className="flex items-center gap-3 py-2">
                   <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-(--accent-soft)">
-                    <img src="/app-icon.png" alt="Neo logo" className="h-full w-full object-contain" />
+                    {/*<img src="/app-icon.png" alt="Neo logo" className="h-full w-full object-contain" />*/}
                   </div>
                   <div>
-                    <p className="text-[14px] font-semibold text-[var(--text-primary)]">Neo</p>
-                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.10 (Beta)</p>
+                    <p className="text-[14px] font-semibold text-[var(--text-primary)]">Struct</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">Version 1.12 (Beta)</p>
                   </div>
                 </div>
 
@@ -1875,8 +1875,8 @@ export default function SettingsPanel({
                 <SectionTitle>Links</SectionTitle>
                 <div className="flex flex-col gap-1">
                   {[
-                    ["GitHub repository", "https://github.com/madhusudhan-rgb/Neo"],
-                    ["Report an issue", "https://github.com/madhusudhan-rgb/Neo/issues"],
+                    ["GitHub repository", "https://github.com/madhusudhan-rgb/Struct"],
+                    ["Report an issue", "https://github.com/madhusudhan-rgb/Struct/issues"],
                   ].map(([label, href]) => (
                     <a
                       key={href}

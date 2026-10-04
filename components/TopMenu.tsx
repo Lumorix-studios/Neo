@@ -145,7 +145,7 @@ const openPrivacyPolicy = async () => {
         { label: "Documentation", action: openDocs },
         { label: "About & Contact", action: onOpenInfoPanel },
         { label: "Privacy Policy", action: openPrivacyPolicy },
-        { label: "Rate Neo", action: onOpenTab2 },
+        { label: "Rate the app", action: onOpenTab2 },
         ...(onCheckForUpdates
           ? [{ label: "Check for Updates…", action: onCheckForUpdates }]
           : []),
@@ -176,18 +176,13 @@ const openPrivacyPolicy = async () => {
           data-tauri-drag-region="deep"
         >
           <span className="relative flex h-6 w-6 items-center justify-center">
-            <img
-              src="/app-icon.png"
-              alt="Neo"
-              className="h-5 w-5 rounded-md"
-            />
-            <span
+            {/* <span
               aria-hidden
               className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--accent)"
-            />
+            /> */}
           </span>
           <span className="text-[12.5px] font-semibold tracking-tight text-[var(--text-primary)]">
-            Neo
+            Struct
           </span>
         </div>
 
@@ -255,7 +250,7 @@ const openPrivacyPolicy = async () => {
             className="flex h-[22px] w-[min(28vw,280px)] items-center justify-center gap-2 rounded-[6px] border border-(--border-strong) bg-(--fill-1) text-[11.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <IoSearch size={11} />
-            Search Neo
+            Search
           </button>
         </div>
       )}
