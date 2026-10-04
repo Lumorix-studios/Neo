@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import {IoChatboxEllipsesOutline, IoFolderOpenOutline, IoGitBranch, IoSearch, IoSettingsOutline, IoTerminal,  } from "react-icons/io5";
 import WindowControls from "../../components/WindowControls";
 import IdeMenuBar from "../components/IdeMenuBar";
+import { clearAllHistories } from "../components/editorHistory";
 import FileExplorer from "../components/FileExplorer";
 import type { SectionId } from "../components/SettingsPanel";
 import type { AISettings } from "../types";
@@ -511,6 +512,10 @@ export default function IdeWindowApp() {
   const closeAllEditorTabs = useCallback(() => {
     for (const t of tabsRef.current) lspDocClose(t.path);
     tabsRef.current = [];
+    // Undo timelines are keyed by path and live at module scope, so closing
+    // every tab has to drop them explicitly or they pin the old buffers in
+    // memory for the rest of the session.
+    clearAllHistories();
     setEditorTabs([]);
     setActiveEditorPath(null);
   }, []);
@@ -813,6 +818,7 @@ export default function IdeWindowApp() {
           onCloseAllTabs={closeAllEditorTabs}
           onToggleTerminal={() => setTerminalOpen((v) => !v)}
           onToggleGit={() => setGitOpen((v) => !v)}
+          activePath={activeEditorPath}
           onClosePanel={() => void appWindow.close()}
         />
         <div data-tauri-drag-region="deep" className="flex items-center gap-1.5">

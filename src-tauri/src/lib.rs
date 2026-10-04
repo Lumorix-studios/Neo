@@ -35,6 +35,72 @@ fn suppress_window(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
+/// The shell to spawn for the integrated terminal.
+///
+/// Prefers `$SHELL` so people get the shell they actually configured (zsh, fish,
+/// …), then walks a short candidate list, then falls back to `/bin/sh`, which
+/// POSIX guarantees. Every candidate is checked for existence first: the previous
+/// hardcoded `/bin/bash` meant the terminal simply refused to start on distros
+/// that ship only dash or busybox ash.
+fn default_shell() -> String {
+    #[cfg(windows)]
+    {
+        // PowerShell first (it is what the rest of the Windows paths assume),
+        // then cmd.exe as the guaranteed fallback.
+        for candidate in ["powershell.exe", "cmd.exe"] {
+            if which(candidate) {
+                return candidate.to_string();
+            }
+        }
+        "cmd.exe".to_string()
+    }
+
+    #[cfg(not(windows))]
+    {
+        let from_env = std::env::var("SHELL").ok().filter(|s| !s.is_empty());
+        let mut candidates: Vec<String> = Vec::new();
+        if let Some(shell) = from_env {
+            candidates.push(shell);
+        }
+        candidates.extend(
+            ["/bin/bash", "/usr/bin/bash", "/bin/zsh", "/usr/bin/zsh", "/bin/sh"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
+        for candidate in &candidates {
+            if which(candidate) {
+                return candidate.clone();
+            }
+        }
+        // Nothing was found; /bin/sh is the POSIX-guaranteed path, so let the
+        // spawn attempt produce the real error rather than failing here.
+        "/bin/sh".to_string()
+    }
+}
+
+/// True when `name` resolves to an executable on PATH (Windows) or is an
+/// existing file (Unix, where PATH lookups for an absolute path still apply).
+fn which(name: &str) -> bool {
+    #[cfg(windows)]
+    {
+        if name.contains('\\') || name.contains('/') {
+            return Path::new(name).is_file();
+        }
+        let Some(path) = std::env::var_os("PATH") else {
+            return false;
+        };
+        std::env::split_paths(&path).any(|dir| {
+            let candidate = dir.join(format!("{name}.exe"));
+            candidate.is_file()
+        })
+    }
+
+    #[cfg(not(windows))]
+    {
+        Path::new(name).is_file()
+    }
+}
+
 /// A server this app is responsible for stopping.
 enum TrackedServer {
     /// Spawned by this session: live child handle + PID.
@@ -1086,13 +1152,20 @@ async fn run_command(
         String::from_utf8_lossy(&buf).into_owned()
     }
 
+    // Non-interactive, so never the user's login shell: fish/csh don't take
+    // `-c` the same way. Windows keeps PowerShell (present on every supported
+    // Windows build, and its argument form below is PowerShell-specific).
+    // Unix resolves `sh` through PATH and falls back to the POSIX-guaranteed
+    // absolute path, so a stripped PATH can't take out every agent tool call.
     let shell = if cfg!(target_os = "windows") {
-        "powershell.exe"
+        "powershell.exe".to_string()
+    } else if which("sh") {
+        "sh".to_string()
     } else {
-        "sh"
+        "/bin/sh".to_string()
     };
 
-    let mut cmd = Command::new(shell);
+    let mut cmd = Command::new(&shell);
     if cfg!(target_os = "windows") {
         // Force UTF-8 console output so non-ASCII output survives the pipe.
         cmd.arg("-NoProfile").arg("-Command").arg(format!(
@@ -1250,14 +1323,15 @@ fn terminal_create(
         })
         .map_err(|e| format!("Failed to open pty: {e}"))?;
 
-    let shell_cmd = if cfg!(target_os = "windows") {
-        "powershell.exe"
-    } else if cfg!(target_os = "macos") {
-        "/bin/zsh"
-    } else {
-        "/bin/bash"
-    };
-    let mut cmd = CommandBuilder::new(shell_cmd);
+    // Pick an interactive shell that actually exists on this machine.
+    //
+    // This used to be a `cfg!` chain naming /bin/bash on Linux. That breaks two
+    // ways: distros that only ship dash as /bin/sh (and no bash at all) got a
+    // terminal that refused to start, and nobody's actual login shell was ever
+    // used. Honour $SHELL first, then fall back through the usual suspects,
+    // checking each one really is present before spawning it.
+    let shell_cmd = default_shell();
+    let mut cmd = CommandBuilder::new(&shell_cmd);
     cmd.env("TERM", "xterm-256color");
     if let Some(dir) = cwd {
         let p = PathBuf::from(&dir);
@@ -1269,7 +1343,12 @@ fn terminal_create(
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("Failed to spawn shell: {e}"))?;
+        .map_err(|e| {
+            format!(
+                "Failed to spawn shell ({shell_cmd}): {e}. \
+                 Set the SHELL environment variable to a shell that exists on this system."
+            )
+        })?;
     drop(pair.slave);
 
     let mut reader = pair

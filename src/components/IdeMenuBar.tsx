@@ -2,8 +2,10 @@
  * Author: madhusudhan
  * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
+  IoArrowRedoOutline,
+  IoArrowUndo,
   IoCheckmark,
   IoContractOutline,
   IoDocumentOutline,
@@ -14,6 +16,12 @@ import {
   IoSettingsOutline,
   IoTerminal,
 } from "react-icons/io5";
+import {
+  historyAvailability,
+  redoHistory,
+  subscribeHistory,
+  undoHistory,
+} from "./editorHistory";
 
 interface IdeMenuBarProps {
   hasWorkspace: boolean;
@@ -31,6 +39,8 @@ interface IdeMenuBarProps {
   /** Git panel open state + toggle (IDE window). */
   gitOpen?: boolean;
   onToggleGit?: () => void;
+  /** Path of the active editor tab — which file Undo/Redo act on. */
+  activePath?: string | null;
 }
 
 interface MenuItem {
@@ -43,6 +53,32 @@ interface MenuItem {
 }
 
 
+
+/**
+ * Stable snapshot for `useSyncExternalStore`.
+ *
+ * `historyAvailability` allocates, and the store compares snapshots by identity,
+ * so handing it a fresh object every render would loop forever. Caching by path
+ * plus the flag pair means the reference only changes when a menu item really
+ * does change state.
+ */
+let availabilityCache = {
+  path: null as string | null,
+  value: { canUndo: false, canRedo: false },
+};
+
+function cachedAvailability(path: string | null) {
+  const next = historyAvailability(path);
+  if (
+    availabilityCache.path === path &&
+    availabilityCache.value.canUndo === next.canUndo &&
+    availabilityCache.value.canRedo === next.canRedo
+  ) {
+    return availabilityCache.value;
+  }
+  availabilityCache = { path, value: next };
+  return next;
+}
 
 const iconProps = {
   className: "h-3.5 w-3.5 shrink-0",
@@ -63,6 +99,10 @@ const CheckGlyph = <IoCheckmark {...iconProps} />;
 const SaveGlyph = <IoSaveOutline {...iconProps} />;
 
 const GitGlyph = <IoGitNetworkOutline {...iconProps} />;
+
+const UndoGlyph = <IoArrowUndo {...iconProps} />;
+
+const RedoGlyph = <IoArrowRedoOutline {...iconProps} />;
 const Settings = (
   <IoSettingsOutline size={14} className="shrink-0" />
 )
@@ -80,9 +120,20 @@ export default function IdeMenuBar({
   onSaveFile,
   gitOpen,
   onToggleGit,
+  activePath,
 }: IdeMenuBarProps) {
-  const [openMenu, setOpenMenu] = useState<"file" | "view" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
+
+  /* Undo/Redo enabled state, straight from the editor's undo timelines. The
+     snapshot is cached by path and only replaced when a flag actually flips, so
+     `useSyncExternalStore` sees a stable reference between edits instead of a
+     fresh object on every render. */
+  const availability = useSyncExternalStore(
+    subscribeHistory,
+    () => cachedAvailability(activePath ?? null),
+    () => cachedAvailability(activePath ?? null)
+  );
 
   // Dismiss on outside click / Escape
   useEffect(() => {
@@ -125,6 +176,27 @@ export default function IdeMenuBar({
     { label: "Close Editor Panel", icon: PanelCloseGlyph, onSelect: () => run(onClosePanel) },
   ];
 
+  /* Undo/Redo drive the editor's own timelines via the shared presenter, so the
+     menu and Ctrl+Z are literally the same code path — including on Linux,
+     where the webview's native undo stack cannot be relied on at all. */
+  const canHistory = !!activePath;
+  const editItems: MenuItem[] = [
+    {
+      label: "Undo",
+      icon: UndoGlyph,
+      hint: "Ctrl+Z",
+      disabled: !canHistory || !availability.canUndo,
+      onSelect: () => run(() => activePath && undoHistory(activePath)),
+    },
+    {
+      label: "Redo",
+      icon: RedoGlyph,
+      hint: "Ctrl+Shift+Z",
+      disabled: !canHistory || !availability.canRedo,
+      onSelect: () => run(() => activePath && redoHistory(activePath)),
+    },
+  ];
+
   const viewItems: MenuItem[] = [
   {label : "Settings", icon : Settings, onSelect: () => run(onOpenSettings) },
 
@@ -147,7 +219,7 @@ export default function IdeMenuBar({
       : []),
   ];
 
-  const renderMenu = (id: "file" | "view", title: string, items: MenuItem[]) => {
+  const renderMenu = (id: "file" | "edit" | "view", title: string, items: MenuItem[]) => {
     const open = openMenu === id;
     return (
       <div className="relative">
@@ -197,6 +269,7 @@ export default function IdeMenuBar({
       {/* Brand glyph to ground the bar */}
       <img src="/app-icon.png" alt="Agentic Coder logo" className="h-5 w-5 shrink-0" />
       {renderMenu("file", "File", fileItems)}
+      {renderMenu("edit", "Edit", editItems)}
       {renderMenu("view", "View", viewItems)}
     </div>
   );

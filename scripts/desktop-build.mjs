@@ -95,6 +95,21 @@ if (!existsSync(CLI)) {
 
 const env = { ...process.env };
 
+// Tauri's AppImage bundler shells out to linuxdeploy, which ships as a
+// type2-runtime AppImage that dlopen()s `libfuse.so.2`. Ubuntu 24.04+ removed
+// libfuse2 from the archives entirely (`apt-cache policy libfuse2` reports
+// `Candidate: (none)`), so on those systems it aborts with:
+//
+//   dlopen(): error loading libfuse.so.2
+//
+// and the CLI only surfaces the unhelpful `failed to run linuxdeploy`.
+// APPIMAGE_EXTRACT_AND_RUN tells the AppImage runtime to unpack itself into a
+// temp dir instead of FUSE-mounting, which sidesteps the missing library.
+// It is slower (each helper is re-extracted per run) but needs no root, and it
+// is the only fix that works where libfuse2 is unavailable. `??=` so a machine
+// that does have FUSE 2 can still opt out.
+env.APPIMAGE_EXTRACT_AND_RUN ??= "1";
+
 if (!flags.unsigned) {
   const inlineKey = env.TAURI_SIGNING_PRIVATE_KEY?.trim();
   const keyPath = env.NEO_SIGNING_KEY ?? join(homedir(), ".tauri", "neo.key");

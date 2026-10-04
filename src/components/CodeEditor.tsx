@@ -24,6 +24,16 @@ import {
 } from "./editorDiagnostics";
 import { FileIcon } from "./FileIcon";
 import FindReplaceBar from "./FindReplaceBar";
+import {
+  historyFor,
+  recordEdit,
+  resetFileHistory,
+  resetHistory,
+  redoHistory,
+  setHistoryPresenter,
+  undoHistory,
+  type EditorSnapshot,
+} from "./editorHistory";
 import TextType from '../../components/TextType';
 import { IoChevronForward, IoClipboardOutline, IoClose, IoCodeSlashOutline, IoCopyOutline, IoCutOutline, IoListOutline, IoSearch, IoTrashOutline } from "react-icons/io5";
 export interface EditorTab {
@@ -501,6 +511,28 @@ export default memo(function CodeEditor({
     setCursor({ line: 1, col: 1, sel: 0 });
   }
 
+  /* ── Undo timeline seeding ───────────────────────────────────────────────
+    The timeline is per file, and the buffer on screen is the one source of
+    truth for "where we are". So re-seed whenever the on-screen text no longer
+    matches the timeline's current state — that covers both switching to a tab
+    for the first time and a file being rewritten underneath us by the agent or
+    an external tool. Re-seeding (rather than appending) is what stops undo from
+    walking backwards through text the user never actually typed. */
+  useEffect(() => {
+    if (!active) return;
+    const history = historyFor(active.path);
+    const current = history.current();
+    if (current && current.content === active.content) return;
+    // Only the active file can carry a stale buffer, and its caret is live.
+    const el = taRef.current;
+    const sameBuffer = current !== null && el?.value === active.content;
+    resetHistory(active.path, {
+      content: active.content,
+      selStart: sameBuffer && el ? el.selectionStart : 0,
+      selEnd: sameBuffer && el ? el.selectionEnd : 0,
+    });
+  }, [active]);
+
   // Every visual layer (textarea, highlight <pre>, gutter, overlay) is
   // re-synced on tab switch — otherwise a previously scrolled layer stays
   // offset and the syntax appears shifted relative to the caret.
@@ -530,7 +562,7 @@ export default memo(function CodeEditor({
     el.focus();
   }, [reveal, activePath, applyScrollTransforms, LINE_HEIGHT]);
 
-  const syncCursor = () => {
+  const syncCursor = useCallback(() => {
     const el = taRef.current;
     if (!el) return;
     // Count newlines up to the caret instead of `slice().split()` — the old
@@ -551,7 +583,7 @@ export default memo(function CodeEditor({
       col: upto - lastBreak,
       sel: el.selectionEnd - el.selectionStart,
     });
-  };
+  }, []);
 
   // Keep the active-line band and the highlighted gutter row on the cursor's
   // line (imperative updates — the memoized gutter never re-renders here).
@@ -574,28 +606,173 @@ export default memo(function CodeEditor({
   // DOM surgery so the highlight is correct on the very first paint of a row.
   const activeLineForRender = SHOW_LINE_NUMBERS && !WORD_WRAP ? cursor.line : -1;
 
-  
+  /** The one funnel every text mutation goes through.
+   *
+   *  Records the pre-edit state, publishes the new buffer, records the post-edit
+   *  state, then restores the caret. Centralising this is what makes undo
+   *  reliable: previously each edit site rewrote `el.value` on its own, and the
+   *  resulting DOM churn is exactly what WebKitGTK's undo manager (and, on the
+   *  paths that fell back, Windows' too) reacts to by discarding history.
+   *
+   *  `caret` is where the caret lands afterwards; omit it to leave it alone.
+   *  `typing` marks plain character entry so bursts of it fold into one undo
+   *  step — structural edits leave it false and always get their own step. */
+  const commitEdit = (
+    next: string,
+    caret?: number | { start: number; end: number },
+    opts?: { typing?: boolean; before?: EditorSnapshot }
+  ) => {
+    const el = taRef.current;
+    if (!el || !active) return;
+    const history = historyFor(active.path);
+    const before: EditorSnapshot =
+      opts?.before ??
+      history.current() ?? { content: el.value, selStart: el.selectionStart, selEnd: el.selectionEnd };
+
+    const range =
+      caret === undefined
+        ? null
+        : typeof caret === "number"
+          ? { start: caret, end: caret }
+          : caret;
+    const after: EditorSnapshot = {
+      content: next,
+      selStart: Math.min(range ? range.start : before.selStart, next.length),
+      selEnd: Math.min(range ? range.end : before.selEnd, next.length),
+    };
+
+    recordEdit(active.path, before, after, opts?.typing ?? false);
+    onChange(active.path, next);
+
+    // The buffer is controlled, so it only takes the new value once React
+    // commits — restoring the caret before that would clamp it against the old
+    // text. One frame later it is safe.
+    if (range) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(after.selStart, after.selEnd);
+        syncCursor();
+      });
+    } else {
+      syncCursor();
+    }
+  };
+
+  /* Close a tab and drop its undo timeline. The store is keyed by path, so a
+     closed file's history would otherwise sit there for the rest of the session,
+     and re-opening it would resurrect a timeline whose "before" text no longer
+     has anything to do with what is on disk. */
+  const closeTab = useCallback(
+    (path: string) => {
+      resetFileHistory(path);
+      onClose(path);
+    },
+    [onClose]
+  );
+
+  /** Copy `text` to the system clipboard. Resolves false if it could not be done.
+   *
+   *  The context menu used to call `document.execCommand("copy"/"cut"/"paste")`,
+   *  but WebKitGTK — the Linux webview — does not implement those, so right-click
+   *  Cut and Paste silently did nothing there while working on Windows. The
+   *  async Clipboard API is the cross-platform path; execCommand survives only as
+   *  a last resort for contexts where the API is unavailable. */
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const el = taRef.current;
+      if (!el) return false;
+      const doc = document as Document & {
+        execCommand?: (cmd: string, ui: boolean) => boolean;
+      };
+      return typeof doc.execCommand === "function" && doc.execCommand("copy", false);
+    }
+  };
+
+  /** Read the system clipboard, or null when it cannot be read. */
+  const readFromClipboard = async (): Promise<string | null> => {
+    try {
+      return await navigator.clipboard.readText();
+    } catch {
+      return null;
+    }
+  };
+
+  /** Context-menu Cut: copy the selection, then delete it as one undo step. */
+  const cutSelection = async () => {
+    const el = taRef.current;
+    if (!el || !active) return;
+    setCtxMenu(null);
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start === end) return;
+    // Only remove the text once it is safely on the clipboard — deleting without
+    // a successful copy would destroy it irrecoverably.
+    if (!(await copyToClipboard(el.value.slice(start, end)))) return;
+    commitEdit(el.value.slice(0, start) + el.value.slice(end), start);
+  };
+
+  /** Context-menu Copy. */
+  const copySelection = async () => {
+    const el = taRef.current;
+    if (!el) return;
+    setCtxMenu(null);
+    await copyToClipboard(el.value.slice(el.selectionStart, el.selectionEnd));
+  };
+
+  /** Context-menu Paste: inserted through the funnel, so it is undoable. */
+  const pasteClipboard = async () => {
+    const el = taRef.current;
+    if (!el || !active) return;
+    setCtxMenu(null);
+    const text = await readFromClipboard();
+    if (text === null) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    el.focus();
+    commitEdit(el.value.slice(0, start) + text + el.value.slice(end), start + text.length);
+  };
+
   const replaceRange = (text: string, from: number, to: number) => {
     const el = taRef.current;
     if (!el || !active) return;
     el.focus();
     el.setSelectionRange(from, to);
-    const doc = document as Document & {
-      execCommand?: (cmd: string, ui: boolean, value?: string) => boolean;
-    };
-    const ok =
-      typeof doc.execCommand === "function" && doc.execCommand("insertText", false, text);
-    if (!ok) {
-      const next = el.value.slice(0, from) + text + el.value.slice(to);
-      onChange(active.path, next);
-      const caret = from + text.length;
-      requestAnimationFrame(() => {
-        el.selectionStart = caret;
-        el.selectionEnd = caret;
-      });
-    }
-    syncCursor();
+    commitEdit(el.value.slice(0, from) + text + el.value.slice(to), from + text.length);
   };
+
+  /** Put a history state on screen: new buffer plus the caret it was left with. */
+  const applyHistoryState = useCallback((path: string, snapshot: EditorSnapshot) => {
+    const el = taRef.current;
+    if (!el || active?.path !== path) return;
+    onChange(path, snapshot.content);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(snapshot.selStart, snapshot.selEnd);
+      // An undo can land the caret thousands of lines from where it was, so pull
+      // it back on screen instead of leaving it scrolled out of the viewport.
+      let line = 1;
+      for (let i = 0; i < snapshot.selStart; i++) {
+        if (snapshot.content.charCodeAt(i) === 10) line++;
+      }
+      const rowTop = PAD_TOP + (line - 1) * LINE_HEIGHT;
+      const firstRow = el.scrollTop + PAD_TOP;
+      const lastRow = el.scrollTop + el.clientHeight - LINE_HEIGHT;
+      if (rowTop < firstRow) el.scrollTop = Math.max(0, rowTop - PAD_TOP);
+      else if (rowTop > lastRow) el.scrollTop = rowTop - el.clientHeight + LINE_HEIGHT * 2;
+      scrollTopRef.current = el.scrollTop;
+      applyScrollTransforms();
+      syncCursor();
+    });
+  }, [active?.path, onChange, LINE_HEIGHT, applyScrollTransforms, syncCursor]);
+
+  /* Publish the apply function so the Edit menu drives the very same code path
+     as Ctrl+Z. Re-registering on every tab switch would briefly leave the menu
+     without a presenter, so the deps are kept to the things that genuinely
+     change the DOM work this does. */
+  useEffect(() => setHistoryPresenter(applyHistoryState), [applyHistoryState]);
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (!active) return;
@@ -606,6 +783,29 @@ export default memo(function CodeEditor({
     }
 
     const el = e.currentTarget;
+
+    // Undo / redo — Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
+    //
+    // Handled here rather than left to the webview because the native textarea
+    // stack is not dependable in either direction: WebKitGTK drops it whenever
+    // React writes `value` (every keystroke), and the structural edits below
+    // rewrite the buffer wholesale. Driving our own timeline (editorHistory.ts)
+    // makes the same keys do the same thing on Linux and Windows, and it is also
+    // the only path that can undo a Tab/Enter/comment-toggle as one step.
+    if (e.ctrlKey || e.metaKey) {
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.altKey) {
+        e.preventDefault();
+        if (e.shiftKey) redoHistory(active.path);
+        else undoHistory(active.path);
+        return;
+      }
+      if (key === "y" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        redoHistory(active.path);
+        return;
+      }
+    }
 
     // Ctrl+F: open find/replace.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "f") {
@@ -814,7 +1014,7 @@ export default memo(function CodeEditor({
     const real = ((matchIndex + matches.length) % matches.length) % matches.length;
     const m = matches[real];
     const next = activeContent.slice(0, m.start) + replaceQuery + activeContent.slice(m.end);
-    onChange(active.path, next);
+    commitEdit(next, m.start + replaceQuery.length);
     const nextIdx = (real + 1) % matches.length;
     requestAnimationFrame(() => {
       setMatchIndex(nextIdx);
@@ -832,7 +1032,7 @@ export default memo(function CodeEditor({
       last = m.end;
     }
     out += activeContent.slice(last);
-    onChange(active.path, out);
+    commitEdit(out, { start: 0, end: 0 });
     setFindQuery("");
     setMatchIndex(-1);
   };
@@ -882,13 +1082,7 @@ export default memo(function CodeEditor({
     let lastLine = el.value.indexOf("\n", en);
     if (lastLine === -1) lastLine = el.value.length;
     const next = el.value.slice(0, firstLine) + el.value.slice(lastLine);
-    const caret = Math.min(firstLine, next.length);
-    onChange(active!.path, next);
-    requestAnimationFrame(() => {
-      el.selectionStart = caret;
-      el.selectionEnd = caret;
-      syncCursor();
-    });
+    commitEdit(next, Math.min(firstLine, next.length));
   };
 
   /** Duplicate the current line below — Ctrl+Shift+D. */
@@ -902,13 +1096,7 @@ export default memo(function CodeEditor({
     const block = el.value.slice(firstLine, lastLine);
     const nl = el.value.slice(lastLine).startsWith("\n") ? "" : "\n";
     const next = el.value.slice(0, lastLine) + nl + block + el.value.slice(lastLine);
-    onChange(active!.path, next);
-    const caret = lastLine + nl.length + block.length;
-    requestAnimationFrame(() => {
-      el.selectionStart = caret;
-      el.selectionEnd = caret;
-      syncCursor();
-    });
+    commitEdit(next, lastLine + nl.length + block.length);
   };
 
   /** Move the current line up/down — Alt+Arrow. */
@@ -923,17 +1111,15 @@ export default memo(function CodeEditor({
     lines[caretLine] = lines[target];
     lines[target] = tmp;
     const next = lines.join("\n");
-    onChange(active!.path, next);
     const newLine = caretLine + dir;
     let pos = 0;
     for (let i = 0; i < newLine; i++) pos = next.indexOf("\n", pos) + 1;
+    commitEdit(next, pos);
+    // Alt+Arrow moves the caret a whole line, so keep it on screen.
     requestAnimationFrame(() => {
-      el.selectionStart = pos;
-      el.selectionEnd = pos;
       el.scrollTop = Math.max(0, (newLine - 2) * LINE_HEIGHT);
       scrollTopRef.current = el.scrollTop;
       applyScrollTransforms();
-      syncCursor();
     });
   };
 
@@ -953,7 +1139,7 @@ export default memo(function CodeEditor({
               <div
                 key={t.path}
                 onAuxClick={(ev) => {
-                  if (ev.button === 1) onClose(t.path);
+                  if (ev.button === 1) closeTab(t.path);
                 }}
                 className={`group relative flex shrink-0 items-stretch transition-colors ${
                   selected
@@ -979,7 +1165,7 @@ export default memo(function CodeEditor({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onClose(t.path)}
+                  onClick={() => closeTab(t.path)}
                   aria-label={`Close ${fileName(t.path)}`}
                   className="mr-1.5 flex h-5 w-5 shrink-0 self-center items-center justify-center rounded transition"
                 >
@@ -1183,7 +1369,28 @@ export default memo(function CodeEditor({
               <textarea
                 ref={taRef}
                 value={active.content}
-                onChange={(e) => onChange(active.path, e.target.value)}
+                onChange={(e) => {
+                  // Plain character entry. The browser has already committed the
+                  // new text to the DOM, so the pre-edit state has to come from
+                  // the timeline rather than from `el.value` — which is already
+                  // post-edit here. Marked as typing so a burst of keystrokes
+                  // collapses into a single undo step.
+                  const el = e.target;
+                  // A single-character insert or delete is typing. Anything else —
+                  // a paste, a drop, an IME commit — is a structural edit and gets
+                  // its own undo step instead of folding into the typing run.
+                  // Abs(1) rather than == 1 so holding Backspace undoes as one
+                  // step, the way it behaves in every other editor.
+                  const isTyping = Math.abs(el.value.length - active.content.length) === 1;
+                  commitEdit(el.value, { start: el.selectionStart, end: el.selectionEnd }, {
+                    typing: isTyping,
+                    before: historyFor(active.path).current() ?? {
+                      content: active.content,
+                      selStart: el.selectionStart,
+                      selEnd: el.selectionEnd,
+                    },
+                  });
+                }}
                 onKeyDown={handleKeyDown}
                 onScroll={handleScroll}
                 onClick={syncCursor}
@@ -1308,7 +1515,7 @@ export default memo(function CodeEditor({
           >
             <button
               type="button"
-              onClick={() => { document.execCommand("cut"); setCtxMenu(null); }}
+              onClick={() => void cutSelection()}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <IoCutOutline size={12} />
@@ -1317,7 +1524,7 @@ export default memo(function CodeEditor({
             </button>
             <button
               type="button"
-              onClick={() => { document.execCommand("copy"); setCtxMenu(null); }}
+              onClick={() => void copySelection()}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <IoCopyOutline size={12} />
@@ -1326,7 +1533,7 @@ export default memo(function CodeEditor({
             </button>
             <button
               type="button"
-              onClick={() => { document.execCommand("paste"); setCtxMenu(null); }}
+              onClick={() => void pasteClipboard()}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--text-primary)] hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <IoClipboardOutline size={12} />

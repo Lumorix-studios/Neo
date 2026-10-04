@@ -124,6 +124,7 @@ CMakeLists.txt.user*
 supabase/.temp/ 
 # LSP verification harness scratch dir 
 scripts/.lsp-tmp
+scripts/.history-tmp
 # ── scratch / generated debris ──────────────────────────────────────────────
 # One-off tool output that used to be committed at the repo root. Regenerate
 # by re-running the matching tool; never worth versioning.

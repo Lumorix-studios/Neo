@@ -76,6 +76,43 @@ function parseUnix(out: string): PortRow[] {
   return rows.sort((a, b) => a.port - b.port);
 }
 
+/** `lsof` — the original probe, and the only one that reports a process name. */
+const LSOF_CMD = "lsof -nP -iTCP -sTCP:LISTEN";
+/** `ss` from iproute2 — present on most distros even where `lsof` is not. */
+const SS_CMD = "ss -tlnpH";
+
+/**
+ * Parse `ss -tlnpH` output. Columns: State Recv-Q Send-Q Local Peer Process.
+ * `-p` appends `users:(("name",pid=123,fd=3))`, which is where the process name
+ * comes from; it is absent without privileges, in which case the row still shows
+ * its port and address.
+ */
+function parseSs(out: string): PortRow[] {
+  const seen = new Set<string>();
+  const rows: PortRow[] = [];
+  for (const line of out.split(/\r?\n/)) {
+    const parts = line.trim().split(/\s+/);
+    // LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=1,fd=3))
+    if (parts.length < 4) continue;
+    if (parts[0] !== "LISTEN") continue;
+    const local = parts[3];
+    const idx = local.lastIndexOf(":");
+    const port = parseInt(local.slice(idx + 1), 10);
+    if (!Number.isFinite(port)) continue;
+    const key = `${port}:${local.slice(0, idx)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const proc = /users:\(\("([^"]+)",pid=(\d+)/.exec(line);
+    rows.push({
+      port,
+      address: local.slice(0, idx),
+      pid: proc ? parseInt(proc[2], 10) : null,
+      process: proc ? proc[1] : null,
+    });
+  }
+  return rows.sort((a, b) => a.port - b.port);
+}
+
 interface PortsPanelProps {
   /** Whether this tab is currently visible (drives auto-refresh). */
   active: boolean;
@@ -90,16 +127,47 @@ export default function PortsPanel({ active }: PortsPanelProps) {
   const refresh = useCallback(async () => {
     setScanning(true);
     try {
-      const res = await invoke<RunResult>("run_command", {
-        command: IS_WINDOWS ? WIN_CMD : "lsof -nP -iTCP -sTCP:LISTEN",
-        timeout_secs: 20,
-      });
-      if (res.exitCode !== 0 && !res.stdout.trim()) {
-        setError(res.stderr.trim().slice(0, 200) || "Failed to list listening ports.");
+      if (IS_WINDOWS) {
+        const res = await invoke<RunResult>("run_command", {
+          command: WIN_CMD,
+          timeout_secs: 20,
+        });
+        if (res.exitCode !== 0 && !res.stdout.trim()) {
+          setError(res.stderr.trim().slice(0, 200) || "Failed to list listening ports.");
+          return;
+        }
+        setError(null);
+        setRows(parseWindows(res.stdout));
         return;
       }
-      setError(null);
-      setRows(IS_WINDOWS ? parseWindows(res.stdout) : parseUnix(res.stdout));
+
+      // Unix: try `lsof` first (it reports process names for every socket), then
+      // fall back to `ss`. `lsof` is not installed by default on a lot of
+      // distros, and the Ports tab showing a hard error there made it look like
+      // the feature was simply broken on Linux.
+      const lsof = await invoke<RunResult>("run_command", {
+        command: LSOF_CMD,
+        timeout_secs: 20,
+      });
+      if (lsof.exitCode === 0 && lsof.stdout.trim()) {
+        setError(null);
+        setRows(parseUnix(lsof.stdout));
+        return;
+      }
+
+      const ss = await invoke<RunResult>("run_command", {
+        command: SS_CMD,
+        timeout_secs: 20,
+      });
+      if (ss.exitCode === 0) {
+        setError(null);
+        setRows(parseSs(ss.stdout));
+        return;
+      }
+
+      setError(
+        "Could not list listening ports. Install `lsof` or `iproute2` (provides `ss`)."
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

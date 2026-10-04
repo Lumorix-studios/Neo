@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "test:lsp": "node scripts/verify-lsp.mjs",
     "test:editor-diag": "node scripts/verify-editor-diag.mjs",
+    "test:editor-history": "node scripts/verify-editor-history.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },
