@@ -1,9 +1,9 @@
 /*
- * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Author: Lumorix Studios
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 // ═══════════════════════════════════════════════════════════════════════════
-// Neo (AgenticCoder) — `api-keys` Edge Function
+// Struct — `api-keys` Edge Function
 //
 // Encrypts/decrypts BYOK provider API keys with AES-256-GCM and stores them
 // in the `user_api_keys` table. Plaintext keys never touch the database and

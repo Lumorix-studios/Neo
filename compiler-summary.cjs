@@ -1,6 +1,6 @@
 /*
- * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use the code.
+ * Author: Lumorix Studios
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use the code.
  */
 /* Runs the React Compiler over every source file and summarises which
  * components still bail out of auto-memoization, grouped by bailout kind.

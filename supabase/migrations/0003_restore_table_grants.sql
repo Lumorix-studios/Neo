@@ -1,7 +1,7 @@
--- Author: madhusudhan
--- Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+-- Author: Lumorix Studios
+-- Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
 -- ═══════════════════════════════════════════════════════════════════════════
--- Neo (AgenticCoder) — 0003_restore_table_grants
+-- Struct — 0003_restore_table_grants
 --
 -- Runtime probe of this project returned HTTP 401 / Postgres 42501:
 --   permission denied for table profiles

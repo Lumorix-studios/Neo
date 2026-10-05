@@ -2,8 +2,8 @@
 
 **Last Updated:** September 25, 2026
 
-This End User License Agreement ("EULA") governs your use of AgenticCoder /
-NEO (the "Application"), published by Lumorix Studios ("Lumorix", "we", "us").
+This End User License Agreement ("EULA") governs your use of Struct
+(the "Application"), published by Lumorix Studios ("Lumorix", "we", "us").
 By downloading, installing, or using the Application, you agree to this EULA.
 
 If you do not agree to these terms, do not download, install, or use the
@@ -16,7 +16,7 @@ Software, Lumorix Studios grants you a limited, non-exclusive, non-transferable,
 revocable license to install and use the Application for your personal,
 educational, and internal business purposes.
 
-The Application is licensed under the **NEO Source-Available License 1.0**.
+The Application is licensed under the **Struct Source-Available License 1.0**.
 Commercial redistribution of the Application or any modified version requires
 prior written permission from Lumorix Studios.
 
@@ -103,7 +103,7 @@ THE APPLICATION IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
 FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
 
-AgenticCoder is an early-stage project. There is no guarantee that it will be
+Struct is an early-stage project. There is no guarantee that it will be
 error-free, secure, uninterrupted, or fit for any particular purpose. AI output
 may be inaccurate, incomplete, or harmful; you must review it before relying on
 it.

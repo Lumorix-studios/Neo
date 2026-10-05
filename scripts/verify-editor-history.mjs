@@ -4,10 +4,10 @@
  * (src/components/editorHistory.ts).
  *
  * The editor used to lean on the webview's native textarea undo stack, which is
- * exactly the thing that differs between the two platforms Neo ships on:
+ * exactly the thing that differs between the two platforms Struct ships on:
  * WebView2 (Windows) keeps a stack across `execCommand("insertText")`, while
  * WebKitGTK (Linux) discards it the moment React writes `.value`. Rather than
- * test two webviews, Neo now owns its history — so that is what these checks
+ * test two webviews, Struct now owns its history — so that is what these checks
  * cover: step bookkeeping, typing coalescing, redo invalidation, caret
  * restoration, per-file isolation and bounded growth.
  *

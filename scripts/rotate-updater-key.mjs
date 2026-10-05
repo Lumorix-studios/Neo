@@ -1,6 +1,6 @@
 /*
- * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Author: Lumorix Studios
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 
 /*
@@ -16,7 +16,7 @@
  * This script
  *   1. copies the current pair and the configured pubkey into a backup folder,
  *   2. generates a replacement pair (random password unless `--password`),
- *   3. stores the password in `~/.tauri/neo.key.password`, restricted to the
+ *   3. stores the password in `~/.tauri/struct.key.password`, restricted to the
  *      current user,
  *   4. swaps `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`,
  *   5. signs a scratch file, the way the bundler does, to prove the pair works.
@@ -67,7 +67,7 @@ if (flags.help) {
     [
       "Usage: node scripts/rotate-updater-key.mjs [options]",
       "",
-      "  --key <path>            private key file (default ~/.tauri/neo.key)",
+      "  --key <path>            private key file (default ~/.tauri/struct.key)",
       "  --password <value>      use this password instead of a generated one",
       "  --password-file <path>  where the password is stored (default <key>.password)",
       "  --backup-dir <path>     where the current pair is kept",
@@ -84,8 +84,11 @@ if (flags.help) {
 if (!existsSync(CLI)) fail(`Cannot find the Tauri CLI at ${CLI} — run \`npm install\` first.`);
 if (!existsSync(CONFIG)) fail(`Cannot find ${CONFIG} — run this script from the repository root.`);
 
-const keyPath = options.key ?? join(homedir(), ".tauri", "neo.key");
-const passwordFile = options.passwordFile ?? join(homedir(), ".tauri", "neo.key.password");
+const defaultKey = existsSync(join(homedir(), ".tauri", "struct.key"))
+  ? join(homedir(), ".tauri", "struct.key")
+  : join(homedir(), ".tauri", "neo.key");
+const keyPath = options.key ?? defaultKey;
+const passwordFile = options.passwordFile ?? `${keyPath}.password`;
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const backupDir = options.backupDir ?? join(homedir(), ".tauri", `backup-${stamp}`);
 
@@ -129,8 +132,8 @@ if (flags.dryRun) {
 
 // 1. Keep the old pair, the old pubkey and a note explaining why.
 mkdirSync(backupDir, { recursive: true });
-if (existsSync(keyPath)) copyFileSync(keyPath, join(backupDir, "neo.key.old"));
-if (existsSync(`${keyPath}.pub`)) copyFileSync(`${keyPath}.pub`, join(backupDir, "neo.key.old.pub"));
+if (existsSync(keyPath)) copyFileSync(keyPath, join(backupDir, "struct.key.old"));
+if (existsSync(`${keyPath}.pub`)) copyFileSync(`${keyPath}.pub`, join(backupDir, "struct.key.old.pub"));
 writeFileSync(
   join(backupDir, "README.txt"),
   [
@@ -187,7 +190,7 @@ console.log(
 );
 
 // 5. Sign a scratch file through the same code path the bundler uses.
-const probe = join(tmpdir(), "neo-rotate-probe.txt");
+const probe = join(tmpdir(), "struct-rotate-probe.txt");
 writeFileSync(probe, "probe\n");
 const signed = spawnSync(
   process.execPath,

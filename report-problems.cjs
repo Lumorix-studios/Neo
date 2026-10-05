@@ -1,6 +1,6 @@
 /*
- * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use the code.
+ * Author: Lumorix Studios
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use the code.
  */
 /* Groups the ESLint JSON output by file and rule so the remaining problem
  * count is readable at a glance. Usage: node report-problems.cjs */
@@ -22,6 +22,6 @@ console.log("\n== by rule ==");
 for (const [k, v] of [...byRule].sort((a, b) => b[1] - a[1])) console.log(String(v).padStart(4) + "  " + k);
 console.log("\n== by file ==");
 for (const [k, v] of [...byFile].sort((a, b) => b[1].length - a[1].length)) {
-  console.log(String(v.length).padStart(4) + "  " + k.replace(/\\/g, "/").replace(/.*AgenticCoder\//, ""));
+  console.log(String(v.length).padStart(4) + "  " + k.replace(/\\/g, "/").replace(/.*[\\/]struct[\\/]/, ""));
   for (const x of v) console.log("        " + x);
 }

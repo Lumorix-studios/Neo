@@ -4,7 +4,7 @@
 
 ## Reporting a Vulnerability
 
-If you believe you have found a security vulnerability in AgenticCoder / NEO,
+If you believe you have found a security vulnerability in Struct,
 please report it privately rather than opening a public issue.
 
 **Email:** security@lumorix.studio
@@ -26,7 +26,7 @@ credit you in the release notes if you would like to be credited.
 
 In scope:
 
-* The AgenticCoder / NEO application and its source code
+* The Struct application and its source code
 * The `api-keys` Supabase Edge Function
 * The Lumorix Studios website account and authentication flows
 * The Supabase database schema, RLS policies, and access control
@@ -42,7 +42,7 @@ Out of scope:
 
 ## Handling API Keys
 
-AgenticCoder stores provider API keys (BYOK) encrypted server-side with
+Struct stores provider API keys (BYOK) encrypted server-side with
 AES-256-GCM. If you believe a key has been exposed:
 
 1. Revoke and rotate the key at the provider immediately.
@@ -55,7 +55,7 @@ screenshot, or log.
 
 ## Supported Versions
 
-AgenticCoder is an early-stage project. Security fixes are applied to the latest
+Struct is an early-stage project. Security fixes are applied to the latest
 release on the main branch. We recommend always running the latest version.
 
 ## Disclosure

@@ -1,9 +1,9 @@
 /*
- * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use the code.
+ * Author: Lumorix Studios
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use the code.
  */
 $ErrorActionPreference = 'Stop'
-$p = 'C:\Users\madyx\AgenticCoder\src\App.tsx'
+$p = Join-Path $env:USERPROFILE 'source\repos\struct\src\App.tsx'
 $t = [System.IO.File]::ReadAllText($p)
 $t = $t.Replace([string][char]13 + [string][char]10, [string][char]10)
 $fail = 0

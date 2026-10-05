@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────────────
-# Neo (AgenticCoder) — Supabase CLI project config.
+# Struct — Supabase CLI project config.
 #
 # The app only uses Supabase for Auth, Postgres (RLS) and one Edge Function,
 # so this file stays deliberately small; the CLI fills in its defaults.
@@ -12,7 +12,7 @@
 # Local dev project name (used for `supabase start`). Linking a remote project
 # does NOT change this — `supabase link --project-ref <ref>` records the ref in
 # supabase/.temp/project-ref instead.
-project_id = "agenticcoder"
+project_id = "struct"
 
 [functions.api-keys]
 # Kept explicit on purpose: `verify_jwt = true` is the CLI default and is what

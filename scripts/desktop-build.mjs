@@ -1,6 +1,6 @@
 /*
- * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Author: Lumorix Studios
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 
 /*
@@ -14,7 +14,7 @@
  *   Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.
  *
  * This wrapper locates the key pair written by
- * `tauri signer generate -w ~/.tauri/neo.key`, exports the variables the Tauri
+ * `tauri signer generate -w ~/.tauri/struct.key`, exports the variables the Tauri
  * CLI expects (`TAURI_SIGNING_PRIVATE_KEY` / `..._PATH`) and forwards all
  * remaining arguments to the CLI, so a release build is `npm run build:desktop`
  * plus the key password.
@@ -28,8 +28,8 @@
  *   node scripts/desktop-build.mjs -- --no-bundle  arguments after `--` reach the Tauri CLI
  *
  * Environment:
- *   NEO_SIGNING_KEY                     key file (default `~/.tauri/neo.key`)
- *   NEO_SIGNING_KEY_PASSWORD_FILE       password file (default `~/.tauri/neo.key.password`)
+ *   STRUCT_SIGNING_KEY                   key file (default `~/.tauri/struct.key`)
+ *   STRUCT_SIGNING_KEY_PASSWORD_FILE     password file (default `~/.tauri/struct.key.password`)
  *   TAURI_SIGNING_PRIVATE_KEY           key content; wins over the file lookup
  *   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  key password; wins over the password file
  *
@@ -79,9 +79,9 @@ if (flags.help) {
       "Remaining arguments are forwarded to the Tauri CLI.",
       "",
       "Signing credentials:",
-      "  key       NEO_SIGNING_KEY or ~/.tauri/neo.key",
+      "  key       STRUCT_SIGNING_KEY or ~/.tauri/struct.key",
       "  password  TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
-      "            or NEO_SIGNING_KEY_PASSWORD_FILE (default ~/.tauri/neo.key.password)",
+      "            or STRUCT_SIGNING_KEY_PASSWORD_FILE (default ~/.tauri/struct.key.password)",
       "  rotate    node scripts/rotate-updater-key.mjs",
     ].join("\n"),
   );
@@ -111,8 +111,13 @@ const env = { ...process.env };
 env.APPIMAGE_EXTRACT_AND_RUN ??= "1";
 
 if (!flags.unsigned) {
+  // `STRUCT_*` is the current name; `NEO_*` stays supported as a fallback so
+  // existing local setups and CI secrets keep working after the rename.
   const inlineKey = env.TAURI_SIGNING_PRIVATE_KEY?.trim();
-  const keyPath = env.NEO_SIGNING_KEY ?? join(homedir(), ".tauri", "neo.key");
+  const defaultKey = existsSync(join(homedir(), ".tauri", "struct.key"))
+    ? join(homedir(), ".tauri", "struct.key")
+    : join(homedir(), ".tauri", "neo.key");
+  const keyPath = env.STRUCT_SIGNING_KEY ?? env.NEO_SIGNING_KEY ?? defaultKey;
 
   if (inlineKey) {
     env.TAURI_SIGNING_PRIVATE_KEY = inlineKey;
@@ -145,9 +150,9 @@ if (!flags.unsigned) {
         "  Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.",
         "",
         "Pick one:",
-        "  - point NEO_SIGNING_KEY at an existing key file,",
+        "  - point STRUCT_SIGNING_KEY at an existing key file,",
         "  - export TAURI_SIGNING_PRIVATE_KEY (key content) yourself,",
-        "  - create a new pair:  npx tauri signer generate -w ~/.tauri/neo.key",
+        "  - create a new pair:  npx tauri signer generate -w ~/.tauri/struct.key",
         "    then copy the new .pub file into plugins.updater.pubkey,",
         "  - or bundle without updater artifacts:  npm run build:desktop:unsigned",
       ].join("\n"),
@@ -155,7 +160,11 @@ if (!flags.unsigned) {
     process.exit(1);
   }
 
-  const passwordFile = env.NEO_SIGNING_KEY_PASSWORD_FILE ?? join(homedir(), ".tauri", "neo.key.password");
+  const defaultPasswordFile = existsSync(join(homedir(), ".tauri", "struct.key.password"))
+    ? join(homedir(), ".tauri", "struct.key.password")
+    : join(homedir(), ".tauri", "neo.key.password");
+  const passwordFile =
+    env.STRUCT_SIGNING_KEY_PASSWORD_FILE ?? env.NEO_SIGNING_KEY_PASSWORD_FILE ?? defaultPasswordFile;
   if (env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD !== undefined) {
     console.log("[sign] Using the key password from TAURI_SIGNING_PRIVATE_KEY_PASSWORD.");
   } else if (existsSync(passwordFile)) {

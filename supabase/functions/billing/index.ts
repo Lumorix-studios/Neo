@@ -1,9 +1,9 @@
 /*
- * Author: madhusudhan
- * Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+ * Author: Lumorix Studios
+ * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 // ═══════════════════════════════════════════════════════════════════════════
-// Neo (AgenticCoder) — `billing` Edge Function
+// Struct — `billing` Edge Function
 //
 // Subscription checkout for the BYOK paywall: free -> pro.
 //

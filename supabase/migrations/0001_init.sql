@@ -1,7 +1,7 @@
--- Author: madhusudhan
--- Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+-- Author: Lumorix Studios
+-- Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
 -- ═══════════════════════════════════════════════════════════════════════════
--- Neo (AgenticCoder) — Supabase schema 0001_init
+-- Struct — Supabase schema 0001_init
 -- Run this in the Supabase dashboard → SQL Editor (or `supabase db push`).
 -- Creates: profiles, user_settings, chats, user_api_keys + RLS policies
 --          and a trigger that auto-creates a profile row on every signup.

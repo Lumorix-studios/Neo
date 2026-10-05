@@ -14,7 +14,7 @@ It brings an AI agent, code editor, filesystem tools, Git integration, terminals
 
 
 <p align="center">
-  <img src="src/assets/images/preview sss.png" alt="NEO coding environment" width="900" />
+  <img src="src/assets/images/preview sss.png" alt="Struct coding environment" width="900" />
 </p>
 
 ---
@@ -72,7 +72,7 @@ Destructive operations require explicit user approval.
 Agent activity is displayed through an activity timeline showing tool calls, status, and output.
 
 <p align="center">
-  <img src="src/assets/images/previewss2.0.png" alt="NEO agent activity and change review" width="850" />
+  <img src="src/assets/images/previewss2.0.png" alt="Struct agent activity and change review" width="850" />
 </p>
 
 ---
@@ -124,7 +124,7 @@ Ctrl + Shift + E
 ```
 
 <p align="center">
-  <img src="src/assets/images/IDE.png" alt="NEO integrated code editor" width="900" />
+  <img src="src/assets/images/IDE.png" alt="Struct integrated code editor" width="900" />
 </p>
 
 ---
@@ -233,7 +233,7 @@ This allows developers to choose the AI infrastructure that fits their workflow.
 
 Struct supports locally hosted AI models through **Ollama**.
 
-Users can run an Ollama server on their own machine, install models locally, and configure NEO to communicate with the local endpoint.
+Users can run an Ollama server on their own machine, install models locally, and configure Struct to communicate with the local endpoint.
 
 When using a local model, inference can remain entirely on the user's device.
 
@@ -243,7 +243,7 @@ When using a local model, inference can remain entirely on the user's device.
 
 Struct supports the **Model Context Protocol (MCP)**.
 
-MCP allows additional tools and services to be connected to the agent without requiring every integration to be implemented directly inside NEO.
+MCP allows additional tools and services to be connected to the agent without requiring every integration to be implemented directly inside Struct.
 
 This provides an extensible way to expand the capabilities available to the agent.
 
@@ -296,7 +296,7 @@ Struct uses **Supabase** for backend services such as:
 
 Workspace files remain on the user's machine and are accessed locally by the desktop application.
 
-Opening a project in NEO does not mean that the entire workspace is automatically uploaded to Supabase.
+Opening a project in Struct does not mean that the entire workspace is automatically uploaded to Supabase.
 
 ---
 
@@ -306,7 +306,7 @@ Struct is designed to keep development operations local while allowing users to 
 
 ## Workspace Data
 
-Project files are accessed locally through the NEO desktop application.
+Project files are accessed locally through the Struct desktop application.
 
 Filesystem operations are performed through the Tauri/Rust application layer.
 
@@ -323,7 +323,7 @@ When an AI model processes project information, relevant information may be tran
 For example:
 
 ```text
-                    NEO
+                    Struct
                      |
                 Agent Layer
                      |
@@ -354,7 +354,7 @@ Depending on the feature, information stored through the backend may include:
 * Cloud-synchronized application data
 * Other application metadata
 
-The exact data stored may change as NEO develops.
+The exact data stored may change as Struct develops.
 
 ---
 
@@ -379,7 +379,7 @@ collect payment information.
 
 ```text
 +------------------------------------------------------+
-|                        NEO                           |
+|                      Struct                          |
 |                                                      |
 |              React / TypeScript / TSX                |
 |                         |                            |
@@ -463,7 +463,7 @@ Rust handles native functionality including:
   <img src="https://skillicons.dev/icons?i=kotlin" alt="Kotlin" />
 </p>
 
-Kotlin is used for Android-specific functionality within the broader NEO project ecosystem.
+Kotlin is used for Android-specific functionality within the broader Struct project ecosystem.
 
 ---
 
@@ -521,7 +521,7 @@ Additional project-specific runtimes and toolchains can be installed independent
 
 ```bash
 git clone https://github.com/Lumorix-studios/Struct.git
-cd Neo
+cd Struct
 ```
 
 ## Install Dependencies
@@ -691,7 +691,7 @@ https://github.com/Lumorix-studios/Struct
 ---
 
 <p align="center">
-  <strong>NEO</strong><br>
+  <strong>Struct</strong><br>
   Lightweight Agentic Coding Environment
 </p>
 

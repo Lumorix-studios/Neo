@@ -1,7 +1,7 @@
--- Author: madhusudhan
--- Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+-- Author: Lumorix Studios
+-- Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
 -- ═══════════════════════════════════════════════════════════════════════════
--- Neo (AgenticCoder) — Supabase schema 0005_byok_paywall
+-- Struct — Supabase schema 0005_byok_paywall
 --
 -- Turns the BYOK paywall ON. 0001_init shipped
 -- `byok_enabled boolean not null default true` and the `api-keys` edge function

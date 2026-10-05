@@ -1,7 +1,7 @@
--- Author: madhusudhan
--- Check the LICENSE in the GitHub repo (https://github.com/madhusudhan-rgb/Neo) for more information on permissions to use this code.
+-- Author: Lumorix Studios
+-- Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
 -- ═══════════════════════════════════════════════════════════════════════════
--- Neo (AgenticCoder) — Supabase schema 0002_harden_profiles
+-- Struct — Supabase schema 0002_harden_profiles
 --
 -- Closes a paywall bypass left open by 0001_init.
 --
