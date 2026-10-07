@@ -168,10 +168,33 @@ export function checkSupabaseHealth(): Promise<AuthHealth> {
   }
   if (!healthPromise) {
     healthPromise = (async (): Promise<AuthHealth> => {
-      try {
-        const res = await fetch(`${supabaseUrl}/auth/v1/settings`, {
-          headers: { apikey: supabaseAnonKey },
+      const sb = supabase();
+      // (No `<T>` generics here — they break the parser in some build setups.)
+      const withTimeout = (p: Promise<any>, ms: number, label: string): Promise<any> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(label + " timed out after " + ms / 1000 + "s")), ms);
         });
+        return Promise.race([p, timeout]).finally(() => {
+          if (timer) clearTimeout(timer);
+        });
+      };
+      // Prefer the same native-fetch transport the client uses: raw
+      // `window.fetch` may throw in the Tauri webview (WebKitGTK TLS) while
+      // the project is perfectly reachable.
+      try {
+        const doFetch = async (): Promise<Response> => {
+          if (sb) {
+            const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+            return (await tauriFetch(`${supabaseUrl}/auth/v1/settings`, {
+              headers: { apikey: supabaseAnonKey },
+            })) as unknown as Response;
+          }
+          return window.fetch(`${supabaseUrl}/auth/v1/settings`, {
+            headers: { apikey: supabaseAnonKey },
+          });
+        };
+        const res = await withTimeout(doFetch(), 15000, "Supabase probe");
         if (res.ok) return { ok: true, message: null };
         let body = "";
         try {
@@ -179,9 +202,19 @@ export function checkSupabaseHealth(): Promise<AuthHealth> {
         } catch {
           /* ignore — status alone is enough */
         }
-        return { ok: false, message: authErrorMessage(new Error(body || `Auth probe failed (HTTP ${res.status}).`)) };
-      } catch (e) {
-        return { ok: false, message: authErrorMessage(e) };
+        return {
+          ok: false,
+          message: `${authErrorMessage(new Error(body || `Auth probe failed (HTTP ${res.status}).`))} (HTTP ${res.status})`,
+        };
+      } catch (probeErr) {
+        const raw = probeErr instanceof Error ? probeErr.message : String(probeErr);
+        console.warn("[auth] Supabase health probe failed:", raw);
+        return {
+          ok: false,
+          message:
+            `${authErrorMessage(probeErr)} ` +
+            `(underlying error: ${raw || "unknown"}.)`,
+        };
       }
     })();
   }

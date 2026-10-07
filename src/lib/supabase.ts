@@ -24,6 +24,29 @@ export const supabaseAnonKey =
 
 export const isSupabaseConfigured = supabaseUrl.length > 0 && supabaseAnonKey.length > 0;
 
+/**
+ * Fetch impl for supabase-js.
+ *
+ * On Linux the WebKitGTK webview's own TLS stack (glib-networking/libsoup)
+ * is a frequent failure point: `curl` from the same machine succeeds while
+ * `window.fetch(https://…)` inside the Tauri window throws `Failed to fetch`
+ * / `Load failed`. Tauri's native HTTP client (Rust reqwest, already allowed
+ * via `http:default` → `https://*:*` in capabilities) bypasses the webview
+ * stack entirely, so prefer it inside Tauri and fall back to the webview
+ * fetch in browsers / when the plugin is unavailable.
+ */
+async function resilientFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+    try {
+      const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+      return (await tauriFetch(input as string | URL | Request, init as never)) as unknown as Response;
+    } catch {
+      /* plugin missing/blocked — fall through to webview fetch */
+    }
+  }
+  return window.fetch(input, init);
+}
+
 let client: SupabaseClient | null = null;
 if (isSupabaseConfigured) {
   // persistSession: keep the login across app restarts (like VS Code sign-in).
@@ -35,6 +58,13 @@ if (isSupabaseConfigured) {
       detectSessionInUrl: false, // deep-link/token handling is done manually
       // Sessions are persisted in the WebView's localStorage under the
       // supabase-js storage key, so sign-in survives app restarts.
+    },
+    global: {
+      // Route every Auth/PostgREST/Functions call through the native client
+      // inside Tauri (see resilientFetch). This is THE fix for "Couldn't
+      // reach the Supabase project" on machines where curl works but the
+      // webview's own fetch throws.
+      fetch: resilientFetch as typeof fetch,
     },
   });
 }

@@ -701,17 +701,37 @@ export default function App() {
       return;
     }
     setAccountLoading(true);
+    // Never hang on "Checking your session…": any single Supabase step that
+    // stalls (dead webview TLS, paused project, missing table) previously
+    // left the Account tab on the loading placeholder forever with no error.
+    // (Promise.race helper is inlined without generics — `<T>` syntax breaks
+    // the .tsx parser inside this component.)
+    const withTimeout = (p: Promise<any>, ms: number, label: string): Promise<any> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label + " timed out after " + ms / 1000 + "s")), ms);
+      });
+      return Promise.race([p, timeout]).finally(() => {
+        if (timer) clearTimeout(timer);
+      });
+    };
     try {
-      const user = await getCurrentUser();
+      const user = (await withTimeout(getCurrentUser(), 20000, "Session check")) as Awaited<
+        ReturnType<typeof getCurrentUser>
+      >;
       setAccount(user);
       if (!user) {
         setAccountProfile(null);
         byok.clearMemoryKeys();
         return;
       }
-      const profile = await getProfile();
+      const profile = (await withTimeout(getProfile(), 20000, "Profile load")) as Awaited<
+        ReturnType<typeof getProfile>
+      >;
       setAccountProfile(profile);
-      const snapshot = await cloudSync.loadAll();
+      const snapshot = (await withTimeout(cloudSync.loadAll(), 25000, "Cloud sync")) as Awaited<
+        ReturnType<typeof cloudSync.loadAll>
+      >;
       if (snapshot.settings) {
         // Cloud rows NEVER carry the API key — fetchSettings() returns
         // apiKey: "" on purpose (BYOK keys are account-only). Preserve the live
@@ -741,6 +761,10 @@ export default function App() {
         }
         void cloudSync.upsertSettings(localSettings);
       }
+    } catch (e) {
+      // A stall/timeout here used to leave the Account tab on "Checking your
+      // session…" forever (finally still clears the flag, but nobody saw WHY).
+      console.warn("[auth] Cloud bootstrap failed:", e instanceof Error ? e.message : e);
     } finally {
       setAccountLoading(false);
     }
