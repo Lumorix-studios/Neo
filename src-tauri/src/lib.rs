@@ -2310,8 +2310,43 @@ async fn launch_downloaded(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Linux-only WebKitGTK tuning, applied before any webview exists.
+///
+/// This app draws continuously while idle: the prompt bar runs a canvas
+/// particle loop, and WebKitGTK repaints the whole page on every frame. On
+/// distributions that default to a software GL stack (llvmpipe/swrast, and
+/// every Wayland session where DMABuf import is unavailable) that turns a
+/// 60fps animation into a single-digit-fps slideshow and makes typing in the
+/// editor feel like wading through treacle.
+///
+/// `WEBKIT_DISABLE_DMABUF_RENDERER=1` forces WebKit to fall back from the
+/// zero-copy DMABuf path to plain shared-memory texture upload. That fallback
+/// is faster on llvmpipe and on Wayland/GTK combinations that cannot import
+/// DMABuf buffers, which is the common case on desktop Linux today.
+///
+/// Deliberately NOT set: anything that clamps the device scale factor. This is
+/// a text-heavy UI and most laptops run HiDPI, so forcing scale 1 would buy a
+/// little speed by rendering every glyph blurry. Correctness of the text wins.
+///
+/// Set only when the app is running on Linux, and never overwrite a value the
+/// user already exported, so a working override stays working.
+#[cfg(target_os = "linux")]
+fn tune_webkit_for_linux() {
+    const DEFAULTS: &[(&str, &str)] = &[("WEBKIT_DISABLE_DMABUF_RENDERER", "1")];
+    for (key, value) in DEFAULTS {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn tune_webkit_for_linux() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tune_webkit_for_linux();
+
     let builder = tauri::Builder::default();
 
     // Single-instance guard (release builds only).

@@ -14,7 +14,13 @@ import {
   signOut,
   updateProfile,
   refreshEnabledProviders,
+  checkSupabaseHealth,
+  refreshSupabaseHealth,
   providerDisabledMessage,
+  onAuthError,
+  getLastAuthError,
+  clearLastAuthError,
+  AUTH_ERROR_EVENT,
   type EnabledProviders,
   type NeoUser,
   type Profile,
@@ -302,6 +308,8 @@ function SignInUp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [callbackError, setCallbackError] = useState<string | null>(() => getLastAuthError());
+  const [healthError, setHealthError] = useState<string | null>(null);
   const [providers, setProviders] = useState<EnabledProviders | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -312,8 +320,35 @@ function SignInUp() {
     void refreshEnabledProviders().then((p) => {
       if (alive && p) setProviders(p);
     });
+    // Startup probe: when the URL/key in .env is dead (rotated anon key,
+    // paused project, offline…), EVERY method fails. Say so up front instead
+    // of letting each button fail one by one.
+    void checkSupabaseHealth().then((h) => {
+      if (alive && !h.ok && h.message) setHealthError(h.message);
+    });
+    // OAuth / recovery deep-link failures are broadcast from the auth layer
+    // (they happen outside this form). Show them here so "login always fails"
+    // always comes with a reason.
+    const off = onAuthError((msg) => {
+      if (alive) setCallbackError(msg);
+    });
+    let unlisten: (() => void) | null = null;
+    void import("@tauri-apps/api/event")
+      .then(async ({ listen }) => {
+        if (!alive) return;
+        unlisten = await listen<string>(AUTH_ERROR_EVENT, (e) => {
+          if (alive) setCallbackError(typeof e.payload === "string" ? e.payload : String(e.payload));
+        });
+      })
+      .catch(() => undefined);
     return () => {
       alive = false;
+      off();
+      try {
+        unlisten?.();
+      } catch {
+        /* listener already gone */
+      }
     };
   }, []);
 
@@ -321,6 +356,9 @@ function SignInUp() {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setCallbackError(null);
+    setHealthError(null);
+    clearLastAuthError();
     try {
       const result = await fn();
       done?.(result);
@@ -328,6 +366,16 @@ function SignInUp() {
       setError(e instanceof Error ? e.message : String(e));
     }
     setBusy(false);
+  };
+
+  const recheckHealth = () => {
+    setHealthError(null);
+    void refreshSupabaseHealth().then((h) => {
+      setHealthError(!h.ok && h.message ? h.message : null);
+    });
+    void refreshEnabledProviders().then((p) => {
+      if (p) setProviders(p);
+    });
   };
 
   const canSubmit = !busy && email.trim().length > 3 && password.length >= 6;
@@ -386,6 +434,15 @@ function SignInUp() {
         </p>
       )}
 
+      {healthError && (
+        <p className="text-[11.5px] leading-5 text-red-400/90">
+          {healthError}{" "}
+          <button type="button" onClick={recheckHealth} className="underline underline-offset-2">
+            Recheck
+          </button>
+        </p>
+      )}
+
       <div className="space-y-2.5">
         <label className="block">
           <span className="mb-1 block text-[11px] text-[var(--text-muted)]">Email</span>
@@ -430,7 +487,12 @@ function SignInUp() {
       </div>
 
       {error && <p className="text-[11.5px] leading-4 text-red-400/90">{error}</p>}
-      {notice && !error && (
+      {callbackError && !error && (
+        <p className="text-[11.5px] leading-4 text-red-400/90">
+          Last sign-in attempt failed: {callbackError}
+        </p>
+      )}
+      {notice && !error && !callbackError && (
         <p className="text-[11.5px] leading-4 text-[var(--text-muted)]">{notice}</p>
       )}
 

@@ -38,6 +38,53 @@ export async function broadcastAuthChange(): Promise<void> {
   }
 }
 
+/**
+ * Tauri event + in-memory broadcast for auth-callback failures (OAuth /
+ * recovery links Supabase rejected, expired PKCE codes, …). These used to be
+ * silently swallowed and the user just stayed signed out with no message —
+ * the classic "login always fails" report.
+ */
+export const AUTH_ERROR_EVENT = "neo:auth-error";
+
+let lastAuthError: string | null = null;
+const authErrorListeners = new Set<(msg: string) => void>();
+
+/** Most recent surfaced auth-callback failure (null when none). */
+export function getLastAuthError(): string | null {
+  return lastAuthError;
+}
+
+/** Subscribe to auth-callback failures. Returns an unsubscribe fn. */
+export function onAuthError(cb: (msg: string) => void): () => void {
+  authErrorListeners.add(cb);
+  return () => {
+    authErrorListeners.delete(cb);
+  };
+}
+
+/** Surface an auth-callback failure to every window + the in-memory bus. */
+export async function broadcastAuthError(message: string): Promise<void> {
+  lastAuthError = message;
+  for (const cb of authErrorListeners) {
+    try {
+      cb(message);
+    } catch {
+      /* listener threw — ignore */
+    }
+  }
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit(AUTH_ERROR_EVENT, message);
+  } catch {
+    /* not in Tauri or emit unavailable — no-op */
+  }
+}
+
+/** Clear a previously surfaced auth-callback failure. */
+export function clearLastAuthError(): void {
+  lastAuthError = null;
+}
+
 /** Display label for an OAuth provider id ("github" → "GitHub"). */
 export function providerLabel(provider: AuthProvider): string {
   return provider === "github" ? "GitHub" : "Google";
@@ -91,6 +138,60 @@ export function fetchEnabledProviders(): Promise<EnabledProviders | null> {
 export async function isProviderDisabled(provider: AuthProvider): Promise<boolean> {
   const enabled = await fetchEnabledProviders();
   return enabled ? !enabled[provider] : false;
+}
+
+/** Result of the one-shot startup connectivity check against the project. */
+export interface AuthHealth {
+  ok: boolean;
+  /** Human-readable reason when `ok` is false. */
+  message: string | null;
+}
+
+let healthPromise: Promise<AuthHealth> | null = null;
+
+/**
+ * Probe the configured Supabase project once per session (`/auth/v1/settings`
+ * with the anon key) and translate transport / key failures into the same
+ * actionable wording the sign-in form shows.
+ *
+ * Resolves `{ ok: true }` when the project answers, `{ ok: false, message }`
+ * when the key is rejected or the host is unreachable. A probe that returns
+ * valid JSON — even with all providers off — is still `ok` (that case is
+ * handled per-button by `isProviderDisabled`).
+ */
+export function checkSupabaseHealth(): Promise<AuthHealth> {
+  if (!isSupabaseConfigured) {
+    return Promise.resolve({
+      ok: false,
+      message: "Supabase is not configured — add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env, then restart the app.",
+    });
+  }
+  if (!healthPromise) {
+    healthPromise = (async (): Promise<AuthHealth> => {
+      try {
+        const res = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+          headers: { apikey: supabaseAnonKey },
+        });
+        if (res.ok) return { ok: true, message: null };
+        let body = "";
+        try {
+          body = await res.text();
+        } catch {
+          /* ignore — status alone is enough */
+        }
+        return { ok: false, message: authErrorMessage(new Error(body || `Auth probe failed (HTTP ${res.status}).`)) };
+      } catch (e) {
+        return { ok: false, message: authErrorMessage(e) };
+      }
+    })();
+  }
+  return healthPromise;
+}
+
+/** Re-run the startup probe, ignoring the cached result. */
+export function refreshSupabaseHealth(): Promise<AuthHealth> {
+  healthPromise = null;
+  return checkSupabaseHealth();
 }
 
 /**
@@ -179,6 +280,21 @@ function toNeoUser(
 export function authErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
 
+  // The anon key in .env is stale/rotated or the project was deleted —
+  // GoTrue answers every request with "invalid API key". Say so directly.
+  if (/invalid api key|invalid jwt|api key not found|project not found/i.test(msg)) {
+    return (
+      "This app's Supabase API key was rejected by the project. " +
+      "Open Dashboard → Project Settings → API, copy the current anon public key into " +
+      "your .env as VITE_SUPABASE_ANON_KEY, restart the app, and try again."
+    );
+  }
+
+  // The JWT embedded in the anon key (or a stored session) expired.
+  if (/jwt expired|exp claim|token.*expired/i.test(msg)) {
+    return "Your session expired — sign out and sign back in. If it keeps happening, refresh VITE_SUPABASE_ANON_KEY from Dashboard → Project Settings → API.";
+  }
+
   // Supabase returns this until the provider is switched on in the dashboard.
   // The raw text names the API ("Unsupported provider: provider is not
   // enabled"), not the button the user has to click — so translate it.
@@ -189,6 +305,16 @@ export function authErrorMessage(err: unknown): string {
   // redirect_to rejected because it isn't in the allow list.
   if (/redirect/i.test(msg) && /(not allowed|not in|invalid|whitelist)/i.test(msg)) {
     return "Your project's Redirect URLs allow list doesn't include this app's callback — add agenticcoder://auth/callback in Dashboard → Authentication → URL Configuration.";
+  }
+
+  // Auth server unreachable from this device (offline, DNS, firewall, revoked
+  // project URL …). fetch() itself threw — there is no GoTrue error shape.
+  if (/failed to fetch|networkerror|network request failed|load failed|timed out|timeout/i.test(msg)) {
+    return (
+      "Couldn't reach the Supabase project — check your connection, then verify " +
+      "VITE_SUPABASE_URL in your .env matches Dashboard → Project Settings → API " +
+      "(the project's URL / ref changes if it was paused, restored or recreated)."
+    );
   }
 
   return msg
@@ -404,6 +530,18 @@ export async function handleOAuthRedirect(rawUrl?: string): Promise<void> {
   } catch {
     return;
   }
+  const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+  const queryParams = parsed.searchParams;
+  const hashError = hashParams.get("error") ?? hashParams.get("error_description");
+  const queryError = queryParams.get("error") ?? queryParams.get("error_description");
+  const providerError = hashError ?? queryError;
+  if (providerError) {
+    // Supabase (or the OAuth provider) rejected the flow — wrong redirect URL
+    // allow-list, cancelled consent, disabled provider… Surface it instead of
+    // silently staying signed out (the classic "login always fails").
+    await broadcastAuthError(authErrorMessage({ message: providerError }));
+    return;
+  }
   const hash = parsed.hash;
   const hasHash = hash.includes("access_token") || hash.includes("error");
   const hasQuery =
@@ -419,16 +557,39 @@ export async function handleOAuthRedirect(rawUrl?: string): Promise<void> {
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
       if (accessToken && refreshToken) {
-        await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        const { error } = await sb.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (error) {
+          await broadcastAuthError(authErrorMessage(error));
+          return;
+        }
       }
     } else {
       // PKCE flow: ?code=… — exchanged by supabase-js (verifier is in storage).
-      await sb.auth.exchangeCodeForSession(href);
+      // NOTE: the verifier lives in this webview's storage. If the user
+      // started OAuth in a different window/profile (e.g. pressed GitHub in
+      // the main window but the IDE window consumed the deep link), the
+      // exchange fails with "code verifier missing". Broadcast + return so a
+      // sibling window with the verifier can complete it instead of every
+      // window failing silently.
+      const { error } = await sb.auth.exchangeCodeForSession(href);
+      if (error) {
+        await broadcastAuthError(authErrorMessage(error));
+        return;
+      }
     }
     // Accounts created before the DB trigger existed still get a profile row.
     await ensureProfile().catch(() => undefined);
-  } catch {
-    /* bad / expired / replayed link — leave the user signed out */
+    clearLastAuthError();
+  } catch (err) {
+    // Genuinely bad / expired / replayed link — leave the user signed out but
+    // SAY so, instead of the old silent swallow.
+    await broadcastAuthError(
+      err instanceof Error ? authErrorMessage(err) : "That sign-in link was invalid or expired — try again."
+    );
+    return;
   } finally {
     // Scrub tokens from the address bar. Deep-link URLs never reach it.
     if (!fromDeepLink) {

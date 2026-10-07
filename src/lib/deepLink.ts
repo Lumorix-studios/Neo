@@ -4,7 +4,7 @@
  */
 import { useEffect } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { handleOAuthRedirect } from "./auth";
+import { broadcastAuthError, handleOAuthRedirect } from "./auth";
 
 /** Deep-link scheme registered in `src-tauri/tauri.conf.json > plugins.deep-link`. */
 const SCHEME = "agenticcoder://";
@@ -29,7 +29,13 @@ function consume(url: string): void {
   if (!url.startsWith(SCHEME)) return;
   if (consumed.has(url)) return;
   consumed.add(url);
-  void handleOAuthRedirect(url);
+  // `handleOAuthRedirect` never rejects (it broadcasts + returns on failure),
+  // but a broken deep-link subscription itself would still be silent — surface
+  // unexpected throws so a missing plugin / bad URL never looks like "login
+  // always fails" with no message.
+  void handleOAuthRedirect(url).catch((e: unknown) =>
+    broadcastAuthError(e instanceof Error ? e.message : String(e)).catch(() => undefined)
+  );
 }
 
 /**

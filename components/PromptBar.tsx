@@ -258,6 +258,8 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const glowRef = useRef<HTMLSpanElement>(null);
   const sparkRef = useRef<HTMLCanvasElement>(null);
   const typing = useRef({ energy: 0, strokes: 0 });
+  // Set by the spark-canvas effect so a keystroke can re-arm its idle-gated loop.
+  const armSparksRef = useRef<null | (() => void)>(null);
   const boost = useRef(sparkBoost);
   boost.current = sparkBoost;
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -415,10 +417,23 @@ const PromptBar: React.FC<PromptBarProps> = ({
         due -= 0.14;
         if (parts.length < 30) spawn(false);
       }
+      // Idle gate: once the sparkles have faded out and the user has stopped
+      // typing, keep the last frame on screen instead of repainting an
+      // unchanged canvas 60 times a second. WebKitGTK has no dirty-rectangle
+      // short-circuit for 2D canvas, so an "idle" loop still costs a full
+      // page composite per frame — which is most of what makes the app feel
+      // heavy on software-rendered Linux.
+      const busy = energy > 0.02 || pulse > 0.02 || parts.length > 0;
+      if (!busy) {
+        raf = 0;
+        return;
+      }
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = sparkColor;
-      ctx.shadowColor = sparkColor;
-      ctx.shadowBlur = 6 + energy * 10 + pulse * 6;
+      // Shadow blur forces the engine to blur each shape rather than just
+      // fill it, so it is much costlier per particle than the fill itself.
+      // The sparkles stay legible with a plain fill, so keep the blur off.
+      ctx.shadowBlur = 0;
       for (let i = parts.length - 1; i >= 0; i -= 1) {
         const p = parts[i];
         p.life += dt;
@@ -447,13 +462,25 @@ const PromptBar: React.FC<PromptBarProps> = ({
       }
       raf = requestAnimationFrame(tick);
     };
+    // Any keystroke or boost re-arms a loop that the idle gate parked.
+    const kick = () => {
+      if (raf === 0) {
+        last = performance.now();
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    armSparksRef.current = kick;
     resize();
     for (let i = 0; i < 26; i += 1) spawn(true);
-    const ro = new ResizeObserver(resize);
+    const ro = new ResizeObserver(() => {
+      resize();
+      kick();
+    });
     ro.observe(canvas);
     raf = requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(raf);
+      armSparksRef.current = null;
+      if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       ctx.clearRect(0, 0, w, h);
     };
@@ -780,6 +807,8 @@ const PromptBar: React.FC<PromptBarProps> = ({
             setDraft(e.target.value);
             typing.current.energy = Math.min(1.6, typing.current.energy + 0.22);
             typing.current.strokes = Math.min(4, typing.current.strokes + 1);
+            // Wake the sparkle loop if the idle gate parked it.
+            armSparksRef.current?.();
             setDismissed(false);
             closeMenus();
             setActive(0);
