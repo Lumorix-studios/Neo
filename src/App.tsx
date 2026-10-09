@@ -2468,7 +2468,7 @@ MCP call rules:
                         animateBy="letters"
                         direction="top"
                         onAnimationComplete={handleAnimationComplete}
-                        className="mb-3 justify-center text-center text-2xl text-[var(--text-primary)]"
+                        className="mb-3 justify-center text-center text-2xl text-[var(--text-primary)] font-serif"
                       />
                     </div>
 
@@ -2500,15 +2500,15 @@ MCP call rules:
                     </div>
 
                     {/* Action cards */}
-                    <div className="mx-auto mt-8 grid w-full max-w-lg grid-cols-1 gap-3 text-left sm:grid-cols-2">
+                    <div className="mx-auto mt-5 grid w-full max-w-lg grid-cols-1 gap-3 text-left sm:grid-cols-2">
                       <StarBorder
                         as="button"
                         type="button"
                         onClick={() => {
                           void launchIdeWindow();
                         }}
-                        color="lightblue"
-                        speed="5s"
+                        color="yellow"
+                        speed="15s"
                         thickness={1}
                         backgroundColor="rgba(255, 255, 255, 0.02)"
                         borderColor="rgba(255, 255, 255, 0.08)"
@@ -2517,12 +2517,12 @@ MCP call rules:
                       >
 
 
-                      <span className="flex items-center gap-2">
+                      <span className="flex items-center gap-2 ">
                         <IoAdd size={14} className="text-[var(--text-accent)]" />
-                        <span className="block text-[12.5px] font-medium text-[var(--text-primary)]">Open a project</span>
+                        <span className="block text-[12.5px] font-medium text-[var(--text-primary)] font-serif">Open a project</span>
                       </span>
 
-                      <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-faint)]">Browse and edit files in a real workspace</span>
+                      <span className="mt-0.5 block text-[12px] leading-4 text-[var(--text-faint)] font-serif">Browse and edit files in a real workspace</span>
 
                       </StarBorder>
                       {[
@@ -2549,8 +2549,8 @@ MCP call rules:
                           as="button"
                           type="button"
                           onClick={() => setMessage(card.prompt)}
-                          color="lightblue"
-                          speed="5s"
+                          color="yellow"
+                          speed="15s"
                           thickness={1}
                           backgroundColor="rgba(255, 255, 255, 0.02)"
                           borderColor="rgba(255, 255, 255, 0.08)"
@@ -2559,9 +2559,9 @@ MCP call rules:
                         >
                           <span className="flex items-center gap-2">
                             {/* <CardIcon name={card.icon} /> */}
-                            <span className="block text-[12.5px] font-medium text-[var(--text-primary)]">{card.label}</span>
+                            <span className="block text-[12.5px] font-medium text-[var(--text-primary)] font-serif">{card.label}</span>
                           </span>
-                          <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-faint)]">{card.desc}</span>
+                          <span className="mt-0.5 block text-[12px] leading-4 text-[var(--text-faint)] font-serif">{card.desc}</span>
                         </StarBorder>
                       ))}
                     </div>

@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useErrorHandler } from "../src/errorContext";
 import WindowControls from "./WindowControls";
 import { IoChevronForward, IoSearch } from "react-icons/io5";
-import appIcon from "../src/assets/images/icon.jpg";
+import appIcon from "../src/assets/images/icon.jpeg";
 
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
