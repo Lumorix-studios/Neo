@@ -236,7 +236,7 @@ export default function IdeMenuBar({
           {title}
         </button>
         {open && (
-          <div className="panel-in absolute left-0 top-full z-50 mt-px w-60 overflow-hidden rounded-[5px] border border-(--border-strong) bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
+          <div className="panel-in absolute left-0 top-full z-50 mt-px w-60 overflow-hidden rounded-[5px]  border-(--border-strong) bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
             <div>
               {items.map((item) => (
                 <button
@@ -265,9 +265,9 @@ export default function IdeMenuBar({
   };
 
   return (
-    <div ref={barRef} className="flex items-center gap-0.5">
+    <div ref={barRef} className="flex items-center gap-2.5">
       {/* Brand glyph to ground the bar */}
-      <img src="/app-icon.png" alt="Struct logo" className="h-5 w-5 shrink-0" />
+      <img src="../../src/assets/images/icon.jpeg" alt="Struct logo" className="h-5 w-5 shrink-0" />
       {renderMenu("file", "File", fileItems)}
       {renderMenu("edit", "Edit", editItems)}
       {renderMenu("view", "View", viewItems)}

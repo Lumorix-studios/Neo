@@ -861,18 +861,19 @@ export default function IdeWindowApp() {
               title="Toggle file explorer (Ctrl+Shift+E)"
               onClick={() => setExplorerCollapsed((v) => !v)}
             >
-              <IoFolderOpenOutline size={17} />
+              <IoFolderOpenOutline size={19} />
             </RailButton>
             <RailButton active={gitOpen} title="Git tools" onClick={() => setGitOpen((v) => !v)}>
-              <IoGitBranch size={15} />
+              <IoGitBranch size={19} />
             </RailButton>
             <RailButton
               active={agentOpen}
               title="AI Agent (Ctrl+I)"
-              onClick={() => setAgentOpen((v) => !v)}
+              onClick={() => setAgentOpen((v) => !v)
+              }
             >
               <span className="relative">
-                <IoChatboxEllipsesOutline/>
+                <IoChatboxEllipsesOutline size={19} />
                 {agentBusy && (
                   <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-(--accent) animate-pulse" />
                 )}
@@ -886,7 +887,7 @@ export default function IdeWindowApp() {
                 setSettingsOpen((v) => !v);
               }}
             >
-              <IoSettingsOutline size={15} />
+              <IoSettingsOutline size={19} />
             </RailButton>
           </div>
           <div className="w-full">
@@ -895,10 +896,10 @@ export default function IdeWindowApp() {
               title="Command Palette (Ctrl+Shift+P)"
               onClick={() => setPaletteOpen(true)}
             >
-              <IoSearch size={16} />
+              <IoSearch size={19} />
             </RailButton>
             <RailButton active={terminalOpen} title="Terminal (Ctrl+`)" onClick={() => setTerminalOpen((v) => !v)}>
-              <IoTerminal size={17} />
+              <IoTerminal size={19} />
             </RailButton>
             
           </div>

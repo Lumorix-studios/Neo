@@ -10,6 +10,7 @@ import Markdown from "../components/Markdown";
 import AgenticActivity from "../components/AgenticActivity";
 import type { EditorTab } from "../components/CodeEditor";
 import type { AISettings, Message } from "../types";
+import StarBorder from "../../components/StarBorder";
 import {
   getProviderSpec,
   buildAuthHeaders,
@@ -37,6 +38,7 @@ import type { AgenticActivity as AgenticActivityType } from "../agentic";
 import type { NativeToolAcc, ToolCall } from "../agentic";
 import { computeLineDiff } from "../diff";
 import { checkRateLimit, estimateTokens, recordUsage } from "../tokenUsage";
+import BlurText from "../../components/BlurText";
 import {
   buildAttachmentContext,
   expandCommand,
@@ -1254,7 +1256,9 @@ Rules:
     if (mode === "orchestrator") void runOrchestrator(trimmed);
     else void runAgent(trimmed, mode === "chat" ? "chat" : "agent");
   };
-
+  const handleAnimationComplete = () => {
+    console.log('Animation completed!');
+  };
   // Context-aware starter prompts for the empty state.
   const suggestions = workspaceRoot
     ? [
@@ -1263,7 +1267,7 @@ Rules:
           prompt: "Explore this workspace and explain the project structure and what it does.",
         },
         {
-          label: "Review the active file",
+          label: "Review the file",
           prompt:
             "Review the active file for bugs and edge cases, then apply the fixes you are confident about.",
         },
@@ -1300,17 +1304,17 @@ Rules:
 
   return (
     <aside className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-panel)]">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--border) px-3">
+      {/* ── Header */}
+      <div className="flex h-9 shrink-0 items-center gap-2  border-b border-(--border) px-3">
         
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
-          Agent
+        <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
+          {settings.model} 
         </span>
         <button
           type="button"
           onClick={onOpenSettings}
           title="Change model in AI Settings"
-          className="ml-auto flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-1.5 py-[2px] text-[10.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
+          className="ml-auto flex items-center gap-1.5 rounded  border-(--border) bg-(--fill-1) px-1.5 py-[2px] text-[10.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
@@ -1379,24 +1383,45 @@ Rules:
                 Configure an API key to start →
               </button>
             )}
-            <div className="mt-5 grid w-full max-w-[300px] grid-cols-1 gap-1.5">
-
+            {/*you can tell what this is lol its what makes the uh Ready to start working animation inside the agent panel inside the IDE */}
+            <BlurText
+              text="Ready to start working?"
+              delay={70}
+              animateBy="letters"
+              direction="top"
+              onAnimationComplete={handleAnimationComplete}
+              className="mb-3 justify-center text-center text-2xl text-[var(--text-primary)] font-serif"
+            />
+            <div className="mt-5 w-full grid grid-cols-2 gap-1.5">
+              
               {suggestions.map((sg) => (
-                <button
-                  key={sg.label}
-                  type="button"
-                  onClick={() => send(sg.prompt)}
-                  disabled={!configured}
-                  className="group flex items-center gap-2 rounded-md border border-(--border) bg-(--fill-1) px-2.5 py-1.5 text-left transition hover:border-(--border-strong) hover:bg-(--fill-2) disabled:cursor-not-allowed disabled:opacity-40"
-                >
+            
+                
+              <StarBorder
+                as="button"
+                type="button"
+                onClick={
+                  () => send(sg.prompt)
+                }
+                disabled={!configured}
+                color="purple"
+                speed="5s"
+                thickness={1}
+                backgroundColor="rgba(255, 255, 255, 0.02)"
+                borderColor="rgba(255, 255, 255, 0.08)"
+                className="w-full rounded-[4px] transition hover:bg-(--fill-1)"
+                innerClassName="px-3 py-2.5 text-left"
+              >
                   <IoAdd/>
                   <span className="text-[11.5px] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
                     {sg.label}
                   </span>
-                </button>
+              </StarBorder>
               ))}
+                  
             </div>
           </div>
+            
         ) : (
           <div className="space-y-4 px-3.5 py-4">
             {messages.map((m, i) =>
@@ -1504,14 +1529,14 @@ Rules:
         </div>
       )}
 
-      {/* ── Composer ───────────────────────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-(--border) p-2.5">
+      {/* ── Composer */}
+      <div className="shrink-0  border-(--border) p-2.5">
         {/* Context chips — what the agent can currently see. */}
-        <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-0.5">
+        <div className="mb-1.5 flex flex-wrap items-center gap-3 px-0.5">
           {workspaceRoot ? (
             <span
               title={workspaceRoot}
-              className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)]"
+              className="inline-flex items-center gap-1 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)] m-2"
             >
               <IoFolderOutline size={9} />
               {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}

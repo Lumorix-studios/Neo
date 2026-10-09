@@ -2396,14 +2396,14 @@ MCP call rules:
             {/* --- CONTEXT STRIP --- */}
             {/* relative z-20 keeps it ABOVE the scroll fade so it stays visible/clickable */}
             <div
-              className="relative z-20 flex shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-zinc-800/30 bg-black/20 px-5 py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="relative z-20 flex shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap bg-root px-5 py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               data-debug="context-strip"
             >
               <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                 <span className="text-[10px] uppercase tracking-wider font-bold">Context:</span>
               </div>
               {workspaceRoot && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded border border-zinc-800 text-[var(--text-primary)] text-[10px] font-mono">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded border-zinc-800 text-[var(--text-primary)] text-[10px] font-mono">
                   <span><IoFolderOutline/>
                   </span> {shortPath(workspaceRoot)}
                 </div>
@@ -2415,7 +2415,7 @@ MCP call rules:
                 </div>
               )}
               {!workspaceRoot && !activeEditorPath && (
-                <span className="text-[var(--text-secondary)] text-[10px] italic">No active workspace</span>
+                <span className="text-[var(--text-secondary)] text-[10px]">N/A</span>
               )}
               {/* Context-window usage — lives with the chat (it used to be a
                   dropdown inside the top-menu provider pill) and ticks up live

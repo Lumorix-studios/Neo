@@ -39,9 +39,16 @@ import AccountSection from "./AccountSection";
 import type { NeoUser, Profile as AccountProfile } from "../lib/auth";
 import { byokAllowed, saveRemoteKey, removeRemoteKey } from "../lib/byok";
 import * as cloudSync from "../lib/cloudSync";
-import appIcon from "../assets/images/icon.jpg";
+import appIcon from "../assets/images/icon.jpeg";
 
-import { IoClose, IoCode, IoContrastOutline, IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline, IoLockClosedOutline, IoOpenOutline, IoPersonCircleOutline, IoSearch, IoShieldCheckmarkOutline, IoStatsChartOutline, IoTerminal } from "react-icons/io5";
+import {
+  IoBulbSharp,
+  IoClose, IoCode, IoContrastOutline,
+  IoDocumentOutline, IoInformationCircleOutline, IoKeyOutline,
+  IoLockClosedOutline, IoOpenOutline,
+  IoPersonCircleOutline, IoSearch,
+  IoShieldCheckmarkOutline, IoTerminal
+} from "react-icons/io5";
 import {
   formatTokens,
   getCachedRateSettings,
@@ -240,7 +247,7 @@ const SECTIONS: SectionMeta[] = [
     hint: "Token usage and rate-limit estimates",
     group: "Workspace",
     keywords: "tokens usage cost rate limits statistics budget",
-    icon: <IoStatsChartOutline className="h-3.5 w-3.5" />,
+    icon: <IoBulbSharp className="h-3.5 w-3.5" />,
   },
   {
     id: "files",
@@ -700,7 +707,7 @@ export default function SettingsPanel({
       className="fixed inset-0 z-[95] flex items-center justify-center bg-(--scrim) p-2 backdrop-blur-[2px] sm:p-6"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="panel-in flex h-[min(680px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-(--border) bg-[var(--bg-base)] shadow-[0_16px_48px_rgba(0,0,0,0.45)] sm:flex-row">
+      <div className="panel-in flex h-[min(680px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-lg  border-(--border) bg-[var(--bg-base)] shadow-[0_16px_48px_rgba(0,0,0,0.45)] sm:flex-row">
         {/* ── Left nav */}
         <aside className="flex shrink-0 flex-col border-b border-(--border) bg-[var(--bg-panel)] sm:w-[212px] sm:border-b-0 sm:border-r">
           <p className="hidden px-3.5 pb-1.5 pt-3.5 text-[11px] text-[var(--text-muted)] sm:block">
@@ -716,7 +723,7 @@ export default function SettingsPanel({
                 placeholder="Search settings"
                 spellCheck={false}
                 aria-label="Search settings"
-                className="h-7 w-full rounded-md border border-(--border) bg-(--fill-1) pl-7 pr-2 text-[11.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
+                className="h-7 w-full rounded-md bg-(--fill-1) pl-7 pr-2 text-[11.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
               />
             </div>
           </div>

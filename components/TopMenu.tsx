@@ -204,7 +204,7 @@ const openPrivacyPolicy = async () => {
               </button>
 
               {openMenu === menu.label && (
-                <div className="panel-in absolute left-0 top-full z-50 mt-px w-64 overflow-hidden rounded-[5px] border border-(--border-strong) bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
+                <div className="panel-in absolute left-0 top-full z-50 mt-px w-64 overflow-hidden rounded-[5px] bg-[var(--bg-elevated)] p-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
                   {menu.items.map((item, i) => (
                     <button
                       key={i}
