@@ -592,6 +592,14 @@ npm run build:desktop -- --verbose --bundles nsis
 npm run build:desktop -- --dry-run
 ```
 
+The **Platform builds** GitHub Actions workflow builds Windows NSIS and MSI
+installers and a universal Intel/Apple Silicon macOS DMG on native hosted
+runners. It runs the frontend build plus the editor diagnostics, editor
+history, and LSP verification scripts on both operating systems, then uploads
+the installers as workflow artifacts. These checks validate compilation and
+the covered application logic; installing and interactively exercising native
+OS integrations still requires running the artifacts on Windows and macOS.
+
 Updater signing keys are generated with the Tauri CLI:
 
 ```bash
