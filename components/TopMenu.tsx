@@ -249,7 +249,7 @@ const openPrivacyPolicy = async () => {
             type="button"
             onClick={onOpenCommandPalette}
             title="Search commands and files (Ctrl+P)"
-            className="flex h-[22px] w-[min(28vw,280px)] items-center justify-center gap-2 rounded-[6px] border border-(--border-strong) bg-(--fill-1) text-[11.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
+            className="flex h-[22px] w-[min(28vw,280px)] items-center justify-center gap-2 rounded-[6px] b border-(--border-strong) bg-(--fill-1) text-[11.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <IoSearch size={11} />
             Search

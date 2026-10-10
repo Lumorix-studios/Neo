@@ -27,8 +27,10 @@ import {
   Mic01Icon,
   PlusSignIcon,
   SparklesIcon,
-  Tick02Icon
+  Tick02Icon,
+  
 } from '@hugeicons/core-free-icons';
+import { IoTodayOutline } from 'react-icons/io5';
 export interface PromptBarSource {
   key: string;
   name: string;
@@ -90,6 +92,7 @@ export interface PromptBarProps {
   tilt?: number;
   pressScale?: number;
   className?: string;
+  Toolbar?: string;
 }
 
 type Row = {
@@ -274,6 +277,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const [plusOpen, setPlusOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
+  const [ToolbarOpen, setToolbarOpen] = useState(false);
   const [effortIndex, setEffortIndex] = useState(() => {
     const i = efforts.indexOf(defaultEffort);
     return i >= 0 ? i : Math.max(0, Math.floor((efforts.length - 1) / 2));
@@ -295,7 +299,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
 
   const model = models.find(m => m.key === modelKey) ?? models[0];
   const token = dismissed ? null : parseToken(draft);
-  const open = plusOpen ? 'at' : (token?.kind ?? (modelOpen ? 'model' : effortOpen ? 'effort' : null));
+  const open = plusOpen ? 'at' : (token?.kind ?? (modelOpen ? 'model' : effortOpen ? 'effort' : ToolbarOpen ? 'toolbar' : null));
   const query = plusOpen ? '' : (token?.query ?? '');
   const list = useMemo<Row[]>(() => {
     if (open === 'at') return sources.filter(s => s.name.toLowerCase().includes(query));
@@ -314,6 +318,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
     setPlusOpen(false);
     setModelOpen(false);
     setEffortOpen(false);
+    setToolbarOpen(false);
   }, []);
 
   useLayoutEffect(() => {

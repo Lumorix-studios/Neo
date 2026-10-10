@@ -12,6 +12,8 @@ export type ProviderId =
   | "ollama"
   | "custom";
 
+export type ToolAllowance = "all" | "read-only" | "none";
+
 export interface NativeToolCall {
   id: string;
   name: string;
@@ -52,6 +54,8 @@ export interface AISettings {
   temperature: number;
   /** When true, agent file edits & commands run without an approval dialog. */
   autoApproveTools?: boolean;
+  /** Limits which tools the agent can use. */
+  toolAllowance?: ToolAllowance;
 }
 
 /** Defaults for every field. Adding a new field here keeps old saved
@@ -64,6 +68,7 @@ export const DEFAULT_SETTINGS: AISettings = {
   systemPrompt: "You are a helpful, professional assistant.",
   temperature: 0.7,
   autoApproveTools: false,
+  toolAllowance: "all",
 };
 
 const STORAGE_KEY = "neochat.settings.v1";

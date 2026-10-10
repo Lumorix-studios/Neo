@@ -1273,11 +1273,19 @@ export default function App() {
         ? {
             systemPrompt: `${settings.systemPrompt}
 
-${AGENTIC_PROMPT}${promptSuffix ? `
+${AGENTIC_PROMPT}${settings.toolAllowance === "read-only" ? `
+
+Tool allowance: Read Only. Only inspect or search; do not attempt to modify files, run commands, or use MCP tools not explicitly declared read-only.` : ""}${promptSuffix ? `
 
 ${promptSuffix}` : ""}`,
           }
-        : {}),
+        : settings.toolAllowance === "none"
+          ? {
+              systemPrompt: `${settings.systemPrompt}
+
+Tool allowance: No Tools Allowed. Do not attempt to use tools or claim to have used them. Answer only from the conversation and supplied context.`,
+            }
+          : {}),
     };
     const s = getProviderSpec(effectiveSettings);
     const endpoint = s.buildUrl(effectiveSettings);
@@ -1646,7 +1654,8 @@ ${promptSuffix}` : ""}`,
       { role: "user", content: trimmed },
     ];
 
-    const agentic = shouldUseAgenticMode(trimmed);
+    const toolAllowance = settings.toolAllowance ?? "all";
+    const agentic = shouldUseAgenticMode(trimmed) && toolAllowance !== "none";
     const activeEditorAtSend = activeEditorRef.current;
 
     // Build the agent's environment suffix: a high-level project map,
@@ -1871,6 +1880,7 @@ MCP call rules:
           // code fence instead of actually emitting a call. Nudge them to
           // emit a real block instead of ending.
           if (
+            agentic &&
             nudgeCount < 2 &&
             /(\b(function call|tool call|tool_call|read_file|list_dir|search_files|web_search|web_fetch)\b|web search|search the web|fetch (the |this |that )?url|```|<[a-z_]+\s*\/?>|\b\w+_\w+\(\)|\bcall\s+(read|list|get|search)_|(?:can'?t|cannot|unable to|don't have|do not have).{0,30}\b(access|use|call).{0,20}\btools?\b)/i.test(raw)
           ) {
@@ -1929,6 +1939,24 @@ MCP call rules:
           setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
 
         const resultsByKey = new Map<string, { ok: boolean; output: string; data?: unknown }>();
+
+        const isAllowedByToolAllowance = (name: string): boolean => {
+          if (toolAllowance === "all") return true;
+          if (toolAllowance === "none") return false;
+          if (name.startsWith("mcp_")) return mcpTools.get(name)?.readOnly === true;
+          return !isDestructive(name);
+        };
+        const allowedCalls = calls.filter(({ call, key }) => {
+          if (isAllowedByToolAllowance(call.name)) return true;
+          const output =
+            toolAllowance === "none"
+              ? "Tool use is disabled by the current tool allowance setting."
+              : "This tool is blocked by the Read Only setting. Only non-mutating tools and MCP tools declared read-only are allowed.";
+          resultsByKey.set(key, { ok: false, output });
+          const id = activityIds.get(key);
+          if (id) patchActivity(id, { status: "denied", error: output });
+          return false;
+        });
 
         const effRoot =
           workspaceRoot ??
@@ -2002,7 +2030,7 @@ MCP call rules:
         // approval and get cached. Unknown MCP tools stay in the sequential
         // batch to be safe. ---
         const isMcpName = (n: string) => n.startsWith("mcp_");
-        const readOnly = calls.filter(({ call }) => {
+        const readOnly = allowedCalls.filter(({ call }) => {
           if (isDestructive(call.name)) return false;
           if (!isMcpName(call.name)) return true;
           return mcpTools.get(call.name)?.readOnly === true;
@@ -2034,7 +2062,7 @@ MCP call rules:
         }
 
         // --- Mutating batch (sequential, each behind user approval). ---
-        const mutating = calls.filter(
+        const mutating = allowedCalls.filter(
           ({ call }) =>
             isDestructive(call.name) ||
             (isMcpName(call.name) && mcpTools.get(call.name)?.readOnly !== true)
@@ -2663,8 +2691,8 @@ MCP call rules:
             )}
             <div className="relative z-20 shrink-0 px-5 pb-3 pt-2">
               <div className="mx-auto w-full max-w-3xl">
-                {activeEditorPath ? (
-                  <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                  {activeEditorPath ? (
                     <span
                       title={`The agent will receive this file's contents automatically`}
                       className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[11px] text-[var(--text-secondary)]"
@@ -2672,14 +2700,42 @@ MCP call rules:
                       <span className="h-1 w-1 rounded-full bg-[#5a5a5a]" />
                       {activeEditorPath.split(/[\\/]/).pop()}
                     </span>
-                  </div>
-                ) : (
-                  <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                  ) : (
                     <span className="text-[11px] text-[var(--text-muted)]">
                       Open file/folder or give the agent the path of file/folder in the editor and it's sent to the agent automatically
                     </span>
-                  </div>
-                )}
+                  )}
+                  <label
+                    className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2)"
+                    title="All tools are available; destructive actions follow Auto-approve tools. Read Only blocks changes. No Tools disables tool use."
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        settings.toolAllowance === "none"
+                          ? "bg-red-500"
+                          : settings.toolAllowance === "read-only"
+                            ? "bg-amber-500"
+                            : "bg-emerald-500"
+                      }`}
+                    />
+                    <select
+                      aria-label="Tool allowance"
+                      className="max-w-[145px] cursor-pointer appearance-none bg-transparent outline-none"
+                      value={settings.toolAllowance ?? "all"}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        if (value === "all" || value === "read-only" || value === "none") {
+                          handleSaveSettings({ ...settings, toolAllowance: value });
+                        }
+                      }}
+                    >
+                      <option value="all">All Tools Allowed</option>
+                      <option value="read-only">Read Only</option>
+                      <option value="none">No Tools Allowed</option>
+                    </select>
+                    <span aria-hidden className="text-[9px] opacity-60">▼</span>
+                  </label>
+                </div>
                 <PromptBar
                   value={message}
                   onValueChange={setMessage}
