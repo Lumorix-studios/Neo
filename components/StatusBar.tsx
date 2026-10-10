@@ -1,4 +1,5 @@
 import { IoFolderOutline } from "react-icons/io5";
+import { useTranslation } from "../src/i18n";
 
 interface Props {
   historySidebarOpen: boolean;
@@ -38,6 +39,7 @@ export default function StatusBar({
   onToggleHistorySidebar,
   workspaceName,
 }: Props) {
+  const { t } = useTranslation();
 
   return (
     <div className="flex h-[22px] shrink-0 items-center gap-3 border-t border-(--border) bg-[var(--bg-panel)] px-2 text-[11px] text-[var(--text-muted)]">
@@ -59,9 +61,9 @@ export default function StatusBar({
         <ToggleButton
           active={historySidebarOpen}
           onClick={onToggleHistorySidebar}
-          title="Toggle Chat History (Ctrl+Shift+H)"
+          title={t("app.chatHistory") || "Toggle Chat History (Ctrl+Shift+H)"}
         >
-          Chat History
+          {t("app.chatHistory") || "Chat History"}
         </ToggleButton>
       </div>
     </div>

@@ -3,6 +3,7 @@
  * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useTranslation } from "../i18n";
 import {
   IoArrowRedoOutline,
   IoArrowUndo,
@@ -124,6 +125,7 @@ export default function IdeMenuBar({
 }: IdeMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   /* Undo/Redo enabled state, straight from the editor's undo timelines. The
      snapshot is cached by path and only replaced when a flag actually flips, so
@@ -159,21 +161,21 @@ export default function IdeMenuBar({
 
   const fileItems: MenuItem[] = [
     {
-      label: "Save",
+      label: t("ide.saveFile"),
       icon: SaveGlyph,
       hint: "Ctrl+S",
       disabled: !canSave,
       onSelect: () => run(() => onSaveFile?.()),
     },
-    { label: "Open Folder…", icon: FolderGlyph, onSelect: () => run(onOpenFolder) },
-    { label: "Open File…", icon: FileGlyph, onSelect: () => run(onOpenFiles) },
+    { label: t("ide.openFolder"), icon: FolderGlyph, onSelect: () => run(onOpenFolder) },
+    { label: t("ide.openFiles"), icon: FileGlyph, onSelect: () => run(onOpenFiles) },
     {
-      label: "Close All Tabs",
+      label: t("ide.closeAllTabs"),
       icon: TabsGlyph,
       disabled: !hasWorkspace,
       onSelect: () => run(onCloseAllTabs),
     },
-    { label: "Close Editor Panel", icon: PanelCloseGlyph, onSelect: () => run(onClosePanel) },
+    { label: t("ide.closeEditorPanel"), icon: PanelCloseGlyph, onSelect: () => run(onClosePanel) },
   ];
 
   /* Undo/Redo drive the editor's own timelines via the shared presenter, so the
@@ -182,14 +184,14 @@ export default function IdeMenuBar({
   const canHistory = !!activePath;
   const editItems: MenuItem[] = [
     {
-      label: "Undo",
+      label: t("ide.undo"),
       icon: UndoGlyph,
       hint: "Ctrl+Z",
       disabled: !canHistory || !availability.canUndo,
       onSelect: () => run(() => activePath && undoHistory(activePath)),
     },
     {
-      label: "Redo",
+      label: t("ide.redo"),
       icon: RedoGlyph,
       hint: "Ctrl+Shift+Z",
       disabled: !canHistory || !availability.canRedo,
@@ -198,11 +200,11 @@ export default function IdeMenuBar({
   ];
 
   const viewItems: MenuItem[] = [
-  {label : "Settings", icon : Settings, onSelect: () => run(onOpenSettings) },
+  {label : t("ide.openSettings"), icon : Settings, onSelect: () => run(onOpenSettings) },
 
     {
 
-      label: terminalOpen ? "Close Terminal" : "Open Terminal",
+      label: t("ide.toggleTerminal"),
       icon: TerminalGlyph,
       checked: terminalOpen,
       onSelect: () => run(onToggleTerminal),
@@ -210,7 +212,7 @@ export default function IdeMenuBar({
     ...(onToggleGit
       ? [
           {
-            label: gitOpen ? "Hide Git Tools" : "Show Git Tools",
+            label: t("ide.toggleGit"),
             icon: GitGlyph,
             checked: gitOpen,
             onSelect: () => run(onToggleGit),
@@ -268,9 +270,9 @@ export default function IdeMenuBar({
     <div ref={barRef} className="flex items-center gap-2.5">
       {/* Brand glyph to ground the bar */}
       <img src="../../src/assets/images/icon.jpeg" alt="Struct logo" className="h-5 w-5 shrink-0" />
-      {renderMenu("file", "File", fileItems)}
-      {renderMenu("edit", "Edit", editItems)}
-      {renderMenu("view", "View", viewItems)}
+      {renderMenu("file", t("cmd.file"), fileItems)}
+      {renderMenu("edit", t("cmd.edit"), editItems)}
+      {renderMenu("view", t("cmd.view"), viewItems)}
     </div>
   );
 }

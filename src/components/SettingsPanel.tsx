@@ -3,9 +3,11 @@
  * Check the LICENSE in the GitHub repo (https://github.com/Lumorix-studios/Struct) for more information on permissions to use this code.
  */
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useTranslation } from "../i18n";
 import {
   ACCENT_SWATCHES,
   DEFAULT_UI_SETTINGS,
+  LANGUAGE_OPTIONS,
   THEMES,
   contrastRatio,
   deriveTheme,
@@ -318,6 +320,19 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Ctrl+,", "Open settings"],
 ];
 
+const LANGUAGE_LABELS: Record<string, { changeLanguage: string; select: string; selected: string }> = {
+  English: { changeLanguage: "Change language", select: "Select...", selected: "Selected" },
+  "हिंदी": { changeLanguage: "भाषा बदलें", select: "चुनें...", selected: "चयनित" },
+  中文: { changeLanguage: "更改语言", select: "请选择...", selected: "已选择" },
+  Español: { changeLanguage: "Cambiar idioma", select: "Seleccionar...", selected: "Seleccionado" },
+  Français: { changeLanguage: "Changer la langue", select: "Sélectionner...", selected: "Sélectionné" },
+  Deutsch: { changeLanguage: "Sprache ändern", select: "Auswählen...", selected: "Ausgewählt" },
+  "日本語": { changeLanguage: "言語を変更", select: "選択...", selected: "選択中" },
+  "한국어": { changeLanguage: "언어 변경", select: "선택...", selected: "선택됨" },
+  Português: { changeLanguage: "Alterar idioma", select: "Selecionar...", selected: "Selecionado" },
+  Русский: { changeLanguage: "Изменить язык", select: "Выберите...", selected: "Выбрано" },
+};
+
 export default function SettingsPanel({
   open,
   settings,
@@ -334,14 +349,31 @@ export default function SettingsPanel({
   workspaceRoot = null,
 }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionId>("appearance");
+  const { t, language: selectedValue } = useTranslation(open);
   /** Filters the navigation only — section content is untouched. */
   const [navQuery, setNavQuery] = useState("");
   const navQueryNormalized = navQuery.trim().toLowerCase();
-  const visibleSections = navQueryNormalized
+  const sectionKeyMap: Record<SectionId, string> = {
+    account: "settings.account",
+    appearance: "settings.appearance",
+    ai: "settings.ai",
+    dashboard: "settings.dashboard",
+    editor: "settings.files",
+    files: "settings.files",
+    shortcuts: "settings.shortcuts",
+    terminal: "settings.terminal",
+    data: "settings.privacy",
+    about: "settings.about",
+  };
+  const visibleSections = (navQueryNormalized
     ? SECTIONS.filter((s) =>
         `${s.label} ${s.hint} ${s.group} ${s.keywords}`.toLowerCase().includes(navQueryNormalized)
       )
-    : SECTIONS;
+    : SECTIONS
+  ).map((item) => ({
+    ...item,
+    label: t(sectionKeyMap[item.id]) || item.label,
+  }));
   // Stable callbacks: keep AccountSection (memoised) from re-rendering
   // whenever an unrelated settings field changes.
   const refreshAccount = useCallback(() => onAccountRefresh?.(), [onAccountRefresh]);
@@ -375,6 +407,14 @@ export default function SettingsPanel({
   // --- Cloud data management state ---
   const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudMsg, setCloudMsg] = useState<string | null>(null);
+  const languageLabels = LANGUAGE_LABELS[selectedValue] ?? LANGUAGE_LABELS.English;
+
+  const handleLanguageChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextLanguage = event.target.value;
+    if (nextLanguage && nextLanguage !== selectedValue) {
+      onChange({ language: nextLanguage });
+    }
+  };
 
   // Reset the BYOK draft when the provider (or auth state) changes.
   useEffect(() => {
@@ -711,7 +751,7 @@ export default function SettingsPanel({
         {/* ── Left nav */}
         <aside className="flex shrink-0 flex-col border-b border-(--border) bg-[var(--bg-panel)] sm:w-[212px] sm:border-b-0 sm:border-r">
           <p className="hidden px-3.5 pb-1.5 pt-3.5 text-[11px] text-[var(--text-muted)] sm:block">
-            Settings
+            {t("app.settings")}
           </p>
           <div className="hidden px-2.5 pb-2 pt-2.5 sm:block">
             <div className="relative">
@@ -720,9 +760,9 @@ export default function SettingsPanel({
                 type="text"
                 value={navQuery}
                 onChange={(e) => setNavQuery(e.target.value)}
-                placeholder="Search settings"
+                placeholder={t("settings.search")}
                 spellCheck={false}
-                aria-label="Search settings"
+                aria-label={t("settings.search")}
                 className="h-7 w-full rounded-md bg-(--fill-1) pl-7 pr-2 text-[11.5px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-(--border-strong)"
               />
             </div>
@@ -731,7 +771,7 @@ export default function SettingsPanel({
 
             {visibleSections.length === 0 && (
               <p className="hidden px-2 py-3 text-[11px] leading-4 text-[var(--text-muted)] sm:block">
-                No settings match “{navQuery.trim()}”.
+                {t("settings.noSectionMatch", { query: navQuery.trim() })}
               </p>
             )}
             {visibleSections.map((s) => {
@@ -757,8 +797,8 @@ export default function SettingsPanel({
                     <span
                       className="hidden shrink-0 text-[var(--text-faint)] sm:inline"
                       role="img"
-                      aria-label="Sign in required"
-                      title="Sign in required"
+                      aria-label={t("settings.signInRequired")}
+                      title={t("settings.signInRequired")}
                     >
                       <IoLockClosedOutline className="h-3 w-3" />
                     </span>
@@ -823,7 +863,7 @@ export default function SettingsPanel({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close settings"
+              aria-label={t("settings.close")}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
               <IoClose size={12} />
@@ -1029,7 +1069,33 @@ export default function SettingsPanel({
                     Ink on the accent is auto-picked — bright accents (yellow, cyan) get dark text so buttons stay readable.
                   </span>
                 </div>
-              </div>
+                <span>
+                  <label
+                    htmlFor="custom-select"
+                    className="text-sm font-medium text-white-300"
+                  >
+                    {languageLabels.changeLanguage}
+                  </label>
+
+                  <select
+                    id="custom-select"
+                    value={selectedValue}
+                    onChange={handleLanguageChange}
+                    className="w-30 h-7 rounded-2xl bg-gray m-4 text-gray-900"
+                  >
+                    <option value="" disabled>{languageLabels.select}</option>
+                    {LANGUAGE_OPTIONS.map((language) => (
+                      <option key={language} value={language}>
+                        {language}
+                      </option>
+                    ))}
+                  </select>
+
+                  <p className="mt-1 text-gray-500">
+                    {languageLabels.selected}: <span className="font-semibold">{selectedValue}</span>
+                  </p>
+                </span>
+                          </div>
             )}
             {section === "account" && (
               <AccountSection
@@ -1917,14 +1983,14 @@ export default function SettingsPanel({
           <footer className="flex h-10 shrink-0 items-center justify-between border-t border-(--border) px-4">
             <span className="flex items-center gap-1.5 text-[10.5px] text-[var(--text-faint)]">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Changes apply instantly
+              {t("settings.changesInstant")}
             </span>
             <button
               type="button"
               onClick={() => onChange({ ...DEFAULT_UI_SETTINGS })}
               className="rounded-lg border border-(--border-strong) px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
             >
-              Reset to defaults
+              {t("settings.resetAll")}
             </button>
           </footer>
         </div>

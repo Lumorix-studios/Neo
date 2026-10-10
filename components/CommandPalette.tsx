@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "../src/i18n";
 
 interface Command {
   id: string;
@@ -14,15 +15,60 @@ interface CommandPaletteProps {
   commands: Command[];
 }
 
+const COMMAND_TRANSLATION_KEYS: Record<string, string> = {
+  agent: "cmd.agent",
+  "open-ai-settings": "cmd.openAiSettings",
+  "toggle-history": "app.history",
+  "open-information": "settings.about",
+  "open-privacy": "settings.privacy",
+  "new-chat": "app.newChat",
+  "stop-stream": "app.stopStreaming",
+  "open-ide-window": "app.openEditor",
+  "open-folder": "cmd.openFolder",
+  "open-files": "cmd.openFiles",
+  "new-file": "cmd.newFile",
+  save: "cmd.saveFile",
+  "close-all-tabs": "cmd.closeAllTabs",
+  explorer: "cmd.toggleExplorer",
+  git: "cmd.toggleGit",
+  terminal: "cmd.toggleTerminal",
+  settings: "cmd.openSettings",
+  "ai-settings": "cmd.openAiSettings",
+};
+
+const CATEGORY_TRANSLATION_KEYS: Record<string, string> = {
+  Agent: "app.agent",
+  Recent: "cmd.recent",
+  File: "cmd.file",
+  View: "cmd.view",
+  Settings: "cmd.settings",
+  Help: "app.help",
+  Chat: "app.chat",
+};
+
 export default function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
+  const { t } = useTranslation(isOpen);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const filteredCommands = commands.filter((cmd) =>
-    cmd.label.toLowerCase().includes(query.toLowerCase()) ||
-    cmd.category.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredCommands = useMemo(() => {
+    const normalizedQuery = query.toLowerCase();
+    return commands
+      .map((cmd) => ({
+        ...cmd,
+        label: COMMAND_TRANSLATION_KEYS[cmd.id]
+          ? t(COMMAND_TRANSLATION_KEYS[cmd.id])
+          : cmd.label,
+        category: CATEGORY_TRANSLATION_KEYS[cmd.category]
+          ? t(CATEGORY_TRANSLATION_KEYS[cmd.category])
+          : cmd.category,
+      }))
+      .filter((cmd) =>
+        cmd.label.toLowerCase().includes(normalizedQuery) ||
+        cmd.category.toLowerCase().includes(normalizedQuery)
+      );
+  }, [commands, query, t]);
 
   // Reset the query whenever the palette opens. Done as a render-time
   // adjustment (the sanctioned "reset state on prop change" pattern) instead of
@@ -84,7 +130,7 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
-            placeholder="Type a command…"
+            placeholder={t("cmd.typeCommand") || "Type a command…"}
             spellCheck={false}
             className="w-full bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)]"
           />
@@ -94,7 +140,7 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
         <div className="max-h-[360px] overflow-y-auto p-1.5">
           {filteredCommands.length === 0 ? (
             <div className="px-3 py-8 text-center text-[12.5px] text-[var(--text-muted)]">
-              No commands found
+              {t("cmd.noCommandsFound") || "No commands found"}
             </div>
           ) : (
             filteredCommands.map((cmd, idx) => (
@@ -122,13 +168,13 @@ export default function CommandPalette({ isOpen, onClose, commands }: CommandPal
         {/* Footer */}
         <div className="flex items-center gap-4 border-t border-(--border) px-4 py-2 text-[10px] text-[var(--text-muted)]">
           <span className="flex items-center gap-1.5">
-            <span className="kbd">↑↓</span> Navigate
+            <span className="kbd">↑↓</span> {t("cmd.navigate") || "Navigate"}
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="kbd">↵</span> Select
+            <span className="kbd">↵</span> {t("cmd.select") || "Select"}
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="kbd">Esc</span> Close
+            <span className="kbd">Esc</span> {t("cmd.close") || "Close"}
           </span>
         </div>
       </div>

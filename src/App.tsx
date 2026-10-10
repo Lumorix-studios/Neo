@@ -119,6 +119,7 @@ import {
   saveUiSettings,
   type UiSettings,
 } from "./uiSettings";
+import { getActiveLanguage, setActiveLanguage } from "./i18n";
 import { IoAdd, IoAlertSharp, /*IoBarChartOutline, IoBugOutline*/ IoCheckmark, IoCopyOutline, IoFolderOutline, /*IoSparkles*/ /*IoTerminal,*/ IoThumbsDownSharp, IoThumbsUpSharp, IoSettings, /*IoInformation*/ IoPersonCircleOutline } from "react-icons/io5";
 import { shortPath } from "./utils";
 // import IdeMenuBar from "./components/IdeMenuBar.tsx";
@@ -654,6 +655,7 @@ export default function App() {
 
       setSettings(s);
       setUiSettings(ui);
+      setActiveLanguage(ui.language);
       setRecentFiles(getRecentFiles());
       setRecentFolders(getRecentFolders());
 
@@ -872,14 +874,19 @@ export default function App() {
   useEffect(() => {
     if (!restored) return;
     const t = setTimeout(() => {
-      void saveUiSettings(uiSettings);
+      void saveUiSettings({ ...uiSettings, language: getActiveLanguage() });
     }, 250);
     return () => clearTimeout(t);
   }, [uiSettings, restored]);
 
   /** Merge a patch into UI settings (Settings tab writes here). */
   const updateUiSettings = (patch: Partial<UiSettings>) => {
-    setUiSettings((prev) => ({ ...prev, ...patch }));
+    if (patch.language !== undefined && Object.keys(patch).length === 1) {
+      setActiveLanguage(patch.language);
+      void saveUiSettings({ ...uiSettings, language: patch.language });
+      return;
+    }
+    setUiSettings((prev) => ({ ...prev, ...patch, language: getActiveLanguage() }));
   };
 
   /** Persist a batch of paths. An effect event so the debounce effect below can

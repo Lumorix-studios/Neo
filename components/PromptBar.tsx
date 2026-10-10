@@ -30,7 +30,7 @@ import {
   Tick02Icon,
   
 } from '@hugeicons/core-free-icons';
-import { IoTodayOutline } from 'react-icons/io5';
+
 export interface PromptBarSource {
   key: string;
   name: string;

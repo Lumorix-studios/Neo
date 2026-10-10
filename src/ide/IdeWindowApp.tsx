@@ -40,6 +40,7 @@ import GitPanel from "../components/GitPanel";
 import AgentPanel from "./AgentPanel";
 import CommandPalette from "../../components/CommandPalette";
 import { ensureOllamaReady } from "../localModels";
+import { getActiveLanguage, setActiveLanguage, translate, useTranslation } from "../i18n";
 import { clearDiagnostics, normalizePath, publishDiagnostics, quickScan } from "../diagnostics";
 import { langOf } from "../components/highlight";
 import {
@@ -57,20 +58,24 @@ const SettingsPanel = lazy(() => import("../components/SettingsPanel"));
 function RailButton({
   active,
   title,
+  titleKey,
   onClick,
   children,
 }: {
   active?: boolean;
   title: string;
+  titleKey?: string;
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
+  const accessibleTitle = titleKey ? t(titleKey) : title;
   return (
     <button
       type="button"
       onClick={onClick}
-      title={title}
-      aria-label={title}
+      title={accessibleTitle}
+      aria-label={accessibleTitle}
       className={`relative flex h-[48px] w-full items-center justify-center transition-colors ${
         active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
       }`}
@@ -80,6 +85,81 @@ function RailButton({
       )}
       {children}
     </button>
+  );
+}
+
+function IdeStatusBar({
+  agentBusy,
+  onToggleAgent,
+  workspaceRoot,
+  gitBranch,
+  activeEditorPath,
+  activeDirty,
+  cursorPos,
+  tabSize,
+  wordWrap,
+}: {
+  agentBusy: boolean;
+  onToggleAgent: () => void;
+  workspaceRoot: string | null;
+  gitBranch: string | null;
+  activeEditorPath: string | null;
+  activeDirty: boolean;
+  cursorPos: { line: number; col: number; sel: number };
+  tabSize: number;
+  wordWrap: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <footer className="flex h-[22px] shrink-0 items-center justify-between border-t border-(--border) bg-[var(--bg-chrome)] px-2 text-[11px] text-[var(--text-secondary)]">
+      <div className="flex min-w-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggleAgent}
+          title={t("ide.toggleAgent")}
+          className="flex shrink-0 items-center gap-1.5 rounded px-1 transition-colors hover:text-[var(--text-primary)]"
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${agentBusy ? "bg-(--accent) animate-pulse" : "bg-zinc-500"}`} />
+          {t("ide.agent")}
+        </button>
+        {workspaceRoot && (
+          <span className="min-w-0 truncate" title={workspaceRoot}>
+            {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
+          </span>
+        )}
+        {gitBranch && (
+          <span className="flex shrink-0 items-center gap-1" title={t("status.currentBranch")}>
+            <IoGitBranch size={12} />
+            {gitBranch}
+          </span>
+        )}
+        {activeEditorPath && (
+          <span
+            className="flex shrink-0 items-center gap-1.5"
+            title={activeDirty ? t("status.unsavedChanges") : t("status.noUnsaved")}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${activeDirty ? "bg-amber-400" : "bg-(--fill-3)"}`} />
+            {activeDirty ? t("ide.unsaved") : t("ide.saved")}
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        {activeEditorPath && (
+          <span className="tabular-nums">
+            {t("ide.ln")} {cursorPos.line}, {t("ide.col")} {cursorPos.col}
+            {cursorPos.sel > 0 && (
+              <span className="ml-2">({cursorPos.sel} {t("ide.selected")})</span>
+            )}
+          </span>
+        )}
+        <span>{t("ide.spaces")}: {tabSize}</span>
+        <span>{wordWrap ? t("ide.wrap") : t("ide.noWrap")}</span>
+        <span>{t("ide.utf8")}</span>
+        <span>{t("ide.lf")}</span>
+        {activeEditorPath && <span>{langLabel(activeEditorPath)}</span>}
+      </div>
+    </footer>
   );
 }
 
@@ -213,6 +293,7 @@ export default function IdeWindowApp() {
       const [ui, ai] = await Promise.all([loadUiSettings(), loadSettings()]);
       if (cancelled) return;
       setUiSettings(ui);
+      setActiveLanguage(ui.language);
       setAiSettings(ai);
       uiSettingsLoadedRef.current = true;
     })();
@@ -229,13 +310,21 @@ export default function IdeWindowApp() {
   // Persist UI settings (debounced, only after the initial load).
   useEffect(() => {
     if (!uiSettingsLoadedRef.current) return;
-    const t = setTimeout(() => void saveUiSettings(uiSettings), 250);
+    const t = setTimeout(
+      () => void saveUiSettings({ ...uiSettings, language: getActiveLanguage() }),
+      250
+    );
     return () => clearTimeout(t);
   }, [uiSettings]);
 
   /** Merge a patch into UI settings (Settings panel writes here). */
   const updateUiSettings = (patch: Partial<UiSettings>) => {
-    setUiSettings((prev) => ({ ...prev, ...patch }));
+    if (patch.language !== undefined && Object.keys(patch).length === 1) {
+      setActiveLanguage(patch.language);
+      void saveUiSettings({ ...uiSettings, language: patch.language });
+      return;
+    }
+    setUiSettings((prev) => ({ ...prev, ...patch, language: getActiveLanguage() }));
   };
 
   const handleAiChange = (next: AISettings) => {
@@ -858,17 +947,19 @@ export default function IdeWindowApp() {
           <div className="flex w-full flex-col items-center gap-1">
             <RailButton
               active={!explorerCollapsed}
-              title="Toggle file explorer (Ctrl+Shift+E)"
+              title="Toggle file explorer"
+              titleKey="ide.toggleExplorer"
               onClick={() => setExplorerCollapsed((v) => !v)}
             >
               <IoFolderOpenOutline size={19} />
             </RailButton>
-            <RailButton active={gitOpen} title="Git tools" onClick={() => setGitOpen((v) => !v)}>
+            <RailButton active={gitOpen} title="Git tools" titleKey="ide.toggleGit" onClick={() => setGitOpen((v) => !v)}>
               <IoGitBranch size={19} />
             </RailButton>
             <RailButton
               active={agentOpen}
-              title="AI Agent (Ctrl+I)"
+              title="AI Agent"
+              titleKey="ide.toggleAgent"
               onClick={() => setAgentOpen((v) => !v)
               }
             >
@@ -881,7 +972,8 @@ export default function IdeWindowApp() {
             </RailButton>
             <RailButton
               active={settingsOpen}
-              title="Settings (Ctrl+,)"
+              title="Settings"
+              titleKey="ide.openSettings"
               onClick={() => {
                 setSettingsSection(null);
                 setSettingsOpen((v) => !v);
@@ -893,12 +985,13 @@ export default function IdeWindowApp() {
           <div className="w-full">
             <RailButton
               active={paletteOpen}
-              title="Command Palette (Ctrl+Shift+P)"
+              title="Command Palette"
+              titleKey="app.search"
               onClick={() => setPaletteOpen(true)}
             >
               <IoSearch size={19} />
             </RailButton>
-            <RailButton active={terminalOpen} title="Terminal (Ctrl+`)" onClick={() => setTerminalOpen((v) => !v)}>
+            <RailButton active={terminalOpen} title="Terminal" titleKey="ide.toggleTerminal" onClick={() => setTerminalOpen((v) => !v)}>
               <IoTerminal size={19} />
             </RailButton>
             
@@ -1050,7 +1143,7 @@ export default function IdeWindowApp() {
             label: "New File…",
             category: "File",
             action: () => {
-              const name = window.prompt("File name (relative to the workspace root):");
+              const name = window.prompt(translate("ide.fileNamePrompt", getActiveLanguage()));
               if (name) void createFileInWorkspace(name);
             },
           },
@@ -1111,63 +1204,17 @@ export default function IdeWindowApp() {
         ]}
       />
 
-      {/* ── Status bar (VS Code-style) ──────────────────────────────────── */}
-      <footer className="flex h-[22px] shrink-0 items-center justify-between border-t border-(--border) bg-[var(--bg-chrome)] px-2 text-[11px] text-[var(--text-secondary)]">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setAgentOpen((v) => !v)}
-            title="AI Agent (Ctrl+I)"
-            className="flex shrink-0 items-center gap-1.5 rounded px-1 transition-colors hover:text-[var(--text-primary)]"
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                agentBusy ? "bg-(--accent) animate-pulse" : "bg-zinc-500"
-              }`}
-            />
-            Agent
-          </button>
-          {workspaceRoot && (
-            <span className="min-w-0 truncate" title={workspaceRoot}>
-              {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
-            </span>
-          )}
-          {gitBranch && (
-            <span className="flex shrink-0 items-center gap-1" title="Current branch">
-              <IoGitBranch size={12} />
-              {gitBranch}
-            </span>
-          )}
-          {activeEditorPath && (
-            <span
-              className="flex shrink-0 items-center gap-1.5"
-              title={activeDirty ? "Unsaved changes" : "No unsaved changes"}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  activeDirty ? "bg-amber-400" : "bg-(--fill-3)"
-                }`}
-              />
-              {activeDirty ? "Unsaved" : "Saved"}
-            </span>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {activeEditorPath && (
-            <span className="tabular-nums">
-              Ln {cursorPos.line}, Col {cursorPos.col}
-              {cursorPos.sel > 0 && (
-                <span className="ml-2">({cursorPos.sel} selected)</span>
-              )}
-            </span>
-          )}
-          <span>Spaces: {uiSettings.tabSize}</span>
-          <span>{uiSettings.wordWrap ? "Wrap" : "No wrap"}</span>
-          <span>UTF-8</span>
-          <span>LF</span>
-          {activeEditorPath && <span>{langLabel(activeEditorPath)}</span>}
-        </div>
-      </footer>
+      <IdeStatusBar
+        agentBusy={agentBusy}
+        onToggleAgent={() => setAgentOpen((v) => !v)}
+        workspaceRoot={workspaceRoot}
+        gitBranch={gitBranch}
+        activeEditorPath={activeEditorPath}
+        activeDirty={activeDirty}
+        cursorPos={cursorPos}
+        tabSize={uiSettings.tabSize}
+        wordWrap={uiSettings.wordWrap}
+      />
     </div>
   );
 

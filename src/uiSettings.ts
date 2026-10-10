@@ -4,9 +4,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 export interface UiSettings {
-  
   themeId: string;
-  
+  language: string;
   customBackground: string | null;
 
   /** -0.35..0.35 brightness safety nudge applied to the custom background. */
@@ -62,8 +61,39 @@ export const ACCENT_SWATCHES: Array<{ label: string; value: string }> = [
   { label: "Mint", value: "#6ee7b7" },
 ];
 
+export const LANGUAGE_OPTIONS = [
+  "English",
+  "हिंदी",
+  "中文",
+  "Español",
+  "Français",
+  "Deutsch",
+  "日本語",
+  "한국어",
+  "Português",
+  "Русский",
+] as const;
+
+export const LANGUAGE_CODES: Record<(typeof LANGUAGE_OPTIONS)[number], string> = {
+  English: "en",
+  "हिंदी": "hi",
+  中文: "zh",
+  Español: "es",
+  Français: "fr",
+  Deutsch: "de",
+  "日本語": "ja",
+  "한국어": "ko",
+  Português: "pt",
+  Русский: "ru",
+};
+
+export function getLanguageCode(language: string | null | undefined): string {
+  return LANGUAGE_CODES[(language as keyof typeof LANGUAGE_CODES) ?? "English"] ?? "en";
+}
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   themeId: "neo",
+  language: "English",
   customBackground: null,
   bgBrightness: 0,
   accent: "#4c8dff",
@@ -114,6 +144,9 @@ export async function loadUiSettings(): Promise<UiSettings> {
     // resolve — fall back to the default palette.
     if (typeof merged.themeId !== "string" || !THEMES.some((t) => t.id === merged.themeId)) {
       merged.themeId = DEFAULT_UI_SETTINGS.themeId;
+    }
+    if (typeof merged.language !== "string" || !LANGUAGE_OPTIONS.includes(merged.language as (typeof LANGUAGE_OPTIONS)[number])) {
+      merged.language = DEFAULT_UI_SETTINGS.language;
     }
     return merged;
   } catch {

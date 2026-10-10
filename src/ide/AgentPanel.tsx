@@ -53,6 +53,7 @@ import {
   type McpToolEntry,
 } from "../mcp";
 import { IoAdd, IoApps, IoClose, IoFolderOutline, IoTrashOutline } from "react-icons/io5";
+import { useTranslation } from "../i18n";
 
 type JsonDict = Record<string, unknown>;
 
@@ -160,6 +161,7 @@ export default memo(function AgentPanel({
   onOpenSettings,
   onFilesChanged,
 }: AgentPanelProps) {
+  const { t } = useTranslation();
   const spec: ProviderSpec = getProviderSpec(settings);
   const configured = !spec.needsAuth || !!settings.apiKey.trim();
 
@@ -1313,7 +1315,7 @@ Rules:
         <button
           type="button"
           onClick={onOpenSettings}
-          title="Change model in AI Settings"
+          title={t("ide.openAiSettings")}
           className="ml-auto flex items-center gap-1.5 rounded  border-(--border) bg-(--fill-1) px-1.5 py-[2px] text-[10.5px] text-[var(--text-muted)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
         >
           <span
@@ -1327,7 +1329,7 @@ Rules:
           <button
             type="button"
             onClick={clearChat}
-            title="Clear conversation"
+            title={t("agent.clearConversation")}
             className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
           >
             <IoTrashOutline size={13} />
@@ -1336,7 +1338,7 @@ Rules:
         <button
           type="button"
           onClick={onClose}
-          title="Close agent panel (Ctrl+I)"
+          title={t("ide.toggleAgent")}
           className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition hover:bg-(--fill-2) hover:text-[var(--text-primary)]"
         >
           <IoClose size={12} />
@@ -1347,9 +1349,9 @@ Rules:
       <div className="flex shrink-0 items-center gap-1 border-b border-(--border) px-2.5 py-1.5">
         {(
           [
-            ["chat", "Chat", "Plain conversation — no file tools"],
-            ["agent", "Agent", "Reads, edits and runs files with your approval"],
-            ["orchestrator", "Orchestrator", "Plans the goal into steps, then executes each one"],
+            ["chat", t("app.chat"), t("agent.chatTip")],
+            ["agent", t("app.agent"), t("agent.agentTip")],
+            ["orchestrator", t("agent.orchestrator"), t("agent.orchestratorTip")],
           ] as const
         ).map(([m, label, tip]) => (
           <button
@@ -1380,12 +1382,12 @@ Rules:
                 onClick={onOpenSettings}
                 className="mt-4 rounded-md border border-(--border-strong) bg-(--fill-1) px-3 py-1.5 text-[11.5px] text-[var(--text-primary)] transition hover:bg-(--fill-2)"
               >
-                Configure an API key to start →
+                {t("agent.configureApiKey")} →
               </button>
             )}
             {/*you can tell what this is lol its what makes the uh Ready to start working animation inside the agent panel inside the IDE */}
             <BlurText
-              text="Ready to start working?"
+              text={t("agent.ready")}
               delay={70}
               animateBy="letters"
               direction="top"
@@ -1438,7 +1440,7 @@ Rules:
                       <path d="M8 1.8l1.55 4.2L13.8 7.5l-4.25 1.5L8 13.2 6.45 9 2.2 7.5l4.25-1.5L8 1.8z" />
                     </svg> */}
                     <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                      Agent
+                      {t("app.agent")}
                     </span>
                   </div>
                   <div className="text-[12.5px] leading-6 text-[var(--text-primary)]">
@@ -1473,12 +1475,12 @@ Rules:
           <div className="overflow-hidden rounded-lg border border-(--border) bg-(--fill-1)">
             <div className="flex items-center justify-between border-b border-(--border) px-3 py-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                Plan
+                {t("agent.plan")}
               </span>
               <button
                 type="button"
                 onClick={() => setPlan(null)}
-                title="Dismiss plan"
+                title={t("app.close")}
                 className="text-[10px] text-[var(--text-muted)] transition hover:text-[var(--text-primary)]"
               >
                 ✕
@@ -1521,7 +1523,7 @@ Rules:
               type="button"
               onClick={() => setError(null)}
               className="shrink-0 text-red-300/60 transition hover:text-red-200"
-              title="Dismiss"
+              title={t("app.close")}
             >
               <IoClose size={14} />
             </button>
@@ -1542,11 +1544,11 @@ Rules:
               {workspaceRoot.split(/[\\/]/).filter(Boolean).pop()}
             </span>
           ) : (
-            <span className="text-[10.5px] text-[var(--text-muted)]">No workspace open</span>
+            <span className="text-[10.5px] text-[var(--text-muted)]">{t("agent.noWorkspace")}</span>
           )}
           {activeEditorPath && (
             <span
-              title="The agent will receive this file's contents automatically"
+              title={t("agent.activeFileContext")}
               className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)]"
             >
               <span className="h-1 w-1 rounded-full bg-(--accent)" />
@@ -1557,7 +1559,7 @@ Rules:
             <button
               type="button"
               onClick={onOpenSettings}
-              title={`${mcpServerCount} MCP server${mcpServerCount === 1 ? "" : "s"} connected — click to manage`}
+              title={t("agent.mcpConnected", { count: mcpServerCount })}
               className="inline-flex items-center gap-1.5 rounded border border-(--border) bg-(--fill-1) px-2 py-0.5 text-[10.5px] text-[var(--text-secondary)] transition-colors hover:border-(--border-strong) hover:text-[var(--text-primary)]"
             >
               <IoApps size={9} />
@@ -1585,9 +1587,9 @@ Rules:
           placeholder={
             configured
               ? workspaceRoot
-                ? "Ask the agent to change something…"
-                : "Ask anything, or open a folder to enable file tools…"
-              : "Configure an API key to use the agent"
+                ? t("agent.askToChange")
+                : t("agent.askAnything")
+              : t("agent.configureAgent")
           }
           models={[{ key: `${settings.provider}:${settings.model}`, name: settings.model || spec.label }]}
           defaultModel={`${settings.provider}:${settings.model}`}
@@ -1595,7 +1597,7 @@ Rules:
           className="w-full"
         />
         <div className="mt-1 flex items-center justify-between px-1 text-[10px] text-[var(--text-faint)]">
-          <span>Ai can make mistakes: verify information</span>
+          <span>{t("agent.verifyInfo")}</span>
           {/* <span>Destructive actions need approval</span> */}
         </div>
       </div>

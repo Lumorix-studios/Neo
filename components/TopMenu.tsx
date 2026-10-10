@@ -8,6 +8,7 @@ import { useErrorHandler } from "../src/errorContext";
 import WindowControls from "./WindowControls";
 import { IoChevronForward, IoSearch } from "react-icons/io5";
 import appIcon from "../src/assets/images/icon.jpeg";
+import { useTranslation } from "../src/i18n";
 
 interface TopMenuProps {
   onOpenInfoPanel: () => void;
@@ -66,6 +67,7 @@ export default function TopMenu({
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { reportError } = useErrorHandler();
+  const { t } = useTranslation();
 
   const openDocs = async () => {
     try {
@@ -91,22 +93,22 @@ const openPrivacyPolicy = async () => {
 
   const menus: MenuDef[] = [
     {
-      label: "Context",
+      label: t("app.context"),
       items: [
         {
-          label: "Analyze Project",
+          label: t("app.analyzeProject"),
           action: () => onAnalyzeProject?.(),
           disabled: !onAnalyzeProject,
         },
         {
-          label: "Save Session…",
+          label: t("app.saveSession"),
           action: () => onSaveSession?.(),
           disabled: !onSaveSession,
         },
         ...(contextItems.length > 0
           ? [
               {
-                label: "(click to target the specific file in the agent's context)",
+                label: t("app.contextTarget"),
                 action: () => {},
                 disabled: true,
               },
@@ -114,7 +116,7 @@ const openPrivacyPolicy = async () => {
             ]
           : [
               {
-                label: "No folder open — open a workspace to pin files",
+                label: t("app.noFolderOpen"),
                 action: () => {},
                 disabled: true,
               },
@@ -122,33 +124,31 @@ const openPrivacyPolicy = async () => {
       ],
     },
     {
-      label: "File",
+      label: t("app.file"),
       items: [
-        { label: "New Chat", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
-        { label: "Open Editor", action: onOpenIde, shortcut: "Ctrl+Shift+E" },
-        
+        { label: t("app.newChat"), action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
+        { label: t("app.openEditor"), action: onOpenIde, shortcut: "Ctrl+Shift+E" },
       ],
     },
     {
-      label: "View",
+      label: t("app.view"),
       items: [
-        { label: "Chat History", action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
-        // { label: "Open Terminal", action: onOpenTerminal, shortcut: "Ctrl+`" },
-        { label: "AI Settings…", action: onOpenAiSettings, shortcut: "Ctrl+B" },
+        { label: t("app.chatHistory"), action: onOpenChatHistory, shortcut: "Ctrl+Shift+H" },
+        { label: t("app.aiSettings"), action: onOpenAiSettings, shortcut: "Ctrl+B" },
         ...(onOpenSettings
-          ? [{ label: "Settings…", action: onOpenSettings, shortcut: "Ctrl+," }]
+          ? [{ label: t("app.settingsMenu"), action: onOpenSettings, shortcut: "Ctrl+," }]
           : []),
       ],
     },
     {
-      label: "Help",
+      label: t("app.help"),
       items: [
-        { label: "Documentation", action: openDocs },
-        { label: "About & Contact", action: onOpenInfoPanel },
-        { label: "Privacy Policy", action: openPrivacyPolicy },
-        { label: "Rate the app", action: onOpenTab2 },
+        { label: t("app.documentation"), action: openDocs },
+        { label: t("app.aboutContact"), action: onOpenInfoPanel },
+        { label: t("app.privacyPolicy"), action: openPrivacyPolicy },
+        { label: t("app.rateApp"), action: onOpenTab2 },
         ...(onCheckForUpdates
-          ? [{ label: "Check for Updates…", action: onCheckForUpdates }]
+          ? [{ label: t("app.checkForUpdates"), action: onCheckForUpdates }]
           : []),
       ],
     },
